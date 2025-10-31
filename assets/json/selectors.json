@@ -1,0 +1,111 @@
+{
+  "selectors": {
+    "aistudio": {
+      "wait_until_ready": [
+        "[data-testid=\"prompt-textarea\"]",
+        "textarea"
+      ],
+      "loginCheck": [
+        "input[type=\"password\"]",
+        "button:contains(\"Sign in\")"
+      ],
+      "promptTextarea": [
+        "[data-testid=\"prompt-textarea\"]",
+        "textarea"
+      ],
+      "sendButton": [
+        "button[data-testid=\"send-button\"]",
+        "button:contains(\"Send\")"
+      ],
+      "isGenerating": [
+        "[data-testid=\"stop-button\"]",
+        "button:contains(\"Stop\")"
+      ],
+      "assistantResponse": [
+        "[data-testid=\"conversation-turn-1\"]",
+        ".markdown-content"
+      ]
+    },
+    "qwen": {
+      "wait_until_ready": [
+        "textarea[placeholder*=\"Message\"]",
+        "textarea"
+      ],
+      "loginCheck": [
+        "input[type=\"password\"]",
+        ".sign-in-form"
+      ],
+      "promptTextarea": [
+        "textarea[placeholder*=\"Message\"]",
+        "textarea"
+      ],
+      "sendButton": [
+        "button[type=\"submit\"]",
+        ".send-button"
+      ],
+      "isGenerating": [
+        ".generating-indicator",
+        ".loading-dots"
+      ],
+      "assistantResponse": [
+        ".message-assistant",
+        ".assistant-response"
+      ]
+    },
+    "zai": {
+      "wait_until_ready": [
+        "textarea",
+        ".message-input"
+      ],
+      "loginCheck": [
+        "input[type=\"password\"]",
+        ".login-form"
+      ],
+      "promptTextarea": [
+        "textarea",
+        ".message-input"
+      ],
+      "sendButton": [
+        "button[type=\"submit\"]",
+        ".send-btn"
+      ],
+      "isGenerating": [
+        ".generating",
+        ".loading"
+      ],
+      "assistantResponse": [
+        ".ai-response",
+        ".response-content"
+      ]
+    },
+    "kimi": {
+      "wait_until_ready": [
+        "textarea[placeholder*=\"Kimi\"]",
+        "textarea"
+      ],
+      "loginCheck": [
+        "input[type=\"password\"]",
+        ".login-container"
+      ],
+      "promptTextarea": [
+        "textarea[placeholder*=\"Kimi\"]",
+        "textarea"
+      ],
+      "sendButton": [
+        "button[data-testid=\"send-button\"]",
+        ".send-btn"
+      ],
+      "isGenerating": [
+        ".chat-interlude-stop-btn",
+        ".generating"
+      ],
+      "assistantResponse": [
+        "[data-message-role=\"assistant\"]",
+        ".assistant-message"
+      ]
+    }
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2025-10-31T20:00:00Z",
+  "description": "Default selector configuration for AI Hybrid Hub"
+}

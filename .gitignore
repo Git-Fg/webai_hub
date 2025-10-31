@@ -16,10 +16,12 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -32,6 +34,11 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Riverpod/Build Runner
+build_runner_build.yaml
+*.g.dart
+*.mocks.dart
+
 # Symbolication related
 app.*.symbols
 
@@ -42,3 +49,55 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/gradlew
+/android/gradlew.bat
+/android/local.properties
+/android/.gradle/
+
+# iOS/Xcode
+**/ios/Pods/
+**/ios/Podfile.lock
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/.symlinks/
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/App.framework
+**/ios/Flutter/Generated.xcconfig
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# Web related (if building for web)
+/web/
+*.js
+*.js.map
+*.dart.js
+
+# Local configuration
+local.properties
+*.local
+*.env
+*.env.*.local
+
+# Coverage
+coverage/
+lcov.info
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.bak
+*.backup
+
+# Logs
+logs/
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentation build
+docs/_build/
+site/

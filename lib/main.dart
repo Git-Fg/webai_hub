@@ -1,318 +1,134 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'custom_image.dart';
-import 'webview_tab.dart';
-
-List<WebViewTab> webViewTabs = [];
-int currentTabIndex = 0;
-const kHomeUrl = 'https://google.com';
+import 'shared/models/ai_provider.dart';
+import 'features/hub/widgets/hub_screen.dart';
+import 'features/webview/widgets/ai_webview_tab.dart';
 
 Future main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb &&
-      kDebugMode &&
-      defaultTargetPlatform == TargetPlatform.android) {
+
+  // Enable WebView debugging for development
+  if (!kIsWeb && kDebugMode && defaultTargetPlatform == TargetPlatform.android) {
     await InAppWebViewController.setWebContentsDebuggingEnabled(kDebugMode);
   }
-  runApp(const MaterialApp(home: MyApp()));
+
+  runApp(const ProviderScope(child: AIHybridHubApp()));
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+class AIHybridHubApp extends StatelessWidget {
+  const AIHybridHubApp({Key? key}) : super(key: key);
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'AI Hybrid Hub',
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        useMaterial3: true,
+        brightness: Brightness.dark,
+      ),
+      home: const MainTabController(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
-  bool showWebViewTabsViewer = false;
+class MainTabController extends StatefulWidget {
+  const MainTabController({Key? key}) : super(key: key);
+
+  @override
+  State<MainTabController> createState() => _MainTabControllerState();
+}
+
+class _MainTabControllerState extends State<MainTabController>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 5, // Fixed 5 tabs: Hub + 4 AI providers
+      vsync: this,
+    );
+  }
 
-    webViewTabs.add(createWebViewTab());
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      child: Scaffold(
-          appBar: showWebViewTabsViewer
-              ? _buildWebViewTabViewerAppBar()
-              : _buildWebViewTabAppBar(),
-          body: IndexedStack(
-            index: showWebViewTabsViewer ? 1 : 0,
-            children: [_buildWebViewTabs(), _buildWebViewTabsViewer()],
-          )),
-      onWillPop: () async {
-        if (showWebViewTabsViewer) {
-          setState(() {
-            showWebViewTabsViewer = false;
-          });
-        } else if (await webViewTabs[currentTabIndex].canGoBack()) {
-          webViewTabs[currentTabIndex].goBack();
-        } else {
-          return true;
-        }
-        return false;
-      },
-    );
-  }
-
-  WebViewTab createWebViewTab({String? url, int? windowId}) {
-    WebViewTab? webViewTab;
-
-    if (url == null && windowId == null) {
-      url = kHomeUrl;
-    }
-
-    webViewTab = WebViewTab(
-      key: GlobalKey(),
-      url: url,
-      windowId: windowId,
-      onStateUpdated: () {
-        setState(() {});
-      },
-      onCloseTabRequested: () {
-        if (webViewTab != null) {
-          _closeWebViewTab(webViewTab);
-        }
-      },
-      onCreateTabRequested: (createWindowAction) {
-        _addWebViewTab(windowId: createWindowAction.windowId);
-      },
-    );
-    return webViewTab;
-  }
-
-  AppBar _buildWebViewTabAppBar() {
-    return AppBar(
-      leading: IconButton(
-          onPressed: () {
-            _addWebViewTab();
-          },
-          icon: const Icon(Icons.add)),
-      title: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      body: TabBarView(
+        controller: _tabController,
+        physics: const NeverScrollableScrollPhysics(), // Prevent swipe navigation
         children: [
-          Text(
-            webViewTabs[currentTabIndex].title ?? '',
-            overflow: TextOverflow.fade,
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              webViewTabs[currentTabIndex].isSecure != null
-                  ? Icon(
-                      webViewTabs[currentTabIndex].isSecure == true
-                          ? Icons.lock
-                          : Icons.lock_open,
-                      color: webViewTabs[currentTabIndex].isSecure == true
-                          ? Colors.green
-                          : Colors.red,
-                      size: 12)
-                  : Container(),
-              const SizedBox(
-                width: 5,
-              ),
-              Flexible(
-                  child: Text(
-                webViewTabs[currentTabIndex].currentUrl ??
-                    webViewTabs[currentTabIndex].url ??
-                    '',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
-                overflow: TextOverflow.fade,
-              )),
-            ],
-          )
+          // Tab 1: Native Hub
+          const HubScreen(),
+
+          // Tab 2-5: AI Provider WebViews
+          AIWebViewTab(provider: AIProvider.aistudio),
+          AIWebViewTab(provider: AIProvider.qwen),
+          AIWebViewTab(provider: AIProvider.zai),
+          AIWebViewTab(provider: AIProvider.kimi),
         ],
       ),
-      actions: _buildWebViewTabActions(),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
-  Widget _buildWebViewTabs() {
-    return IndexedStack(index: currentTabIndex, children: webViewTabs);
-  }
-
-  List<Widget> _buildWebViewTabActions() {
-    return [
-      IconButton(
-        onPressed: () async {
-          await webViewTabs[currentTabIndex].updateScreenshot();
-          setState(() {
-            showWebViewTabsViewer = true;
-          });
-        },
-        icon: Container(
-          margin: const EdgeInsets.only(top: 5, bottom: 5),
-          decoration: BoxDecoration(
-              border: Border.all(width: 2.0, color: Colors.white),
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(5.0)),
-          constraints: const BoxConstraints(minWidth: 25.0),
-          child: Center(
-              child: Text(
-            webViewTabs.length.toString(),
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14.0),
-          )),
+  Widget _buildBottomNavigationBar() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: Colors.grey.shade800,
+            width: 0.5,
+          ),
         ),
       ),
-    ];
-  }
-
-  AppBar _buildWebViewTabViewerAppBar() {
-    return AppBar(
-      leading: IconButton(
-          onPressed: () {
-            setState(() {
-              showWebViewTabsViewer = false;
-            });
-          },
-          icon: const Icon(Icons.arrow_back)),
-      title: const Text('WebView Tab Viewer'),
-      actions: _buildWebViewTabsViewerActions(),
-    );
-  }
-
-  Widget _buildWebViewTabsViewer() {
-    return GridView.count(
-      crossAxisCount: 2,
-      children: webViewTabs.map((webViewTab) {
-        return _buildWebViewTabGrid(webViewTab);
-      }).toList(),
-    );
-  }
-
-  Widget _buildWebViewTabGrid(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    final screenshotData = webViewTab.screenshot;
-    final favicon = webViewTab.favicon;
-
-    return Card(
-        clipBehavior: Clip.antiAlias,
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-            side: currentTabIndex == webViewIndex
-                ? const BorderSide(
-                    // border color
-                    color: Colors.black,
-                    // border thickness
-                    width: 2)
-                : BorderSide.none,
-            borderRadius: const BorderRadius.all(
-              Radius.circular(5),
-            )),
-        child: InkWell(
-          onTap: () {
-            _selectWebViewTab(webViewTab);
-          },
-          child: Column(
-            children: [
-              ListTile(
-                tileColor: Colors.black12,
-                selected: currentTabIndex == webViewIndex,
-                selectedColor: Colors.white,
-                selectedTileColor: Colors.black,
-                contentPadding: const EdgeInsets.only(left: 10),
-                visualDensity: const VisualDensity(horizontal: 0, vertical: -4),
-                title: Row(mainAxisSize: MainAxisSize.max, children: [
-                  Container(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: favicon != null
-                        ? CustomImage(
-                            url: favicon.url, maxWidth: 20.0, height: 20.0)
-                        : null,
-                  ),
-                  Expanded(
-                      child: Text(
-                    webViewTab.title ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ))
-                ]),
-                trailing: IconButton(
-                    onPressed: () {
-                      _closeWebViewTab(webViewTab);
-                    },
-                    icon: const Icon(
-                      Icons.close,
-                      size: 16,
-                    )),
-              ),
-              Expanded(
-                  child: Ink(
-                decoration: screenshotData != null
-                    ? BoxDecoration(
-                        image: DecorationImage(
-                        image: MemoryImage(screenshotData),
-                        fit: BoxFit.fitWidth,
-                        alignment: Alignment.topCenter,
-                      ))
-                    : null,
-              ))
-            ],
+      child: TabBar(
+        controller: _tabController,
+        indicatorColor: Colors.deepPurpleAccent,
+        indicatorWeight: 2,
+        labelColor: Colors.deepPurpleAccent,
+        unselectedLabelColor: Colors.grey,
+        labelStyle: const TextStyle(fontSize: 12),
+        unselectedLabelStyle: const TextStyle(fontSize: 12),
+        tabs: const [
+          Tab(
+            icon: Icon(Icons.hub),
+            text: 'Hub',
+            height: 60,
           ),
-        ));
-  }
-
-  List<Widget> _buildWebViewTabsViewerActions() {
-    return [
-      IconButton(
-          onPressed: () {
-            _closeAllWebViewTabs();
-          },
-          icon: const Icon(Icons.clear_all))
-    ];
-  }
-
-  void _addWebViewTab({String? url, int? windowId}) {
-    webViewTabs.add(createWebViewTab(url: url, windowId: windowId));
-    setState(() {
-      currentTabIndex = webViewTabs.length - 1;
-    });
-  }
-
-  void _selectWebViewTab(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    webViewTabs[currentTabIndex].pause();
-    webViewTab.resume();
-    setState(() {
-      currentTabIndex = webViewIndex;
-      showWebViewTabsViewer = false;
-    });
-  }
-
-  void _closeWebViewTab(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    webViewTabs.remove(webViewTab);
-    if (currentTabIndex > webViewIndex) {
-      currentTabIndex--;
-    }
-    if (webViewTabs.isEmpty) {
-      webViewTabs.add(createWebViewTab());
-      currentTabIndex = 0;
-    }
-    setState(() {
-      currentTabIndex = max(0, min(webViewTabs.length - 1, currentTabIndex));
-    });
-  }
-
-  void _closeAllWebViewTabs() {
-    webViewTabs.clear();
-    webViewTabs.add(createWebViewTab());
-    setState(() {
-      currentTabIndex = 0;
-    });
+          Tab(
+            icon: Icon(Icons.auto_awesome),
+            text: 'AI Studio',
+            height: 60,
+          ),
+          Tab(
+            icon: Icon(Icons.cloud),
+            text: 'Qwen',
+            height: 60,
+          ),
+          Tab(
+            icon: Icon(Icons.flash_on),
+            text: 'Z-ai',
+            height: 60,
+          ),
+          Tab(
+            icon: Icon(Icons.document_scanner),
+            text: 'Kimi',
+            height: 60,
+          ),
+        ],
+      ),
+    );
   }
 }
