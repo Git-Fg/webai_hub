@@ -42,3 +42,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# Old backup files
+lib/main_old.dart
+lib/webview_tab.dart
+lib/custom_image.dart

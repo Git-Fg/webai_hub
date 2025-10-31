@@ -1,318 +1,448 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart' as chat_ui;
+import 'dart:convert';
 
-import 'custom_image.dart';
-import 'webview_tab.dart';
+import 'models/app_models.dart';
+import 'models/chat_message.dart';
+import 'models/providers.dart';
+import 'providers/app_providers.dart';
+import 'services/database_service.dart';
 
-List<WebViewTab> webViewTabs = [];
-int currentTabIndex = 0;
-const kHomeUrl = 'https://google.com';
-
-Future main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb &&
-      kDebugMode &&
-      defaultTargetPlatform == TargetPlatform.android) {
+
+  // Initialize Isar database
+  await DatabaseService.initialize();
+
+  // Enable WebView debugging in debug mode
+  if (!kIsWeb && kDebugMode && defaultTargetPlatform == TargetPlatform.android) {
     await InAppWebViewController.setWebContentsDebuggingEnabled(kDebugMode);
   }
-  runApp(const MaterialApp(home: MyApp()));
+
+  runApp(
+    const ProviderScope(
+      child: MaterialApp(
+        home: WebAIHub(),
+        debugShowCheckedModeBanner: false,
+      ),
+    ),
+  );
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
+class WebAIHub extends ConsumerStatefulWidget {
+  const WebAIHub({Key? key}) : super(key: key);
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  ConsumerState<WebAIHub> createState() => _WebAIHubState();
 }
 
-class _MyAppState extends State<MyApp> {
-  bool showWebViewTabsViewer = false;
+class _WebAIHubState extends ConsumerState<WebAIHub>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 5, vsync: this);
+    
+    // Listen to tab changes
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        ref.read(currentTabIndexProvider.notifier).state = _tabController.index;
+      }
+    });
+  }
 
-    webViewTabs.add(createWebViewTab());
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      child: Scaffold(
-          appBar: showWebViewTabsViewer
-              ? _buildWebViewTabViewerAppBar()
-              : _buildWebViewTabAppBar(),
-          body: IndexedStack(
-            index: showWebViewTabsViewer ? 1 : 0,
-            children: [_buildWebViewTabs(), _buildWebViewTabsViewer()],
-          )),
-      onWillPop: () async {
-        if (showWebViewTabsViewer) {
-          setState(() {
-            showWebViewTabsViewer = false;
-          });
-        } else if (await webViewTabs[currentTabIndex].canGoBack()) {
-          webViewTabs[currentTabIndex].goBack();
-        } else {
-          return true;
-        }
-        return false;
-      },
-    );
-  }
+    // Listen to tab index changes from providers
+    ref.listen<int>(currentTabIndexProvider, (previous, next) {
+      if (_tabController.index != next) {
+        _tabController.animateTo(next);
+      }
+    });
 
-  WebViewTab createWebViewTab({String? url, int? windowId}) {
-    WebViewTab? webViewTab;
-
-    if (url == null && windowId == null) {
-      url = kHomeUrl;
-    }
-
-    webViewTab = WebViewTab(
-      key: GlobalKey(),
-      url: url,
-      windowId: windowId,
-      onStateUpdated: () {
-        setState(() {});
-      },
-      onCloseTabRequested: () {
-        if (webViewTab != null) {
-          _closeWebViewTab(webViewTab);
-        }
-      },
-      onCreateTabRequested: (createWindowAction) {
-        _addWebViewTab(windowId: createWindowAction.windowId);
-      },
-    );
-    return webViewTab;
-  }
-
-  AppBar _buildWebViewTabAppBar() {
-    return AppBar(
-      leading: IconButton(
-          onPressed: () {
-            _addWebViewTab();
-          },
-          icon: const Icon(Icons.add)),
-      title: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            webViewTabs[currentTabIndex].title ?? '',
-            overflow: TextOverflow.fade,
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              webViewTabs[currentTabIndex].isSecure != null
-                  ? Icon(
-                      webViewTabs[currentTabIndex].isSecure == true
-                          ? Icons.lock
-                          : Icons.lock_open,
-                      color: webViewTabs[currentTabIndex].isSecure == true
-                          ? Colors.green
-                          : Colors.red,
-                      size: 12)
-                  : Container(),
-              const SizedBox(
-                width: 5,
-              ),
-              Flexible(
-                  child: Text(
-                webViewTabs[currentTabIndex].currentUrl ??
-                    webViewTabs[currentTabIndex].url ??
-                    '',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
-                overflow: TextOverflow.fade,
-              )),
-            ],
-          )
-        ],
-      ),
-      actions: _buildWebViewTabActions(),
-    );
-  }
-
-  Widget _buildWebViewTabs() {
-    return IndexedStack(index: currentTabIndex, children: webViewTabs);
-  }
-
-  List<Widget> _buildWebViewTabActions() {
-    return [
-      IconButton(
-        onPressed: () async {
-          await webViewTabs[currentTabIndex].updateScreenshot();
-          setState(() {
-            showWebViewTabsViewer = true;
-          });
-        },
-        icon: Container(
-          margin: const EdgeInsets.only(top: 5, bottom: 5),
-          decoration: BoxDecoration(
-              border: Border.all(width: 2.0, color: Colors.white),
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(5.0)),
-          constraints: const BoxConstraints(minWidth: 25.0),
-          child: Center(
-              child: Text(
-            webViewTabs.length.toString(),
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14.0),
-          )),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('WebAI Hub'),
+        backgroundColor: Colors.deepPurple,
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: false,
+          tabs: const [
+            Tab(icon: Icon(Icons.hub), text: 'Hub'),
+            Tab(icon: Icon(Icons.auto_awesome), text: 'AI Studio'),
+            Tab(icon: Icon(Icons.cloud), text: 'Qwen'),
+            Tab(icon: Icon(Icons.flash_on), text: 'Z-ai'),
+            Tab(icon: Icon(Icons.document_scanner), text: 'Kimi'),
+          ],
         ),
       ),
-    ];
-  }
-
-  AppBar _buildWebViewTabViewerAppBar() {
-    return AppBar(
-      leading: IconButton(
-          onPressed: () {
-            setState(() {
-              showWebViewTabsViewer = false;
-            });
-          },
-          icon: const Icon(Icons.arrow_back)),
-      title: const Text('WebView Tab Viewer'),
-      actions: _buildWebViewTabsViewerActions(),
-    );
-  }
-
-  Widget _buildWebViewTabsViewer() {
-    return GridView.count(
-      crossAxisCount: 2,
-      children: webViewTabs.map((webViewTab) {
-        return _buildWebViewTabGrid(webViewTab);
-      }).toList(),
-    );
-  }
-
-  Widget _buildWebViewTabGrid(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    final screenshotData = webViewTab.screenshot;
-    final favicon = webViewTab.favicon;
-
-    return Card(
-        clipBehavior: Clip.antiAlias,
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-            side: currentTabIndex == webViewIndex
-                ? const BorderSide(
-                    // border color
-                    color: Colors.black,
-                    // border thickness
-                    width: 2)
-                : BorderSide.none,
-            borderRadius: const BorderRadius.all(
-              Radius.circular(5),
-            )),
-        child: InkWell(
-          onTap: () {
-            _selectWebViewTab(webViewTab);
-          },
-          child: Column(
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabController,
             children: [
-              ListTile(
-                tileColor: Colors.black12,
-                selected: currentTabIndex == webViewIndex,
-                selectedColor: Colors.white,
-                selectedTileColor: Colors.black,
-                contentPadding: const EdgeInsets.only(left: 10),
-                visualDensity: const VisualDensity(horizontal: 0, vertical: -4),
-                title: Row(mainAxisSize: MainAxisSize.max, children: [
-                  Container(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: favicon != null
-                        ? CustomImage(
-                            url: favicon.url, maxWidth: 20.0, height: 20.0)
-                        : null,
-                  ),
-                  Expanded(
-                      child: Text(
-                    webViewTab.title ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ))
-                ]),
-                trailing: IconButton(
-                    onPressed: () {
-                      _closeWebViewTab(webViewTab);
-                    },
-                    icon: const Icon(
-                      Icons.close,
-                      size: 16,
-                    )),
-              ),
-              Expanded(
-                  child: Ink(
-                decoration: screenshotData != null
-                    ? BoxDecoration(
-                        image: DecorationImage(
-                        image: MemoryImage(screenshotData),
-                        fit: BoxFit.fitWidth,
-                        alignment: Alignment.topCenter,
-                      ))
-                    : null,
-              ))
+              _buildHubTab(),
+              _buildProviderWebView(Providers.aiStudio),
+              _buildProviderWebView(Providers.qwen),
+              _buildProviderWebView(Providers.zai),
+              _buildProviderWebView(Providers.kimi),
             ],
           ),
-        ));
+          // Overlay for WebView tabs only
+          _buildCompanionOverlay(),
+        ],
+      ),
+    );
   }
 
-  List<Widget> _buildWebViewTabsViewerActions() {
-    return [
-      IconButton(
-          onPressed: () {
-            _closeAllWebViewTabs();
+  /// Build the Hub tab (native chat UI)
+  Widget _buildHubTab() {
+    final messages = ref.watch(hubMessagesProvider);
+    final selectedProvider = ref.watch(selectedProviderProvider);
+    final providerStatuses = ref.watch(providerStatusProvider);
+
+    return Column(
+      children: [
+        // Provider selector
+        Container(
+          padding: const EdgeInsets.all(16.0),
+          color: Colors.grey[200],
+          child: Row(
+            children: [
+              const Text('Provider: ', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: selectedProvider,
+                  isExpanded: true,
+                  items: Providers.all.map((provider) {
+                    final status = providerStatuses[provider.id] ?? ProviderStatus.unknown;
+                    final statusIcon = _getStatusIcon(status);
+                    return DropdownMenuItem(
+                      value: provider.id,
+                      child: Row(
+                        children: [
+                          Text(provider.name),
+                          const SizedBox(width: 8),
+                          Text(statusIcon, style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      ref.read(selectedProviderProvider.notifier).state = value;
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Chat UI
+        Expanded(
+          child: _buildChatUI(messages, selectedProvider),
+        ),
+      ],
+    );
+  }
+
+  String _getStatusIcon(ProviderStatus status) {
+    switch (status) {
+      case ProviderStatus.ready:
+        return '✅ Prêt';
+      case ProviderStatus.needsLogin:
+        return '❌ Connexion requise';
+      case ProviderStatus.error:
+        return '⚠️ Erreur';
+      case ProviderStatus.unknown:
+        return '❓ Inconnu';
+    }
+  }
+
+  Widget _buildChatUI(List<ChatMessage> messages, String selectedProvider) {
+    // Convert our ChatMessage to chat_ui format
+    final chatMessages = messages.map((msg) {
+      return chat_ui.ChatMessage(
+        id: msg.messageId,
+        text: msg.text,
+        user: chat_ui.ChatUser(
+          id: msg.role == MessageRole.user ? 'user' : msg.provider ?? 'assistant',
+          firstName: msg.role == MessageRole.user ? 'You' : msg.provider ?? 'AI',
+        ),
+        createdAt: msg.createdAt,
+      );
+    }).toList();
+
+    return chat_ui.GenAiChatUI(
+      messages: chatMessages,
+      onSend: (chat_ui.ChatMessage message) {
+        _onSendMessage(message.text, selectedProvider);
+      },
+      currentUser: const chat_ui.ChatUser(
+        id: 'user',
+        firstName: 'You',
+      ),
+    );
+  }
+
+  void _onSendMessage(String text, String providerId) {
+    final workflow = ref.read(workflowProvider);
+    workflow.startAssistedWorkflow(
+      prompt: text,
+      providerId: providerId,
+    );
+  }
+
+  /// Build a WebView for an AI provider
+  Widget _buildProviderWebView(ProviderConfig provider) {
+    return _ProviderWebView(
+      key: Key(provider.id),
+      provider: provider,
+    );
+  }
+
+  /// Build the companion overlay for automation feedback
+  Widget _buildCompanionOverlay() {
+    final currentTab = ref.watch(currentTabIndexProvider);
+    final overlayState = ref.watch(overlayStateProvider);
+
+    // Only show on WebView tabs (1-4), not on Hub (0)
+    if (currentTab == 0 || overlayState.state == OverlayState.hidden) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple.withOpacity(0.95),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              overlayState.message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (overlayState.showValidateButton)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      ref.read(workflowProvider).validateAndReturn();
+                    },
+                    icon: const Icon(Icons.check),
+                    label: const Text('✅ Valider et envoyer au Hub'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                if (overlayState.showValidateButton && overlayState.showCancelButton)
+                  const SizedBox(width: 12),
+                if (overlayState.showCancelButton)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      ref.read(workflowProvider).cancel();
+                    },
+                    icon: const Icon(Icons.close),
+                    label: const Text('❌ Annuler'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Widget for a provider WebView
+class _ProviderWebView extends ConsumerStatefulWidget {
+  final ProviderConfig provider;
+
+  const _ProviderWebView({
+    Key? key,
+    required this.provider,
+  }) : super(key: key);
+
+  @override
+  ConsumerState<_ProviderWebView> createState() => _ProviderWebViewState();
+}
+
+class _ProviderWebViewState extends ConsumerState<_ProviderWebView> {
+  InAppWebViewController? _controller;
+  double _progress = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        InAppWebView(
+          initialUrlRequest: URLRequest(url: WebUri(widget.provider.url)),
+          initialSettings: InAppWebViewSettings(
+            javaScriptEnabled: true,
+            domStorageEnabled: true, // Essential for session persistence
+            databaseEnabled: true, // Essential for session persistence
+            useShouldOverrideUrlLoading: true,
+            javaScriptCanOpenWindowsAutomatically: false,
+            mediaPlaybackRequiresUserGesture: true,
+            isFraudulentWebsiteWarningEnabled: true,
+            safeBrowsingEnabled: true,
+          ),
+          onWebViewCreated: (controller) async {
+            _controller = controller;
+            
+            // Register this controller
+            final controllers = ref.read(webViewControllersProvider);
+            ref.read(webViewControllersProvider.notifier).state = {
+              ...controllers,
+              widget.provider.id: controller,
+            };
+
+            // Add JavaScript handler for this provider
+            controller.addJavaScriptHandler(
+              handlerName: '${widget.provider.id}Bridge',
+              callback: (args) {
+                if (args.isNotEmpty) {
+                  _handleJavaScriptMessage(args[0].toString());
+                }
+              },
+            );
           },
-          icon: const Icon(Icons.clear_all))
-    ];
+          onLoadStop: (controller, url) async {
+            await _injectBridge(controller);
+            await _checkStatus(controller);
+          },
+          onProgressChanged: (controller, progress) {
+            setState(() {
+              _progress = progress / 100;
+            });
+          },
+        ),
+        if (_progress < 1.0)
+          LinearProgressIndicator(value: _progress),
+      ],
+    );
   }
 
-  void _addWebViewTab({String? url, int? windowId}) {
-    webViewTabs.add(createWebViewTab(url: url, windowId: windowId));
-    setState(() {
-      currentTabIndex = webViewTabs.length - 1;
-    });
-  }
-
-  void _selectWebViewTab(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    webViewTabs[currentTabIndex].pause();
-    webViewTab.resume();
-    setState(() {
-      currentTabIndex = webViewIndex;
-      showWebViewTabsViewer = false;
-    });
-  }
-
-  void _closeWebViewTab(WebViewTab webViewTab) {
-    final webViewIndex = webViewTabs.indexOf(webViewTab);
-    webViewTabs.remove(webViewTab);
-    if (currentTabIndex > webViewIndex) {
-      currentTabIndex--;
+  Future<void> _injectBridge(InAppWebViewController controller) async {
+    try {
+      // Load bridge.js
+      final bridgeScript = await rootBundle.loadString('assets/js/bridge.js');
+      
+      // Inject the bridge class
+      await controller.evaluateJavascript(source: bridgeScript);
+      
+      // Initialize a bridge instance for this provider
+      final initScript = '''
+        if (!window.hubBridge_${widget.provider.id}) {
+          window.hubBridge_${widget.provider.id} = new HubBridge(
+            '${widget.provider.id}Bridge',
+            '${widget.provider.id}'
+          );
+          window.hubBridge_${widget.provider.id}.init();
+        }
+      ''';
+      
+      await controller.evaluateJavascript(source: initScript);
+      
+      print('[WebAIHub] Bridge injected for ${widget.provider.id}');
+    } catch (e) {
+      print('[WebAIHub] Failed to inject bridge: $e');
     }
-    if (webViewTabs.isEmpty) {
-      webViewTabs.add(createWebViewTab());
-      currentTabIndex = 0;
-    }
-    setState(() {
-      currentTabIndex = max(0, min(webViewTabs.length - 1, currentTabIndex));
-    });
   }
 
-  void _closeAllWebViewTabs() {
-    webViewTabs.clear();
-    webViewTabs.add(createWebViewTab());
-    setState(() {
-      currentTabIndex = 0;
-    });
+  Future<void> _checkStatus(InAppWebViewController controller) async {
+    try {
+      final selectorsAsync = ref.read(selectorsProvider);
+      if (!selectorsAsync.hasValue) return;
+      
+      final allSelectors = selectorsAsync.value!;
+      final providerSelectors = allSelectors[widget.provider.id];
+      
+      final jsCode = '''
+        window.hubBridge_${widget.provider.id}.checkStatus(
+          ${json.encode(providerSelectors)}
+        );
+      ''';
+      
+      await controller.evaluateJavascript(source: jsCode);
+    } catch (e) {
+      print('[WebAIHub] Failed to check status: $e');
+    }
+  }
+
+  void _handleJavaScriptMessage(String message) {
+    try {
+      final data = json.decode(message);
+      final event = data['event'] as String;
+      final payload = data['payload'] as Map<String, dynamic>?;
+
+      print('[WebAIHub] Received event: $event from ${widget.provider.id}');
+
+      final workflow = ref.read(workflowProvider);
+
+      switch (event) {
+        case 'onStatusResult':
+          final status = payload?['status'] as String? ?? 'unknown';
+          workflow.onStatusResult(widget.provider.id, status);
+          break;
+        case 'onGenerationComplete':
+          workflow.onGenerationComplete();
+          break;
+        case 'onInjectionFailed':
+          final error = payload?['error'] as String? ?? 'Unknown error';
+          workflow.onInjectionFailed(error);
+          break;
+        case 'onExtractionResult':
+          final content = payload?['content'] as String? ?? '';
+          workflow.onExtractionResult(content);
+          break;
+        case 'onExtractionFailed':
+          final error = payload?['error'] as String? ?? 'Failed to extract content';
+          workflow.onInjectionFailed(error);
+          break;
+        case 'onCancelled':
+          // Already handled by cancel() method
+          break;
+      }
+    } catch (e) {
+      print('[WebAIHub] Failed to handle message: $e');
+    }
   }
 }

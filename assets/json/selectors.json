@@ -1,0 +1,123 @@
+{
+  "kimi": {
+    "checkStatus": [
+      "textarea[placeholder*='Kimi']",
+      "textarea[class*='InputArea']",
+      "textarea"
+    ],
+    "loginCheck": [
+      "input[type='password']",
+      "button[class*='login']",
+      "div[class*='LoginPage']"
+    ],
+    "promptTextarea": [
+      "textarea[placeholder*='Kimi']",
+      "textarea[class*='InputArea']",
+      "textarea"
+    ],
+    "sendButton": [
+      "button > svg[class*='Icon_icon_']",
+      "button[data-testid='send-button']",
+      "button[class*='SendButton']"
+    ],
+    "isGenerating": [
+      "div[class*='ChatInterlude_stopBtn_']",
+      "button[aria-label*='Stop']",
+      "button[class*='stop']"
+    ],
+    "assistantResponse": [
+      "div[data-message-role='assistant']",
+      "div[class*='AssistantMessage']",
+      "div[class*='Message'][data-role='assistant']"
+    ]
+  },
+  "qwen": {
+    "checkStatus": [
+      "textarea",
+      "textarea[class*='Input']"
+    ],
+    "loginCheck": [
+      "input[type='password']",
+      "button[class*='login']"
+    ],
+    "promptTextarea": [
+      "textarea",
+      "textarea[class*='Input']"
+    ],
+    "sendButton": [
+      "button[class*='Button_button_'][class*='Button_primary_']",
+      "button[type='submit']",
+      "button[class*='SendButton']"
+    ],
+    "isGenerating": [
+      "button[class*='Button_danger_']",
+      "button[aria-label*='Stop']",
+      "button[class*='stop']"
+    ],
+    "assistantResponse": [
+      "div[class*='Message_messageItem_']",
+      "div[class*='AssistantMessage']",
+      "div[data-role='assistant']"
+    ]
+  },
+  "zai": {
+    "checkStatus": [
+      "textarea",
+      "textarea[class*='ChatInput']"
+    ],
+    "loginCheck": [
+      "input[type='password']",
+      "button[class*='login']"
+    ],
+    "promptTextarea": [
+      "textarea",
+      "textarea[class*='ChatInput']"
+    ],
+    "sendButton": [
+      "button[class*='ChatInput_sendButton_']",
+      "button[type='submit']",
+      "button[aria-label*='Send']"
+    ],
+    "isGenerating": [
+      "button[aria-label='Stop generating']",
+      "button[class*='stop']",
+      "button[aria-label*='Stop']"
+    ],
+    "assistantResponse": [
+      "div[class*='ConversationItem_conversationItem_']",
+      "div[class*='AssistantMessage']",
+      "div[data-role='assistant']"
+    ]
+  },
+  "aistudio": {
+    "checkStatus": [
+      "input-area",
+      "textarea",
+      "div[class*='input-area']"
+    ],
+    "loginCheck": [
+      "input[type='password']",
+      "button[class*='sign-in']"
+    ],
+    "promptTextarea": [
+      "input-area",
+      "textarea",
+      "div[class*='input-area']"
+    ],
+    "sendButton": [
+      "send-button[variant='primary']",
+      "button[aria-label*='Send']",
+      "button[type='submit']"
+    ],
+    "isGenerating": [
+      "mat-icon[data-mat-icon-name='stop']",
+      "button[aria-label*='Stop']",
+      "button[class*='stop']"
+    ],
+    "assistantResponse": [
+      "response-container",
+      "div[class*='response']",
+      "div[data-role='assistant']"
+    ]
+  }
+}
