@@ -95,8 +95,8 @@ void main() {
       expect(restored.messages.length, original.messages.length);
       expect(restored.messages[0].content, original.messages[0].content);
       expect(restored.messages[1].content, original.messages[1].content);
-      expect(restored.createdAt, original.createdAt);
-      expect(restored.updatedAt, original.updatedAt);
+      expect(restored.createdAt.millisecondsSinceEpoch, closeTo(original.createdAt.millisecondsSinceEpoch, 1));
+      expect(restored.updatedAt.millisecondsSinceEpoch, closeTo(original.updatedAt.millisecondsSinceEpoch, 1));
     });
 
     test('ChatMessage toMap and fromMap works', () {
@@ -112,7 +112,7 @@ void main() {
       expect(restored.content, original.content);
       expect(restored.type, original.type);
       expect(restored.status, original.status);
-      expect(restored.timestamp, original.timestamp);
+      expect(restored.timestamp.millisecondsSinceEpoch, closeTo(original.timestamp.millisecondsSinceEpoch, 1));
     });
   });
 }

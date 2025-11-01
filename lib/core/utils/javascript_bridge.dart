@@ -4,7 +4,6 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../constants/selector_dictionary.dart';
 import '../utils/asset_loader.dart';
 import '../../shared/models/ai_provider.dart';
-import '../../shared/models/automation_state.dart';
 
 /// JavaScript Bridge for AI provider automation
 class JavaScriptBridge {

@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:multi_webview_tab_manager/shared/models/ai_provider.dart';
 import 'package:multi_webview_tab_manager/shared/models/conversation.dart';
 import 'package:multi_webview_tab_manager/features/hub/providers/conversation_provider.dart';
-import 'package:multi_webview_tab_manager/features/automation/providers/automation_provider.dart';
-import 'package:multi_webview_tab_manager/shared/models/automation_state.dart';
 
 void main() {
   group('ConversationProvider Tests', () {

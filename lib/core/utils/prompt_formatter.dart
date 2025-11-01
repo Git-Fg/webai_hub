@@ -1,37 +1,29 @@
-import 'dart:convert';
 import '../../shared/models/ai_provider.dart';
 
 /// Utility class for formatting prompts according to CWC structure
 class PromptFormatter {
-  /// Format prompt with context and options
+  /// Format prompt with context and options using CWC XML structure
   static String formatPrompt({
     required String prompt,
     required List<String> contextFiles,
     required Map<String, dynamic> options,
   }) {
-    final buffer = StringBuffer();
+    // Extract system instruction from options
+    final systemInstruction = options['systemInstruction'] as String?;
 
-    // Add system instruction if provided
-    if (options.containsKey('systemInstruction')) {
-      buffer.writeln('System: ${options['systemInstruction']}');
-      buffer.writeln();
-    }
+    // Convert context files to the expected format
+    final context = contextFiles.map((filePath) => {
+      'title': filePath,
+      'content': _formatFileContent(filePath),
+    }).toList();
 
-    // Add context files
-    if (contextFiles.isNotEmpty) {
-      buffer.writeln('Context:');
-      for (final filePath in contextFiles) {
-        buffer.writeln('--- File: $filePath ---');
-        buffer.writeln(_formatFileContent(filePath));
-        buffer.writeln();
-      }
-      buffer.writeln();
-    }
-
-    // Add user prompt
-    buffer.writeln('User: $prompt');
-
-    return buffer.toString();
+    // Use the CWC-style formatter
+    return formatCWCStyle(
+      prompt: prompt,
+      systemPrompt: systemInstruction,
+      context: context,
+      options: options,
+    );
   }
 
   /// Format file content for inclusion in prompt
@@ -41,7 +33,7 @@ class PromptFormatter {
     return '[Content of $filePath]';
   }
 
-  /// Format prompt with CWC-style structure
+  /// Format prompt with CWC-style structure using XML tags
   static String formatCWCStyle({
     required String prompt,
     String? systemPrompt,
@@ -50,60 +42,91 @@ class PromptFormatter {
   }) {
     final buffer = StringBuffer();
 
-    // Add system prompt
+    // First user prompt (before context)
+    buffer.writeln(prompt);
+    buffer.writeln();
+
+    // System instructions (if provided)
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
-      buffer.writeln('SYSTEM: $systemPrompt');
+      buffer.writeln('<system>');
+      buffer.writeln(systemPrompt);
+      buffer.writeln('</system>');
       buffer.writeln();
     }
 
-    // Add context information
+    // Context files with XML CDATA formatting
     if (context != null && context.isNotEmpty) {
-      buffer.writeln('CONTEXT:');
+      buffer.writeln('<files>');
       for (final item in context) {
         final title = item['title'] ?? 'Unknown';
         final content = item['content'] ?? '';
 
-        buffer.writeln('--- $title ---');
+        buffer.writeln('  <file path="$title">');
+        buffer.writeln('  <![CDATA[');
         buffer.writeln(content);
-        buffer.writeln();
+        buffer.writeln('  ]]>');
+        buffer.writeln('  </file>');
       }
+      buffer.writeln('</files>');
       buffer.writeln();
     }
 
-    // Add options/parameters
-    if (options != null && options.isNotEmpty) {
-      buffer.writeln('OPTIONS:');
-      options.forEach((key, value) {
-        buffer.writeln('- $key: $value');
-      });
-      buffer.writeln();
-    }
-
-    // Add main prompt
-    buffer.writeln('PROMPT:');
+    // Repeat user prompt (as per CWC specification)
     buffer.writeln(prompt);
+    buffer.writeln();
 
-    return buffer.toString();
+    // Repeat system instructions (as per CWC specification)
+    if (systemPrompt != null && systemPrompt.isNotEmpty) {
+      buffer.writeln('<system>');
+      buffer.writeln(systemPrompt);
+      buffer.writeln('</system>');
+      buffer.writeln();
+    }
+
+    return buffer.toString().trim();
   }
 
   /// Extract just the user prompt from formatted content
+  /// For CWC XML format, extracts the first occurrence of the prompt (before XML tags)
   static String extractUserPrompt(String formattedPrompt) {
-    final lines = formattedPrompt.split('\n');
-    final promptLines = <String>[];
-    bool inPromptSection = false;
+    // Handle legacy format with "PROMPT:" marker
+    if (formattedPrompt.toUpperCase().contains('PROMPT:')) {
+      final lines = formattedPrompt.split('\n');
+      final promptLines = <String>[];
+      bool inPromptSection = false;
 
-    for (final line in lines) {
-      if (line.toUpperCase().startsWith('PROMPT:')) {
-        inPromptSection = true;
-        continue;
+      for (final line in lines) {
+        if (line.toUpperCase().startsWith('PROMPT:')) {
+          inPromptSection = true;
+          continue;
+        }
+
+        if (inPromptSection) {
+          promptLines.add(line);
+        }
       }
 
-      if (inPromptSection) {
-        promptLines.add(line);
-      }
+      return promptLines.join('\n').trim();
     }
 
-    return promptLines.join('\n').trim();
+    // Handle CWC XML format: extract content before first XML tag
+    final lines = formattedPrompt.split('\n');
+    final promptLines = <String>[];
+
+    for (final line in lines) {
+      // Stop at first XML tag (<system>, <files>, etc.)
+      if (line.trim().startsWith('<')) {
+        break;
+      }
+      // Skip empty lines at the beginning
+      if (promptLines.isEmpty && line.trim().isEmpty) {
+        continue;
+      }
+      promptLines.add(line);
+    }
+
+    final extracted = promptLines.join('\n').trim();
+    return extracted.isNotEmpty ? extracted : formattedPrompt.split('\n').first.trim();
   }
 
   /// Add CDATA wrapper for file content
@@ -146,69 +169,24 @@ class PromptFormatter {
     return '${prompt.substring(0, targetLength)}$suffix';
   }
 
-  /// Format prompt for specific AI provider
+  /// Format prompt for specific AI provider using CWC XML structure
+  /// This method applies the CWC format (Section 5.3 and 5.4 of BLUEPRINT.md)
+  /// regardless of provider, as the XML format maximizes AI comprehension
   static String formatForProvider({
     required String prompt,
     required AIProvider provider,
     Map<String, dynamic>? options,
+    List<Map<String, String>>? context,
   }) {
-    switch (provider) {
-      case AIProvider.aistudio:
-        return _formatForAIStudio(prompt, options);
-      case AIProvider.qwen:
-        return _formatForQwen(prompt, options);
-      case AIProvider.zai:
-        return _formatForZAI(prompt, options);
-      case AIProvider.kimi:
-        return _formatForKimi(prompt, options);
-    }
-  }
+    // Extract system instruction from options
+    final systemInstruction = options?['systemInstruction'] as String?;
 
-  static String _formatForAIStudio(String prompt, Map<String, dynamic>? options) {
-    // AI Studio specific formatting
-    final buffer = StringBuffer();
-
-    if (options?.containsKey('temperature') == true) {
-      buffer.writeln('Temperature: ${options!['temperature']}');
-    }
-
-    buffer.writeln(prompt);
-    return buffer.toString();
-  }
-
-  static String _formatForQwen(String prompt, Map<String, dynamic>? options) {
-    // Qwen specific formatting
-    final buffer = StringBuffer();
-
-    if (options?.containsKey('model') == true) {
-      buffer.writeln('Model: ${options!['model']}');
-    }
-
-    buffer.writeln(prompt);
-    return buffer.toString();
-  }
-
-  static String _formatForZAI(String prompt, Map<String, dynamic>? options) {
-    // Z-AI specific formatting
-    final buffer = StringBuffer();
-
-    if (options?.containsKey('creativity') == true) {
-      buffer.writeln('Creativity: ${options!['creativity']}');
-    }
-
-    buffer.writeln(prompt);
-    return buffer.toString();
-  }
-
-  static String _formatForKimi(String prompt, Map<String, dynamic>? options) {
-    // Kimi specific formatting
-    final buffer = StringBuffer();
-
-    if (options?.containsKey('style') == true) {
-      buffer.writeln('Style: ${options!['style']}');
-    }
-
-    buffer.writeln(prompt);
-    return buffer.toString();
+    // Format using CWC XML structure (as per BLUEPRINT Section 5.3 and 5.4)
+    return formatCWCStyle(
+      prompt: prompt,
+      systemPrompt: systemInstruction,
+      context: context,
+      options: options,
+    );
   }
 }

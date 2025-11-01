@@ -5,10 +5,10 @@ class SelectorDictionary {
   static const Map<AIProvider, Map<String, List<String>>> selectors = {
     AIProvider.aistudio: {
       'wait_until_ready': ['[data-testid="prompt-textarea"]', 'textarea'],
-      'loginCheck': ['input[type="password"]', 'button:contains("Sign in")'],
+      'loginCheck': ['input[type="password"]', 'button[type="submit"]'],
       'promptTextarea': ['[data-testid="prompt-textarea"]', 'textarea'],
-      'sendButton': ['button[data-testid="send-button"]', 'button:contains("Send")'],
-      'isGenerating': ['[data-testid="stop-button"]', 'button:contains("Stop")'],
+      'sendButton': ['button[data-testid="send-button"]', 'button[type="submit"]'],
+      'isGenerating': ['[data-testid="stop-button"]', '.loading-indicator'],
       'assistantResponse': ['[data-testid="conversation-turn-1"]', '.markdown-content'],
     },
     AIProvider.qwen: {
@@ -85,7 +85,7 @@ class SelectorDictionary {
 
   // Validate selector format
   static bool isValidSelector(String selector) {
-    if (selector.isEmpty) return false;
+    if (selector.isEmpty || selector.trim().isEmpty) return false;
 
     // Basic validation for CSS selectors
     if (selector.contains(':contains(')) {

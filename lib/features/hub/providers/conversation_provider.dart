@@ -3,6 +3,8 @@ import '../../../shared/models/conversation.dart';
 import '../../../shared/models/ai_provider.dart';
 import '../../automation/providers/automation_provider.dart';
 import '../../webview/providers/webview_provider.dart';
+import '../../../core/utils/prompt_formatter.dart';
+import '../../../core/utils/javascript_bridge.dart';
 
 class ConversationNotifier extends StateNotifier<List<Conversation>> {
   ConversationNotifier(this.ref) : super([]);
@@ -139,57 +141,95 @@ class ConversationNotifier extends StateNotifier<List<Conversation>> {
       prompt: content,
     );
 
-    // In a real implementation, this would trigger the actual automation
-    // For now, we simulate the workflow
-    _simulateAutomationWorkflow(conversationId);
+    // Get the JavaScript bridge for the selected provider
+    final bridge = ref.read(javascriptBridgeProvider(provider));
+    if (bridge == null) {
+      _updateMessageWithError(conversationId, 'Provider non initialisé. Veuillez vous connecter au provider.');
+      ref.read(automationProvider.notifier).completeAutomation();
+      return;
+    }
+
+    // Check if WebView is ready
+    final isReady = ref.read(webviewReadyProvider(provider));
+    if (!isReady) {
+      _updateMessageWithError(conversationId, 'WebView non prêt. Veuillez actualiser la page du provider.');
+      ref.read(automationProvider.notifier).completeAutomation();
+      return;
+    }
+
+    // Start real automation with the JavaScript bridge
+    _startRealAutomation(conversationId, content, provider, bridge);
   }
 
-  // Simulate automation workflow (placeholder)
-  void _simulateAutomationWorkflow(String conversationId) {
-    // Simulate Phase 1: Sending
-    Future.delayed(const Duration(seconds: 1), () {
-      updateMessage(
-        conversationId,
-        state.firstWhere((conv) => conv.id == conversationId)
-            .messages
-            .firstWhere((msg) => msg.status == MessageStatus.processing)
-            .id,
-        'Envoi au provider...',
-        MessageStatus.processing,
-      );
+  // Start real automation with JavaScript bridge
+  void _startRealAutomation(String conversationId, String content, AIProvider provider, JavaScriptBridge bridge) {
+    // Format the prompt for the specific provider
+    final formattedPrompt = PromptFormatter.formatForProvider(
+      prompt: content,
+      provider: provider,
+      options: {
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'conversationId': conversationId,
+      },
+    );
 
+    // Update message to show sending phase
+    _updateProcessingMessage(conversationId, 'Envoi au provider...');
+
+    // Start automation via JavaScript bridge
+    bridge.startAutomation(
+      formattedPrompt,
+      {
+        'provider': provider.name,
+        'conversationId': conversationId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      },
+    ).then((_) {
+      // Automation started successfully
+      _updateProcessingMessage(conversationId, 'Automatisation démarrée...');
       ref.read(automationProvider.notifier).onGenerationStarted();
-    });
-
-    // Simulate Phase 2: Generation
-    Future.delayed(const Duration(seconds: 3), () {
-      updateMessage(
-        conversationId,
-        state.firstWhere((conv) => conv.id == conversationId)
-            .messages
-            .firstWhere((msg) => msg.status == MessageStatus.processing)
-            .id,
-        'Génération en cours...',
-        MessageStatus.processing,
-      );
-
-      ref.read(automationProvider.notifier).onGenerationCompleted();
-    });
-
-    // Simulate Phase 4: Extraction
-    Future.delayed(const Duration(seconds: 5), () {
-      updateMessage(
-        conversationId,
-        state.firstWhere((conv) => conv.id == conversationId)
-            .messages
-            .firstWhere((msg) => msg.status == MessageStatus.processing)
-            .id,
-        'Ceci est une réponse simulée du workflow d\'automatisation. Dans l\'implémentation réelle, ceci serait la réponse extraite du provider IA.',
-        MessageStatus.completed,
-      );
-
+    }).catchError((error) {
+      _updateMessageWithError(conversationId, 'Erreur lors de l\'automatisation: $error');
       ref.read(automationProvider.notifier).completeAutomation();
     });
+  }
+
+  // Update processing message content
+  void _updateProcessingMessage(String conversationId, String content) {
+    final conversation = state.firstWhere((conv) => conv.id == conversationId);
+    final processingMessage = conversation.messages.firstWhere(
+      (msg) => msg.status == MessageStatus.processing,
+      orElse: () => conversation.messages.last, // Fallback to last message
+    );
+
+    updateMessage(conversationId, processingMessage.id, content, MessageStatus.processing);
+  }
+
+  // Update message with error status
+  void _updateMessageWithError(String conversationId, String error) {
+    final conversation = state.firstWhere((conv) => conv.id == conversationId);
+    final processingMessage = conversation.messages.firstWhere(
+      (msg) => msg.status == MessageStatus.processing,
+      orElse: () => conversation.messages.last, // Fallback to last message
+    );
+
+    updateMessage(conversationId, processingMessage.id, error, MessageStatus.error);
+  }
+
+  // Handle automation completion from bridge callback
+  void handleAutomationComplete(String conversationId, String response) {
+    if (response.isNotEmpty) {
+      addResponse(conversationId, response);
+    } else {
+      _updateMessageWithError(conversationId, 'Réponse vide reçue du provider');
+    }
+    ref.read(automationProvider.notifier).completeAutomation();
+  }
+
+  // Handle automation error from bridge callback
+  void handleAutomationError(String conversationId, String error) {
+    _updateMessageWithError(conversationId, 'Erreur d\'automatisation: $error');
+    ref.read(automationProvider.notifier).completeAutomation();
   }
 }
 
