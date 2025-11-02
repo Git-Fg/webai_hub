@@ -55,12 +55,15 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   Future<void> _waitForBridgeToBeReady() async {
-    final completer = ref.read(bridgeReadyProvider);
-
-    int attempts = 0;
-    const maxAttempts = 15;
-
-    while (attempts < maxAttempts) {
+    try {
+      await ref.read(bridgeReadyProvider).future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () {
+          throw TimeoutException(
+              "Bridge readiness signal not received within 20s.");
+        },
+      );
+    } catch (e) {
       if (!ref.mounted) {
         throw AutomationError(
           errorCode: AutomationErrorCode.bridgeNotInitialized,
@@ -69,59 +72,17 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           diagnostics: _getBridgeDiagnostics(),
         );
       }
-
-      final controller = _controller;
-      if (controller != null) {
-        try {
-          final checkBridge = await controller.evaluateJavascript(
-            source:
-                "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'",
+      ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+            AutomationErrorCode.bridgeTimeout.name,
+            '_waitForBridgeToBeReady',
           );
-          if (checkBridge == true && completer.isCompleted) {
-            return;
-          }
-        } catch (_) {}
-      }
-
-      if (completer.isCompleted) {
-        return;
-      }
-
-      try {
-        await completer.future.timeout(
-          const Duration(seconds: 1),
-        );
-        return;
-      } on TimeoutException {
-        attempts++;
-        if (attempts >= maxAttempts) {
-          ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
-                AutomationErrorCode.bridgeTimeout.name,
-                '_waitForBridgeToBeReady',
-              );
-          throw AutomationError(
-            errorCode: AutomationErrorCode.bridgeTimeout,
-            location: '_waitForBridgeToBeReady',
-            message: 'Bridge readiness timeout.',
-            diagnostics: _getBridgeDiagnostics(),
-            originalError: TimeoutException(
-              "Bridge readiness signal not received within timeout.",
-            ),
-          );
-        }
-      } catch (e) {
-        if (e is AutomationError) rethrow;
-        attempts++;
-        if (attempts >= maxAttempts) {
-          throw AutomationError(
-            errorCode: AutomationErrorCode.bridgeTimeout,
-            location: '_waitForBridgeToBeReady',
-            message: 'Bridge readiness timeout.',
-            diagnostics: _getBridgeDiagnostics(),
-            originalError: e,
-          );
-        }
-      }
+      throw AutomationError(
+        errorCode: AutomationErrorCode.bridgeTimeout,
+        location: '_waitForBridgeToBeReady',
+        message: 'Bridge readiness timeout.',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+      );
     }
   }
 

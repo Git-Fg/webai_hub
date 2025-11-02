@@ -41,8 +41,6 @@ class Conversation extends _$Conversation {
     if (!ref.mounted) return;
 
     try {
-      if (!ref.mounted) return;
-
       final bridge = ref.read(javaScriptBridgeProvider);
       await bridge.startAutomation(prompt);
 
@@ -55,21 +53,9 @@ class Conversation extends _$Conversation {
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
-          errorMessage = '[${e.errorCode.name.toUpperCase()}]\n'
-              '${e.message}\n'
-              'Location: ${e.location}';
-
-          if (e.diagnostics.isNotEmpty) {
-            final stateInfo = e.diagnostics.entries
-                .where((entry) => entry.key != 'timestamp')
-                .map((entry) => '${entry.key}: ${entry.value}')
-                .join(', ');
-            if (stateInfo.isNotEmpty) {
-              errorMessage += '\nState: $stateInfo';
-            }
-          }
+          errorMessage = "Error: ${e.message} (Code: ${e.errorCode.name})";
         } else {
-          errorMessage = 'Automation failed: ${e.toString()}';
+          errorMessage = 'An unexpected error occurred: ${e.toString()}';
         }
 
         _updateLastMessage(errorMessage, MessageStatus.error);
@@ -104,19 +90,8 @@ class Conversation extends _$Conversation {
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
-          errorMessage = '[${e.errorCode.name.toUpperCase()}]\n'
-              '${e.message}\n'
-              'Location: ${e.location}';
-
-          if (e.diagnostics.isNotEmpty) {
-            final stateInfo = e.diagnostics.entries
-                .where((entry) => entry.key != 'timestamp')
-                .map((entry) => '${entry.key}: ${entry.value}')
-                .join(', ');
-            if (stateInfo.isNotEmpty) {
-              errorMessage += '\nState: $stateInfo';
-            }
-          }
+          errorMessage =
+              "Extraction Error: ${e.message} (Code: ${e.errorCode.name})";
         } else {
           errorMessage = 'Failed to extract response: ${e.toString()}';
         }

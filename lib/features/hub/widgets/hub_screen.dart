@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
-import 'package:ai_hybrid_hub/providers/app_ready_provider.dart';
 
 class HubScreen extends ConsumerStatefulWidget {
   const HubScreen({super.key});
@@ -49,7 +48,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
   @override
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider);
-    final isAppReady = ref.watch(appReadyProvider);
 
     ref.listen<List<dynamic>>(conversationProvider, (previous, next) {
       if (next.length > (previous?.length ?? 0)) {
@@ -117,9 +115,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             bindings: <ShortcutActivator, VoidCallback>{
               const SingleActivator(LogicalKeyboardKey.enter): () {
                 if (!HardwareKeyboard.instance.isShiftPressed) {
-                  if (isAppReady) {
-                    _sendMessage();
-                  }
+                  _sendMessage();
                 }
               },
             },
@@ -141,11 +137,8 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                     child: TextField(
                       focusNode: _focusNode,
                       controller: _textController,
-                      enabled: isAppReady,
                       decoration: InputDecoration(
-                        hintText: isAppReady
-                            ? 'Type your message...'
-                            : 'Initializing services...',
+                        hintText: 'Type your message...',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
@@ -159,31 +152,19 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                       ),
                       maxLines: null,
                       textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => isAppReady ? _sendMessage() : null,
+                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FloatingActionButton(
-                    onPressed: isAppReady ? _sendMessage : null,
-                    backgroundColor: isAppReady
-                        ? Colors.blue.shade600
-                        : Colors.grey.shade400,
+                    onPressed: _sendMessage,
+                    backgroundColor: Colors.blue.shade600,
                     mini: true,
                     elevation: 2,
-                    child: isAppReady
-                        ? const Icon(
-                            Icons.send,
-                            color: Colors.white,
-                          )
-                        : const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
+                    child: const Icon(
+                      Icons.send,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
