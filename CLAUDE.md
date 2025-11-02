@@ -1,143 +1,89 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to the AI Agent when working with code in this repository.
 
-## Project Overview
+## 🎯 Project Philosophy
 
-**AI Hybrid Hub** is a Flutter application designed to create a multi-provider AI assistant interface. The project implements an "Assister & Valider" workflow that combines native mobile UI with web-based AI provider interactions through JavaScript automation.
+**IMPORTANT**: This is a **personal project** focused on **simplicity**, **modernity**, and **elegance**. For the MVP, the primary goal is **speed of implementation** to validate the core concept. Avoid over-engineering and stick strictly to the blueprint.
 
-**Current Status**: Fresh Flutter project with default counter app implementation
-**Vision**: Multi-tab AI Hub with native chat interface and WebView automation capabilities
+- **🎯 Simplicity First**: Choose the simplest solution that works.
+- **🚀 Modern Code**: Use current best practices (Flutter 3.19+, Riverpod Generators).
+- **🧱 Follow the Blueprint**: Adhere strictly to the `BLUEPRINT_MVP.md` and the step-by-step guide.
 
-## Application Architecture
+## Project Overview: MVP Implementation
+
+This project is the **MVP build** of the **AI Hybrid Hub**. The **sole objective** is to implement the "Assister & Valider" workflow for a **single provider: Google AI Studio**.
+
+**Current Status**: The project structure is set up. The next steps involve implementing the application logic according to the provided step-by-step guide.
+
+## 🛠️ Development Commands
+
+### Basic Setup
+```bash
+# Install Flutter dependencies
+flutter pub get
+
+# Install TypeScript dependencies
+npm install
+```
+
+### Code Generation & Building
+```bash
+# Build the TypeScript bridge (run after every change in ts_src/)
+npm run build
+
+# Generate Dart code (Riverpod/Freezed)
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+### Running the App
+```bash
+# Run the app in debug mode
+flutter run
+```
+
+## Architecture Overview (MVP Constraints)
 
 ### Core Concept
-The application bridges native Flutter UI with web-based AI providers through automated interactions, enabling users to:
-- Use a native chat interface for AI conversations
-- Automatically interact with multiple AI provider web interfaces
-- Maintain conversation history across providers
-- Validate and refine AI responses through a structured workflow
+Bridge a native Flutter UI with the Google AI Studio web interface using a JavaScript bridge to automate the prompt submission and response extraction workflow.
 
-### Target Structure
-```
-lib/
-├── main.dart                    # Application entry point
-├── features/
-│   ├── hub/                     # Native chat interface
-│   │   ├── providers/           # State management
-│   │   └── widgets/             # Chat UI components
-│   ├── webview/                 # AI provider integration
-│   │   ├── providers/           # WebView management
-│   │   ├── widgets/             # WebView screens
-│   │   └── bridge/              # JavaScript communication
-│   └── automation/              # Workflow management
-│       ├── providers/           # Automation state
-│       └── widgets/             # Visual feedback
-├── shared/
-│   ├── models/                  # Data models
-│   ├── constants/               # App constants
-│   └── utils/                   # Utility functions
-└── assets/
-    ├── js/                      # JavaScript automation scripts
-    └── json/                    # Configuration files
-```
+### Technology Stack (MVP Versions)
+- **Framework**: Flutter >= 3.19.0
+- **State Management**: `flutter_riverpod: ^2.5.1` with `riverpod_generator`. State is **in-memory only**.
+- **WebView**: `flutter_inappwebview: ^6.0.0`.
+- **JS Bridge**: TypeScript (`ts_src/automation_engine.ts`) built with Vite into a single bundle (`assets/js/bridge.js`).
+- **Database**: **NONE**. Do not implement any database persistence for the MVP.
 
-### Technology Stack
-- **Framework**: Flutter with modern Dart patterns
-- **State Management**: Riverpod ecosystem
-- **WebView Integration**: InAppWebView for JavaScript automation
-- **Architecture**: Clean Architecture with feature-based organization
-- **Code Generation**: Automated provider and model generation
+### Automation Engine (Hardcoded for MVP)
 
-## Key Features
+-   **Provider Target**: **Google AI Studio ONLY**. URL: `https://aistudio.google.com/prompts/new_chat`
+-   **Selector Strategy**: **HARDCODED** in `ts_src/automation_engine.ts`. Do not implement a remote JSON configuration. Use these exact selectors:
+    ```typescript
+    const PROMPT_INPUT_SELECTOR = "input-area";
+    const SEND_BUTTON_SELECTOR = 'send-button[variant="primary"]';
+    const RESPONSE_CONTAINER_SELECTOR = "response-container";
+    const GENERATION_INDICATOR_SELECTOR = 'mat-icon[data-mat-icon-name="stop"]';
+    ```
+-   **Error Handling**: **SIMPLIFIED**. The TypeScript engine only needs to notify Dart of two states: `GENERATION_COMPLETE` or `AUTOMATION_FAILED`. No complex error diagnosis is required.
 
-### Multi-Provider Support
-- Integration with multiple AI providers (Google AI Studio, Qwen, Z-ai, Kimi)
-- Provider-specific automation engines
-- Unified native interface for all interactions
+### JavaScript Bridge API (MVP Contract)
 
-### "Assister & Valider" Workflow
-A structured 4-phase automation process:
-1. **Sending** - Automated prompt delivery to provider
-2. **Observing** - Real-time response monitoring
-3. **Refining** - User control and validation options
-4. **Extraction** - Response capture and native display
+**IMPORTANT**: Adhere to this exact API.
 
-### Native Chat Interface
-- Modern bubble-based conversation UI
-- Provider selection and management
-- Conversation history and context
-- Real-time status indicators
+1.  **TypeScript (`automation_engine.ts`) must expose two global functions:**
+    -   `startAutomation(prompt: string): Promise<void>`
+    -   `extractFinalResponse(): Promise<string>`
 
-### JavaScript Automation
-- DOM manipulation for web interactions
-- MutationObserver for response monitoring
-- Bridge communication between native and web contexts
-- Error handling and recovery mechanisms
+2.  **Dart (`ai_webview_screen.dart`) must register one JavaScript handler:**
+    -   `handlerName: 'automationBridge'`
+    -   This handler receives events from TypeScript, specifically `{ type: 'GENERATION_COMPLETE' }` or `{ type: 'AUTOMATION_FAILED', payload: string }`.
 
-## Provider Integration
+## Development Workflow
 
-### Google AI Studio (Primary Target)
-- **URL**: `https://aistudio.google.com/prompts/new_chat`
-- **Automation**: CSS selector-based DOM interaction
-- **Session**: Manual user login with automatic persistence
+1.  Modify Dart code in the `lib/` directory.
+2.  If you change models or providers, run the Dart code generator.
+3.  Modify TypeScript code in `ts_src/automation_engine.ts`.
+4.  **After any change to TypeScript, you MUST run `npm run build`**.
+5.  Run the application with `flutter run`.
 
-### Future Providers
-- Qwen AI integration
-- Z-ai platform support
-- Kimi AI automation
-
-## Data Management
-
-### State Architecture
-- In-memory conversation state management
-- Provider-specific session handling
-- Cross-provider conversation aggregation
-- Real-time UI updates through reactive state
-
-### Session Persistence
-- WebView cookie and storage management
-- Login state preservation across app sessions
-- Provider-specific authentication handling
-
-## User Interface Design
-
-### Navigation Pattern
-- Fixed 5-tab architecture (Hub + 4 AI providers)
-- Tab-based navigation with automatic switching
-- Visual status indicators for provider availability
-- Seamless transition between native and web interfaces
-
-### Chat Interface
-- Modern bubble design for messages
-- Provider selection and switching
-- Context-aware input suggestions
-- Response validation and refinement tools
-
-## Security & Privacy
-
-### Data Isolation
-- Native app data separated from WebView contexts
-- No cross-provider data leakage
-- Local-only processing and storage
-
-### Privacy Design
-- User-controlled data retention
-- No external data transmission beyond provider APIs
-- Transparent data handling practices
-
-## Project Status
-
-### Current Implementation
-- Basic Flutter project structure
-- Default counter app implementation
-- Comprehensive architectural blueprint available
-
-### Implementation Roadmap
-The project follows a phased approach:
-1. **MVP** - Google AI Studio integration validation
-2. **Expansion** - Additional provider support
-3. **Enhancement** - Advanced features and optimizations
-4. **Refinement** - UI/UX improvements and performance
-
-This project represents an exploration of native-web integration patterns for AI interactions, focusing on user experience and automation reliability while maintaining clean, maintainable code architecture.
+Stick to the provided step-by-step guide to implement the remaining logic. Do not add features or complexity beyond the scope of the MVP blueprint.
