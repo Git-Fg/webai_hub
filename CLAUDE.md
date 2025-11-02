@@ -96,3 +96,33 @@ Always refer to the active blueprint for the precise API contract for the curren
 - **Hotfixes**: Branch from main, fix, merge back with fast-forward
 
 **Remember**: Uncommitted work is lost work. Commit frequently and meaningfully!
+
+## 🧹 Code Quality Standards
+
+**CRITICAL**: Maintain clean, professional code quality at all times.
+
+### Code Cleanliness Policy
+- **NEVER add unnecessary comments** - code should be self-documenting
+- **Remove all debug statements** before committing (print, console.log, etc.)
+- **Delete unused imports and variables**
+- **Keep functions focused and small** - single responsibility principle
+- **Use meaningful variable and function names** - no abbreviations unless universally understood
+- **Follow Dart/Flutter style guidelines** consistently
+
+### When Comments Are Acceptable
+Comments should ONLY be used when:
+- Explaining complex business logic that isn't obvious
+- Documenting public API contracts
+- Warning about potential side effects or breaking changes
+- Temporary TODO comments for immediate follow-up (should be removed promptly)
+
+### Code Review Checklist
+Before committing, ensure:
+- [ ] No unnecessary comments
+- [ ] No debug print statements
+- [ ] All unused code removed
+- [ ] Consistent formatting and naming
+- [ ] Functions have clear, single purposes
+- [ ] Error handling is appropriate but not overly verbose
+
+**Principle**: If you need to add a comment to explain what the code does, consider rewriting the code to be more self-explanatory instead.
