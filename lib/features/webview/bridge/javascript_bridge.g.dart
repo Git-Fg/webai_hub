@@ -63,8 +63,7 @@ abstract class _$WebViewController extends $Notifier<InAppWebViewController?> {
 @ProviderFor(BridgeReady)
 const bridgeReadyProvider = BridgeReadyProvider._();
 
-final class BridgeReadyProvider
-    extends $NotifierProvider<BridgeReady, Completer<void>> {
+final class BridgeReadyProvider extends $NotifierProvider<BridgeReady, bool> {
   const BridgeReadyProvider._()
       : super(
           from: null,
@@ -84,28 +83,25 @@ final class BridgeReadyProvider
   BridgeReady create() => BridgeReady();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(Completer<void> value) {
+  Override overrideWithValue(bool value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<Completer<void>>(value),
+      providerOverride: $SyncValueProvider<bool>(value),
     );
   }
 }
 
-String _$bridgeReadyHash() => r'c9b09e3e39984b243cc6a3d42245bac27a301ea1';
+String _$bridgeReadyHash() => r'04a6d5d8db70cbb0f42310d5e824bbb0b154c331';
 
-abstract class _$BridgeReady extends $Notifier<Completer<void>> {
-  Completer<void> build();
+abstract class _$BridgeReady extends $Notifier<bool> {
+  bool build();
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build();
-    final ref = this.ref as $Ref<Completer<void>, Completer<void>>;
+    final ref = this.ref as $Ref<bool, bool>;
     final element = ref.element as $ClassProviderElement<
-        AnyNotifier<Completer<void>, Completer<void>>,
-        Completer<void>,
-        Object?,
-        Object?>;
+        AnyNotifier<bool, bool>, bool, Object?, Object?>;
     element.handleValue(ref, created);
   }
 }

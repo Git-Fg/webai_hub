@@ -4,7 +4,6 @@ import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:flutter/scheduler.dart';
 
 part 'conversation_provider.g.dart';
 
@@ -13,11 +12,12 @@ class Conversation extends _$Conversation {
   @override
   List<Message> build() => [];
 
-  void addMessage(String text, bool isFromUser) {
+  void addMessage(String text, bool isFromUser, {MessageStatus? status}) {
     final message = Message(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       text: text,
       isFromUser: isFromUser,
+      status: status ?? MessageStatus.success,
     );
     state = [...state, message];
   }
@@ -39,16 +39,34 @@ class Conversation extends _$Conversation {
     if (!ref.mounted) return;
 
     try {
-      final tabController = ref.read(tabControllerProvider);
-      if (tabController != null) {
-        tabController.index = 1;
-      }
+      // Utilise le provider Riverpod qui EXISTE et FONCTIONNE
+      ref.read(currentTabIndexProvider.notifier).changeTo(1);
 
-      await ref.read(bridgeReadyProvider).future;
+      // Give Flutter time to build the WebView widget when tab switches
+      // IndexedStack only builds visible widgets, so we need to wait
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      final bridge = ref.read(javaScriptBridgeProvider);
+
+      // Wait for WebView to be created and bridge to be ready
+      // This method handles all timing internally (WebView creation + JS bridge ready)
+      await bridge.waitForBridgeReady();
+
+      // Optional safety delay after bridge is ready for DOM framework initialization
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (!ref.mounted) return;
 
-      final bridge = ref.read(javaScriptBridgeProvider);
+      // Get console logs to debug selector issues (captured before automation starts)
+      // Note: getCapturedLogs is only available on JavaScriptBridge, not on interface
+      final jsBridge = bridge as JavaScriptBridge;
+      final logs = await jsBridge.getCapturedLogs();
+      if (logs.isNotEmpty) {
+        // ignore: avoid_print
+        print(
+            '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}');
+      }
+
       await bridge.startAutomation(prompt);
 
       if (ref.mounted) {
@@ -90,8 +108,7 @@ class Conversation extends _$Conversation {
             .read(automationStateProvider.notifier)
             .setStatus(AutomationStatus.idle);
 
-        final tabController = ref.read(tabControllerProvider);
-        tabController?.animateTo(0);
+        ref.read(currentTabIndexProvider.notifier).changeTo(0);
       }
     } catch (e) {
       if (ref.mounted) {
@@ -115,8 +132,7 @@ class Conversation extends _$Conversation {
     _updateLastMessage("Automation cancelled by user", MessageStatus.error);
     ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.idle);
 
-    final tabController = ref.read(tabControllerProvider);
-    tabController?.animateTo(0);
+    ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }
 
   void onAutomationFailed(String error) {

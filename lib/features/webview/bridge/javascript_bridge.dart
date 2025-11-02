@@ -21,18 +21,14 @@ class WebViewController extends _$WebViewController {
 @riverpod
 class BridgeReady extends _$BridgeReady {
   @override
-  Completer<void> build() {
-    return Completer<void>();
-  }
+  bool build() => false;
 
-  void complete() {
-    if (!state.isCompleted) {
-      state.complete();
-    }
+  void markReady() {
+    state = true;
   }
 
   void reset() {
-    state = Completer<void>();
+    state = false;
   }
 }
 
@@ -40,15 +36,19 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   final Ref ref;
   JavaScriptBridge(this.ref);
 
-  InAppWebViewController? get _controller =>
-      ref.read(webViewControllerProvider);
+  InAppWebViewController get _controller {
+    final controller = ref.read(webViewControllerProvider);
+    if (controller == null) {
+      throw StateError('WebView controller not initialized');
+    }
+    return controller;
+  }
 
   Map<String, dynamic> _getBridgeDiagnostics() {
-    final completer = ref.read(bridgeReadyProvider);
+    final isReady = ref.read(bridgeReadyProvider);
     final controller = ref.read(webViewControllerProvider);
     return {
-      'completerInitialized': true,
-      'completerCompleted': completer.isCompleted,
+      'bridgeReady': isReady,
       'webViewControllerExists': controller != null,
       'timestamp': DateTime.now().toIso8601String(),
     };
@@ -56,7 +56,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
   Future<void> _waitForWebViewToBeCreated() async {
     int attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 400; // Increased for IndexedStack tab switching
     const delayMs = 100;
 
     while (attempts < maxAttempts) {
@@ -69,7 +69,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
-      final controller = _controller;
+      final controller = ref.read(webViewControllerProvider);
       if (controller != null) {
         return;
       }
@@ -87,36 +87,64 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     );
   }
 
-  Future<void> _waitForBridgeToBeReady() async {
-    try {
-      await ref.read(bridgeReadyProvider).future.timeout(
-        const Duration(seconds: 20),
-        onTimeout: () {
-          throw TimeoutException(
-              "Bridge readiness signal not received within 20s.");
-        },
-      );
-    } catch (e) {
+  @override
+  Future<void> waitForBridgeReady() async {
+    // First ensure the WebView controller exists (with extended timeout for IndexedStack)
+    await _waitForWebViewToBeCreated();
+
+    // Additional wait to ensure WebView is fully initialized
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    const maxAttempts = 200;
+    const delayMs = 100;
+    const timeoutSeconds = 20;
+
+    int attempts = 0;
+    final startTime = DateTime.now();
+
+    while (attempts < maxAttempts) {
       if (!ref.mounted) {
         throw AutomationError(
           errorCode: AutomationErrorCode.bridgeNotInitialized,
-          location: '_waitForBridgeToBeReady',
+          location: 'waitForBridgeReady',
           message: 'Provider disposed while waiting for bridge',
           diagnostics: _getBridgeDiagnostics(),
         );
       }
-      ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
-            AutomationErrorCode.bridgeTimeout.name,
-            '_waitForBridgeToBeReady',
-          );
-      throw AutomationError(
-        errorCode: AutomationErrorCode.bridgeTimeout,
-        location: '_waitForBridgeToBeReady',
-        message: 'Bridge readiness timeout.',
-        diagnostics: _getBridgeDiagnostics(),
-        originalError: e,
-      );
+
+      final elapsed = DateTime.now().difference(startTime);
+      if (elapsed.inSeconds >= timeoutSeconds) {
+        ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+              AutomationErrorCode.bridgeTimeout.name,
+              'waitForBridgeReady',
+            );
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeTimeout,
+          location: 'waitForBridgeReady',
+          message: 'Bridge readiness timeout.',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final isReady = ref.read(bridgeReadyProvider);
+      if (isReady) {
+        return;
+      }
+
+      await Future.delayed(const Duration(milliseconds: delayMs));
+      attempts++;
     }
+
+    ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+          AutomationErrorCode.bridgeTimeout.name,
+          'waitForBridgeReady',
+        );
+    throw AutomationError(
+      errorCode: AutomationErrorCode.bridgeTimeout,
+      location: 'waitForBridgeReady',
+      message: 'Bridge readiness timeout.',
+      diagnostics: _getBridgeDiagnostics(),
+    );
   }
 
   @override
@@ -125,14 +153,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       await _waitForWebViewToBeCreated();
 
       final controller = _controller;
-      if (controller == null) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.webViewNotReady,
-          location: 'startAutomation',
-          message: 'WebView controller is null',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
 
       dynamic isPageLoaded;
       try {
@@ -228,20 +248,82 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
+  Future<Map<String, dynamic>> inspectDOMForSelectors() async {
+    await _waitForWebViewToBeCreated();
+    final controller = _controller;
+
+    try {
+      final result = await controller.evaluateJavascript(
+          source:
+              "typeof inspectDOMForSelectors !== 'undefined' ? inspectDOMForSelectors() : null");
+      return result as Map<String, dynamic>;
+    } catch (e, stackTrace) {
+      throw AutomationError(
+        errorCode: AutomationErrorCode.automationExecutionFailed,
+        location: 'inspectDOMForSelectors',
+        message: 'Failed to inspect DOM',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> captureConsoleLogs() async {
+    await _waitForWebViewToBeCreated();
+    final controller = _controller;
+
+    try {
+      await controller.evaluateJavascript(source: '''
+        (function() {
+          const originalLog = console.log;
+          const originalWarn = console.warn;
+          const originalError = console.error;
+          
+          window.__capturedLogs__ = window.__capturedLogs__ || [];
+          
+          console.log = function(...args) {
+            window.__capturedLogs__.push({type: 'log', args: args.map(a => String(a))});
+            originalLog.apply(console, args);
+          };
+          
+          console.warn = function(...args) {
+            window.__capturedLogs__.push({type: 'warn', args: args.map(a => String(a))});
+            originalWarn.apply(console, args);
+          };
+          
+          console.error = function(...args) {
+            window.__capturedLogs__.push({type: 'error', args: args.map(a => String(a))});
+            originalError.apply(console, args);
+          };
+        })();
+      ''');
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getCapturedLogs() async {
+    await _waitForWebViewToBeCreated();
+    final controller = _controller;
+
+    try {
+      final logs = await controller.evaluateJavascript(
+          source: "window.__capturedLogs__ || []");
+      await controller.evaluateJavascript(
+          source: "window.__capturedLogs__ = []");
+      return List<Map<String, dynamic>>.from(logs as List);
+    } catch (e) {
+      return [];
+    }
+  }
+
   @override
   Future<String> extractFinalResponse() async {
     try {
-      await _waitForBridgeToBeReady();
+      await waitForBridgeReady();
 
       final controller = _controller;
-      if (controller == null) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.webViewNotReady,
-          location: 'extractFinalResponse',
-          message: 'WebView controller is null',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
 
       dynamic result;
       try {

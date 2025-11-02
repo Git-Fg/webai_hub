@@ -9,6 +9,12 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   bool shouldThrowError = false;
 
   @override
+  Future<void> waitForBridgeReady() async {
+    // Dans les tests, le bridge est toujours prêt immédiatement
+    await Future.delayed(const Duration(milliseconds: 10));
+  }
+
+  @override
   Future<void> startAutomation(String prompt) async {
     // Simuler un délai réseau
     await Future.delayed(const Duration(milliseconds: 50));

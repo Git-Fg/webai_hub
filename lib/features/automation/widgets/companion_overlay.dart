@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 
 class CompanionOverlay extends ConsumerWidget {
   const CompanionOverlay({super.key});
@@ -83,71 +84,62 @@ class CompanionOverlay extends ConsumerWidget {
         return const SizedBox.shrink(); // Don't show overlay when idle
     }
 
-    return Positioned(
-      bottom: 20,
-      left: 20,
-      right: 20,
-      child: Material(
-        elevation: 12,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: statusColor.withValues(alpha: 0.3), width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: status == AutomationStatus.sending ||
-                            status == AutomationStatus.observing
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.blue),
-                            ),
-                          )
-                        : Icon(statusIcon, color: statusColor, size: 20),
+    // Positioned is now handled in main.dart - return Material directly
+    return Material(
+      elevation: 12,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border:
+              Border.all(color: statusColor.withValues(alpha: 0.3), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      message,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: Colors.grey[800],
-                      ),
+                  child: status == AutomationStatus.sending ||
+                          status == AutomationStatus.observing
+                      ? const LoadingIndicator(
+                          size: 20,
+                          color: Colors.blue,
+                        )
+                      : Icon(statusIcon, color: statusColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: Colors.grey[800],
                     ),
                   ),
-                ],
-              ),
-              if (actionButton != null) ...[
-                const SizedBox(height: 12),
-                actionButton,
+                ),
               ],
+            ),
+            if (actionButton != null) ...[
+              const SizedBox(height: 12),
+              actionButton,
             ],
-          ),
+          ],
         ),
       ),
     );

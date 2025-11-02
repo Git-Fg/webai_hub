@@ -8,8 +8,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'main.g.dart';
 
-final tabControllerProvider = Provider<TabController?>((ref) => null);
-
 @riverpod
 class CurrentTabIndex extends _$CurrentTabIndex {
   @override
@@ -54,71 +52,95 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      final newIndex = _tabController.index;
+    final initialIndex = ref.read(currentTabIndexProvider);
+    _tabController =
+        TabController(length: 2, vsync: this, initialIndex: initialIndex);
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (!mounted) return;
+    final newIndex = _tabController.index;
+    final currentProviderIndex = ref.read(currentTabIndexProvider);
+    if (currentProviderIndex != newIndex) {
       ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
-      setState(() {
-        _currentIndex = newIndex;
-      });
-    });
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ProviderScope(
-      overrides: [
-        tabControllerProvider.overrideWithValue(_tabController),
-      ],
-      child: Scaffold(
-        body: Stack(
-          children: [
-            IndexedStack(
-              index: _currentIndex,
-              children: const [
-                HubScreen(),
-                AiWebviewScreen(),
-              ],
-            ),
-            Consumer(
-              builder: (context, ref, _) {
-                final status = ref.watch(automationStateProvider);
+    // Écoute les changements du provider pour synchroniser le TabController
+    ref.listen(currentTabIndexProvider, (previous, next) {
+      if (_tabController.index != next) {
+        _tabController.animateTo(next);
+      }
+    });
 
-                if (status != AutomationStatus.idle && _currentIndex == 1) {
-                  return const CompanionOverlay();
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
-        ),
-        bottomNavigationBar: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(
-              icon: Icon(Icons.chat),
-              text: 'Hub',
-            ),
-            Tab(
-              icon: Icon(Icons.web),
-              text: 'AI Studio',
-            ),
-          ],
-          labelColor: Colors.blue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blue,
-        ),
+    final currentIndex = ref.watch(currentTabIndexProvider);
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Use IndexedStack - WebView will be built when tab switches to index 1
+          IndexedStack(
+            index: currentIndex,
+            sizing: StackFit.expand,
+            children: const [
+              HubScreen(),
+              AiWebviewScreen(),
+            ],
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final status = ref.watch(automationStateProvider);
+              final currentTabIndex = ref.watch(currentTabIndexProvider);
+              final shouldShow =
+                  status != AutomationStatus.idle && currentTabIndex == 1;
+
+              // Positioned must be a direct child of Stack
+              return Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child: AnimatedOpacity(
+                  opacity: shouldShow ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: IgnorePointer(
+                    ignoring: !shouldShow,
+                    child: const CompanionOverlay(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      bottomNavigationBar: TabBar(
+        controller: _tabController,
+        tabs: const [
+          Tab(
+            icon: Icon(Icons.chat),
+            text: 'Hub',
+          ),
+          Tab(
+            icon: Icon(Icons.web),
+            text: 'AI Studio',
+          ),
+        ],
+        labelColor: Colors.blue,
+        unselectedLabelColor: Colors.grey,
+        indicatorColor: Colors.blue,
       ),
     );
   }

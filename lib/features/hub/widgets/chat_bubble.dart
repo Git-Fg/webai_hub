@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 
 class ChatBubble extends StatelessWidget {
   final Message message;
@@ -66,17 +67,11 @@ class ChatBubble extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                message.isFromUser
-                                    ? Colors.white70
-                                    : Colors.grey.shade600,
-                              ),
-                            ),
+                          LoadingIndicator(
+                            size: 12,
+                            color: message.isFromUser
+                                ? Colors.white70
+                                : Colors.grey.shade600,
                           ),
                           const SizedBox(width: 6),
                           Text(

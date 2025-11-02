@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sandbox</title>
+</head>
+<body>
+    <h1>Automation Sandbox</h1>
+    
+    <!-- 1. Champ de saisie (simule l'input du prompt) -->
+    <textarea 
+        placeholder="Start typing a prompt..." 
+        id="prompt-input" 
+        rows="4" 
+        cols="50"></textarea>
+    <br/>
+    
+    <!-- 2. Bouton d'envoi (simule le bouton Run) -->
+    <button 
+        id="send-button" 
+        aria-label="Append to prompt and run">Run</button>
+
+    <hr/>
+    
+    <!-- 3. Indicateur de génération (simule le spinner) -->
+    <div id="generation-indicator" style="display: none;">
+        <p>🔄 Generating...</p>
+    </div>
+    
+    <!-- 4. Conteneur de réponse (simule la zone où le texte de l'IA apparaît) -->
+    <div id="response-container">
+        <h2>Response:</h2>
+        <div class="message-response">
+            <!-- La réponse sera injectée ici -->
+        </div>
+    </div>
+
+    <!-- Script pour simuler le comportement de la page distante -->
+    <script>
+        const input = document.getElementById('prompt-input');
+        const sendBtn = document.getElementById('send-button');
+        const indicator = document.getElementById('generation-indicator');
+        const responseContainer = document.querySelector('.message-response');
+
+        sendBtn.addEventListener('click', () => {
+            console.log('[SANDBOX] "Run" button clicked.');
+            
+            // Affiche l'indicateur de chargement
+            indicator.style.display = 'block';
+            
+            // Simule une attente de 2 secondes pour la réponse
+            setTimeout(() => {
+                const promptText = input.value;
+                responseContainer.innerText = `This is a simulated response to: "${promptText}"`;
+                
+                // Cache l'indicateur de chargement
+                indicator.style.display = 'none';
+                console.log('[SANDBOX] Generation complete.');
+
+                // Notifie Flutter que la génération est terminée
+                // Ton bridge.js va écouter cet événement implicitement via le MutationObserver
+                // Mais on peut aussi le rendre explicite si besoin.
+                if (window.flutter_inappwebview) {
+                    window.flutter_inappwebview.callHandler('automationBridge', { type: 'GENERATION_COMPLETE' });
+                    console.log('[SANDBOX] Sent GENERATION_COMPLETE to Flutter.');
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
+
