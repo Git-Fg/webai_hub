@@ -11,6 +11,7 @@ This file provides guidance to the AI Agent when working with code in this repos
 -   **🧱 Follow the Blueprints**: Adhere to `BLUEPRINT.md` for the complete architectural vision and `BLUEPRINT_MVP.md` for the current implementation phase.
 
 **IMPORTANT** : You must ALWAYS use your available tool (context7, mobile-mcp, dart-mcp ...) as soon as it's relevant. Never hesitate to use them as it give you the ability to be fully autonomous in your work.
+When you use mobile-mcp to test the application in real condition, you just have to use flutter run with the device id, and wait approximatively 20sec for the app to restart. You must never uninstall/reinstall the app as it's delog me. 
 
 ## Project Overview
 

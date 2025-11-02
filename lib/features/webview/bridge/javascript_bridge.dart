@@ -54,6 +54,39 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     };
   }
 
+  Future<void> _waitForWebViewToBeCreated() async {
+    int attempts = 0;
+    const maxAttempts = 60;
+    const delayMs = 100;
+
+    while (attempts < maxAttempts) {
+      if (!ref.mounted) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.webViewNotReady,
+          location: '_waitForWebViewToBeCreated',
+          message: 'Provider disposed while waiting for WebView',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final controller = _controller;
+      if (controller != null) {
+        return;
+      }
+
+      await Future.delayed(const Duration(milliseconds: delayMs));
+      attempts++;
+    }
+
+    throw AutomationError(
+      errorCode: AutomationErrorCode.webViewNotReady,
+      location: '_waitForWebViewToBeCreated',
+      message:
+          'WebView controller not created within timeout. This usually means the WebView widget is not visible in the widget tree yet.',
+      diagnostics: _getBridgeDiagnostics(),
+    );
+  }
+
   Future<void> _waitForBridgeToBeReady() async {
     try {
       await ref.read(bridgeReadyProvider).future.timeout(
@@ -89,7 +122,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   @override
   Future<void> startAutomation(String prompt) async {
     try {
-      await _waitForBridgeToBeReady();
+      await _waitForWebViewToBeCreated();
 
       final controller = _controller;
       if (controller == null) {

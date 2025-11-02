@@ -4,8 +4,23 @@ import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'main.g.dart';
 
 final tabControllerProvider = Provider<TabController?>((ref) => null);
+
+@riverpod
+class CurrentTabIndex extends _$CurrentTabIndex {
+  @override
+  int build() => 0;
+
+  void changeTo(int index) {
+    if (state != index) {
+      state = index;
+    }
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,10 +61,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) return;
-      setState(() {
-        _currentIndex = _tabController.index;
-      });
+      final newIndex = _tabController.index;
+      ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
+
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _currentIndex = newIndex;
+        });
+      }
     });
   }
 
@@ -68,12 +87,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
       child: Scaffold(
         body: Stack(
           children: [
-            IndexedStack(
-              index: _currentIndex,
-              children: const [
-                HubScreen(),
-                AiWebviewScreen(),
-              ],
+            Consumer(
+              builder: (context, ref, _) {
+                final tabIndex = ref.watch(currentTabIndexProvider);
+                return IndexedStack(
+                  index: tabIndex,
+                  children: const [
+                    HubScreen(),
+                    AiWebviewScreen(),
+                  ],
+                );
+              },
             ),
             Consumer(
               builder: (context, ref, _) {

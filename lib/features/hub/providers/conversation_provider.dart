@@ -35,12 +35,19 @@ class Conversation extends _$Conversation {
         .read(automationStateProvider.notifier)
         .setStatus(AutomationStatus.sending);
 
-    final tabController = ref.read(tabControllerProvider);
-    tabController?.animateTo(1);
-
     if (!ref.mounted) return;
 
     try {
+      final tabController = ref.read(tabControllerProvider);
+      if (tabController != null) {
+        ref.read(currentTabIndexProvider.notifier).changeTo(1);
+        tabController.animateTo(1);
+      }
+
+      await ref.read(bridgeReadyProvider).future;
+
+      if (!ref.mounted) return;
+
       final bridge = ref.read(javaScriptBridgeProvider);
       await bridge.startAutomation(prompt);
 

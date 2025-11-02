@@ -234,7 +234,22 @@ async function extractFinalResponse(): Promise<string> {
 function signalReady() {
     const windowWithFlutter = window as WindowWithFlutterInAppWebView;
     if (windowWithFlutter.flutter_inappwebview) {
-        windowWithFlutter.flutter_inappwebview.callHandler('bridgeReady');
+        try {
+            windowWithFlutter.flutter_inappwebview.callHandler('bridgeReady');
+        } catch (e) {
+            console.warn('Failed to signal bridge ready:', e);
+        }
+    }
+}
+
+function trySignalReady(retries = 10, delay = 200) {
+    if (retries <= 0) return;
+    
+    const windowWithFlutter = window as WindowWithFlutterInAppWebView;
+    if (windowWithFlutter.flutter_inappwebview) {
+        signalReady();
+    } else {
+        setTimeout(() => trySignalReady(retries - 1, delay), delay);
     }
 }
 
@@ -242,4 +257,10 @@ const windowWithFlutter = window as WindowWithFlutterInAppWebView;
 windowWithFlutter.startAutomation = startAutomation;
 windowWithFlutter.extractFinalResponse = extractFinalResponse;
 
-signalReady();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        trySignalReady();
+    });
+} else {
+    trySignalReady();
+}
