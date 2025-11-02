@@ -1,141 +1,80 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to the AI Agent when working with code in this repository.
+Guide pour les agents IA travaillant sur ce projet Flutter AI Hybrid Hub.
 
-## 🎯 Project Philosophy
+## 🎯 Contexte du Projet
 
-**IMPORTANT**: This is a **personal project** focused on **simplicity, modernity, and elegance**. The goal is to create beautiful, maintainable code that demonstrates advanced Flutter patterns.
+Ce projet est en phase **MVP** avec une architecture 2-tabs (Hub natif + WebView Google AI Studio). L'objectif est de valider le workflow "Assist & Validate" avec un seul provider avant de passer à la version complète.
 
--   **🎯 Simplicity First**: Choose the simplest solution that works well.
--   **🚀 Modern Code**: Use current best practices (Flutter 3.19+, Riverpod Generators).
--   **🧱 Follow the Blueprints**: Adhere to `BLUEPRINT.md` for the complete architectural vision and `BLUEPRINT_MVP.md` for the current implementation phase.
+## 🤖 Instructions Spécifiques pour les Agents
 
-**IMPORTANT** : You must ALWAYS use your available tool (context7, mobile-mcp, dart-mcp ...) as soon as it's relevant. Never hesitate to use them as it give you the ability to be fully autonomous in your work.
-When you use mobile-mcp to test the application in real condition, you just have to use flutter run with the device id, and wait approximatively 20sec for the app to restart. You must never uninstall/reinstall the app as it's delog me. 
+### Outils Recommandés
 
-## Project Overview
+Utilisez systématiquement ces outils quand disponible :
 
-**AI Hybrid Hub** is a Flutter application that creates a multi-provider AI assistant. The project implements an "Assist & Validate" workflow by bridging a native mobile UI with web-based AI providers through a robust JavaScript automation engine.
+- **mobile-mcp**: Pour tester l'application en conditions réelles
+- **dart-mcp**: Pour les analyses de code Dart
+- **context7**: Pour les recherches de documentation
 
-## 🛠️ Development Commands
+### Commandes Essentielles
 
-### Basic Setup
 ```bash
-# Install Flutter dependencies
-flutter pub get
-
-# Install TypeScript dependencies
-npm install
-```
-
-### Code Generation & Building
-```bash
-# Build the TypeScript bridge (run after every change in ts_src/)
+# Build après modifications TypeScript
 npm run build
 
-# Generate Dart code (Riverpod/Freezed)
+# Génération code après changements Riverpod/Freezed
 flutter pub run build_runner build --delete-conflicting-outputs
+
+# Tests unitaires
+flutter test
+
+# Lancement app (device spécifique)
+flutter run -d <device_id>
 ```
 
-**CRITICAL**: You MUST run build_runner if you perform any of the following actions:
+### Règles de Travail
 
-#### 1. For Riverpod (@riverpod)
-✅ **Create a new provider** by annotating a class or function with @riverpod.
-✅ **Rename an existing provider** (e.g., Conversation becomes ChatConversation).
-✅ **Change provider parameters** (e.g., myProvider(ref) becomes myProvider(ref, String userId)).
-✅ **Change provider return type** (e.g., returning List<Message> now returns Future<List<Message>>).
+1. **Toujours vérifier les blueprints** avant toute modification
+2. **Respecter la philosophie MVP** - rester simple et fonctionnel
+3. **Utiliser Tree** pour explorer l'arborescence avant de créer des fichiers
+4. **Lancer build_runner** après toute modification de code généré
 
-#### 2. For Freezed (@freezed)
-✅ **Create new model class** annotated with @freezed (as done for Message model).
-✅ **Add, remove, or rename fields** in @freezed class (e.g., adding DateTime timestamp to Message model).
-✅ **Change field types** in @freezed class.
-✅ **Add or modify factories** (e.g., for creating union types for state management).
+### Erreurs Courantes à Éviter
 
-#### 3. For Project Configuration
-✅ **Add new dependencies** that use build_runner in pubspec.yaml (after running flutter pub get).
-✅ **Update package versions** like riverpod_generator or freezed, as new versions may generate different code.
+- ❌ Oublier de lancer `npm run build` après modification TypeScript
+- ❌ Oublier `build_runner` après ajout `@riverpod` ou `@freezed`
+- ❌ Ajouter des commentaires inutiles (code auto-documenté)
+- ❌ Laisser des `print` ou `console.log` dans le code committé
 
-### Running the App
-```bash
-# Run the app in debug mode
-flutter run
+### Test Application Réelle
+
+Quand vous utilisez mobile-mcp :
+
+- Ne jamais désinstaller/réinstaller l'app (déconnexion)
+- Attendre ~20s après redémarrage pour stabilisation
+- Utiliser `flutter run -d <device_id>` pour cibler un device
+
+### Workflow Debug
+
+1. **Problème WebView**: Vérifier le bridge JS dans `assets/js/bridge.js`
+2. **Problème State**: Vérifier les providers Riverpod et les generated files
+3. **Problème Build**: Vérifier que les dépendances sont synchronisées
+
+## 📁 Structure Critique
+
+```text
+lib/features/
+├── hub/          # UI native chat
+├── webview/      # WebView + bridge JS
+└── automation/   # Workflow + overlay
+
+ts_src/
+└── automation_engine.ts  # Moteur JS (hardcoded selectors MVP)
 ```
 
-## Core Architecture
+## 🔍 Points d'Attention
 
-### Technology Stack
--   **Framework**: Flutter >= 3.19.0
--   **State Management**: `flutter_riverpod` with `riverpod_generator`.
--   **WebView**: `flutter_inappwebview` is the required package for its powerful JS bridge.
--   **Database**: **Drift** is used for type-safe SQLite persistence in the full version.
--   **JS Bridge**: TypeScript (`ts_src/`) built with Vite into a single bundle (`assets/js/`).
-
-### Automation Engine
-
--   **Selector Strategy**: The engine's resilience relies on a remote **JSON configuration** for CSS selectors. This allows for updates without deploying a new app version. For development, selectors may be temporarily hardcoded as specified in the relevant blueprint.
--   **Error Handling**: The engine must diagnose failures (e.g., CAPTCHA, login required) and report specific error codes to the Dart layer for graceful degradation.
--   **State Monitoring**: Use `MutationObserver` with performance-optimized patterns (e.g., the "Ephemeral Two-Step Observer") to detect the state of the web UI without draining battery.
-
-### JavaScript Bridge API Contract
-
-**IMPORTANT**: The communication pattern is **Asynchronous RPC (Remote Procedure Call)**.
-
-1.  **TypeScript (`automation_engine.ts`)** must expose global, Promise-based functions for Dart to call (e.g., `startAutomation`, `extractFinalResponse`).
-2.  **Dart** must register `JavaScriptHandler`s to handle events and requests from TypeScript. The primary handler for status updates is named `'automationBridge'`.
-
-Always refer to the active blueprint for the precise API contract for the current development phase.
-
-## 📋 Version Management & Milestones
-
-**CRITICAL**: This project follows strict versioning practices with milestone-based commits.
-
-### Commit Policy
-- **ALWAYS commit on meaningful milestones** - never leave work uncommitted
-- **Milestones include**:
-  - Major feature completions
-  - Bug fixes that restore functionality
-  - Documentation updates (like this one)
-  - Code refactoring that improves maintainability
-- **Commit messages must follow conventional format**:
-  ```bash
-  feat: add new automation workflow
-  fix: resolve WebView initialization issue
-  refactor: simplify state management
-  ```
-
-### Version Control Workflow
-1. **Complete a meaningful unit of work**
-2. **Test the functionality thoroughly**
-3. **Commit with descriptive message**
-
-**Remember**: Uncommitted work is lost work. Commit frequently and meaningfully!
-
-## 🧹 Code Quality Standards
-
-**CRITICAL**: Maintain clean, professional code quality at all times.
-
-### Code Cleanliness Policy
-- **NEVER add unnecessary comments** - code should be self-documenting
-- **Remove all debug statements** before committing (print, console.log, etc.)
-- **Delete unused imports and variables**
-- **Keep functions focused and small** - single responsibility principle
-- **Use meaningful variable and function names** - no abbreviations unless universally understood
-- **Follow Dart/Flutter style guidelines** consistently
-
-### When Comments Are Acceptable
-Comments should ONLY be used when:
-- Explaining complex business logic that isn't obvious
-- Documenting public API contracts
-- Warning about potential side effects or breaking changes
-- Temporary TODO comments for immediate follow-up (should be removed promptly)
-
-### Code Review Checklist
-Before committing, ensure:
-- [ ] No unnecessary comments
-- [ ] No debug print statements
-- [ ] All unused code removed
-- [ ] Consistent formatting and naming
-- [ ] Functions have clear, single purposes
-- [ ] Error handling is appropriate but not overly verbose
-
-**Principle**: If you need to add a comment to explain what the code does, consider rewriting the code to be more self-explanatory instead.
+- Les sélecteurs CSS sont **hardcodés** dans le TypeScript (approche MVP)
+- La persistence est **in-memory** uniquement (pas de Drift dans MVP)
+- L'architecture est **2-tabs** et non 5-tabs comme la version complète
+- Les tests utilisent des **fakes** plutôt que des mocks complexes

@@ -63,12 +63,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
     _tabController.addListener(() {
       final newIndex = _tabController.index;
       ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
-
-      if (!_tabController.indexIsChanging) {
-        setState(() {
-          _currentIndex = newIndex;
-        });
-      }
+      setState(() {
+        _currentIndex = newIndex;
+      });
     });
   }
 
@@ -87,17 +84,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
       child: Scaffold(
         body: Stack(
           children: [
-            Consumer(
-              builder: (context, ref, _) {
-                final tabIndex = ref.watch(currentTabIndexProvider);
-                return IndexedStack(
-                  index: tabIndex,
-                  children: const [
-                    HubScreen(),
-                    AiWebviewScreen(),
-                  ],
-                );
-              },
+            IndexedStack(
+              index: _currentIndex,
+              children: const [
+                HubScreen(),
+                AiWebviewScreen(),
+              ],
             ),
             Consumer(
               builder: (context, ref, _) {

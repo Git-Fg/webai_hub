@@ -4,6 +4,7 @@ import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:flutter/scheduler.dart';
 
 part 'conversation_provider.g.dart';
 
@@ -40,8 +41,7 @@ class Conversation extends _$Conversation {
     try {
       final tabController = ref.read(tabControllerProvider);
       if (tabController != null) {
-        ref.read(currentTabIndexProvider.notifier).changeTo(1);
-        tabController.animateTo(1);
+        tabController.index = 1;
       }
 
       await ref.read(bridgeReadyProvider).future;

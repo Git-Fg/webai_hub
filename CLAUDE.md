@@ -52,10 +52,22 @@ flutter pub run build_runner build --delete-conflicting-outputs
 ✅ **Add new dependencies** that use build_runner in pubspec.yaml (after running flutter pub get).
 ✅ **Update package versions** like riverpod_generator or freezed, as new versions may generate different code.
 
+### Testing
+```bash
+# Run unit tests
+flutter test
+
+# Run tests with coverage
+flutter test --coverage
+```
+
 ### Running the App
 ```bash
 # Run the app in debug mode
 flutter run
+
+# Run on specific device (if multiple devices connected)
+flutter run -d <device_id>
 ```
 
 ## Core Architecture
@@ -64,14 +76,14 @@ flutter run
 -   **Framework**: Flutter >= 3.19.0
 -   **State Management**: `flutter_riverpod` with `riverpod_generator`.
 -   **WebView**: `flutter_inappwebview` is the required package for its powerful JS bridge.
--   **Database**: **Drift** is used for type-safe SQLite persistence in the full version.
+-   **Database**: **Drift** is planned for type-safe SQLite persistence in the full version (currently not used in MVP).
 -   **JS Bridge**: TypeScript (`ts_src/`) built with Vite into a single bundle (`assets/js/`).
 
 ### Automation Engine
 
--   **Selector Strategy**: The engine's resilience relies on a remote **JSON configuration** for CSS selectors. This allows for updates without deploying a new app version. For development, selectors may be temporarily hardcoded as specified in the relevant blueprint.
--   **Error Handling**: The engine must diagnose failures (e.g., CAPTCHA, login required) and report specific error codes to the Dart layer for graceful degradation.
--   **State Monitoring**: Use `MutationObserver` with performance-optimized patterns (e.g., the "Ephemeral Two-Step Observer") to detect the state of the web UI without draining battery.
+-   **Selector Strategy**: Currently **hardcoded CSS selectors** in TypeScript (MVP approach). The full version will use a remote **JSON configuration** for CSS selectors to allow updates without deploying a new app version.
+-   **Error Handling**: Currently implements basic error handling with generic `AUTOMATION_FAILED` error code (MVP approach). The full version will include specific heuristic triage for CAPTCHA, login required, selector exhaustion, etc.
+-   **State Monitoring**: Currently uses a simplified `MutationObserver` with basic debouncing technique (MVP approach). The full version will implement performance-optimized patterns like the "Ephemeral Two-Step Observer" for better battery efficiency.
 
 ### JavaScript Bridge API Contract
 
