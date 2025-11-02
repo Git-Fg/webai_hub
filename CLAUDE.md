@@ -63,3 +63,36 @@ flutter run
 2.  **Dart** must register `JavaScriptHandler`s to handle events and requests from TypeScript. The primary handler for status updates is named `'automationBridge'`.
 
 Always refer to the active blueprint for the precise API contract for the current development phase.
+
+## 📋 Version Management & Milestones
+
+**CRITICAL**: This project follows strict versioning practices with milestone-based commits.
+
+### Commit Policy
+- **ALWAYS commit on meaningful milestones** - never leave work uncommitted
+- **Milestones include**:
+  - Major feature completions
+  - Bug fixes that restore functionality
+  - Documentation updates (like this one)
+  - Code refactoring that improves maintainability
+- **Commit messages must follow conventional format**:
+  ```bash
+  feat: add new automation workflow
+  fix: resolve WebView initialization issue
+  docs: update API documentation
+  refactor: simplify state management
+  ```
+
+### Version Control Workflow
+1. **Complete a meaningful unit of work**
+2. **Test the functionality thoroughly**
+3. **Commit with descriptive message**
+4. **Push to remote repository immediately**
+5. **Update relevant documentation if needed**
+
+### Branch Strategy
+- **`main`**: Always stable, deployable code
+- **Feature branches**: Use for major features, merge back to main when complete
+- **Hotfixes**: Branch from main, fix, merge back with fast-forward
+
+**Remember**: Uncommitted work is lost work. Commit frequently and meaningfully!
