@@ -1,82 +1,83 @@
-# AI Hybrid Hub (MVP)
+# AI Hybrid Hub
 
-**🎯 Objectif : Implémenter et valider un hub d'IA hybride via un workflow d'automatisation JavaScript.**
+**An intelligent, hybrid AI assistant that bridges a native Flutter interface with the power of web-based AI providers through JavaScript automation.**
 
-Ce projet Flutter est le Produit Minimum Viable (MVP) d'un assistant IA multi-fournisseurs. Il vise à valider le concept "Assister & Valider" en combinant une interface de chat native avec les interactions automatisées d'une `WebView`.
+This project aims to transform a simple WebView manager into a sophisticated AI hub, implementing the complete "Assist & Validate" workflow. It combines a native chat UI with automated interactions, providing a seamless and powerful user experience.
 
 ---
 
-### 📊 **État Actuel du Projet : En cours de construction du MVP**
+### 📊 **Project Status: 🏗️ MVP In Progress**
 
--   **✅ Architecture définie** : La structure du projet est en place.
--   **🎯 Focus Actuel** : Implémentation du workflow complet pour **un seul fournisseur** : Google AI Studio.
--   **🚀 Prochaine Étape** : Finaliser la logique du pont de communication et l'orchestration du workflow.
+-   **✅ Architecture Defined**: The foundational structure of the project is in place.
+-   **🎯 Current Focus**: Implementing the end-to-end automation workflow for a **single provider**: Google AI Studio.
+-   **🚀 Next Steps**: Finalize the JavaScript bridge logic, state management, and the core "Assist & Validate" orchestration.
 
-### ✨ Fonctionnalités Clés du MVP
+### ✨ Key Features (Vision)
 
--   **Interface Hub Native** : Un écran de chat simple pour envoyer des prompts et voir les réponses.
--   **Intégration `WebView`** : Un onglet dédié pour **Google AI Studio** avec persistance de session de base.
--   **Workflow "Assister & Valider"** : Implémentation du flux en 4 phases (Envoi, Observation, Raffinage, Validation).
--   **Pont JavaScript** : Communication Dart ↔ TypeScript pour piloter l'automatisation du DOM.
+-   **Native Chat Interface**: A modern, bubble-style UI for sending prompts and viewing aggregated conversations.
+-   **Multi-Provider Integration**: Seamlessly switch between and interact with providers like Google AI Studio, Qwen, Z-ai, and Kimi.
+-   **"Assist & Validate" Workflow**: A 4-phase automation process (Sending, Observing, Refining, Extraction) that combines automated assistance with full user control.
+-   **JavaScript Automation Bridge**: A robust, bi-directional communication layer to pilot web interfaces from the native application.
+-   **Session Persistence**: Maintain login states across all providers for a frictionless experience.
 
-### 🛠️ Stack Technique
+### 🛠️ Technology Stack
 
--   **Framework** : Flutter 3.19+ / Dart 3.3+
--   **Gestion d'État** : Riverpod (avec `riverpod_generator`)
--   **Vue Web** : `flutter_inappwebview`
--   **Pont d'Automatisation** : TypeScript + Vite
+-   **Framework**: Flutter 3.19+ / Dart 3.3+
+-   **State Management**: Riverpod (with `riverpod_generator`)
+-   **WebView Integration**: `flutter_inappwebview`
+-   **Automation Bridge**: TypeScript + Vite
 
-### 🚀 Démarrage Rapide
+### 🚀 Quick Start
 
-#### **Prérequis**
+#### **Prerequisites**
 
 -   Flutter SDK (>= 3.19.0)
--   Node.js et npm
+-   Node.js and npm
 
-#### **Installation & Lancement**
+#### **Installation & Launch**
 
-1.  **Cloner le repository :**
+1.  **Clone the repository:**
     ```bash
-    git clone <URL_DU_REPO>
+    git clone <YOUR_REPO_URL>
     cd ai_hybrid_hub
     ```
 
-2.  **Installer les dépendances Flutter :**
+2.  **Install Flutter dependencies:**
     ```bash
     flutter pub get
     ```
 
-3.  **Installer les dépendances TypeScript :**
+3.  **Install TypeScript dependencies:**
     ```bash
     npm install
     ```
 
-4.  **Compiler le pont JavaScript :**
+4.  **Build the JavaScript bridge:**
     ```bash
     npm run build
     ```
-    *(Cette commande doit être exécutée après chaque modification du fichier `automation_engine.ts`)*
+    *(This command **must** be run after every modification to `ts_src/automation_engine.ts`)*
 
-5.  **Générer le code Dart (Riverpod/Freezed) :**
+5.  **Generate Dart code (Riverpod/Freezed):**
     ```bash
     flutter pub run build_runner build --delete-conflicting-outputs
     ```
 
-6.  **Lancer l'application :**
+6.  **Run the application:**
     ```bash
     flutter run
     ```
 
-### 🏗️ Structure du Projet
+### 🏗️ Project Structure
 
 ```
 lib/
 ├── features/
-│   ├── hub/         # UI et logique du chat natif
-│   └── webview/     # Gestion de la WebView et du pont
+│   ├── hub/         # UI and logic for the native chat
+│   └── webview/     # WebView management and the bridge
 ├── assets/
 │   └── js/
-│       └── bridge.js  # Bundle JS généré par Vite
+│       └── bridge.js  # JS bundle generated by Vite
 ts_src/
-└── automation_engine.ts # Code source du moteur d'automatisation
+└── automation_engine.ts # Source code for the automation engine
 ```

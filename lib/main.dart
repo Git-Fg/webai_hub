@@ -34,7 +34,6 @@ class MainScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         body: TabBarView(
-          // IMPORTANT: Ne jamais reconstruire les vues pour conserver l'état de la WebView
           physics: NeverScrollableScrollPhysics(),
           children: [
             HubScreen(),

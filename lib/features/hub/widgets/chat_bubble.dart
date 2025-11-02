@@ -77,7 +77,7 @@ class ChatBubble extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Envoi en cours...',
+                            'Sending...',
                             style: TextStyle(
                               fontSize: 12,
                               color: message.isFromUser ? Colors.white70 : Colors.grey.shade600,
@@ -99,7 +99,7 @@ class ChatBubble extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            'Erreur',
+                            'Error',
                             style: TextStyle(
                               fontSize: 12,
                               color: message.isFromUser ? Colors.red.shade200 : Colors.red.shade600,

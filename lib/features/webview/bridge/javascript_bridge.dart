@@ -1,7 +1,6 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Provider pour exposer le contrôleur web à toute l'app
 final webViewControllerProvider = StateProvider<InAppWebViewController?>((ref) => null);
 
 class JavaScriptBridge {
@@ -16,9 +15,6 @@ class JavaScriptBridge {
     }
 
     try {
-      print("🔄 Starting automation for prompt: $prompt");
-
-      // Vérifier que la page est chargée
       final isPageLoaded = await _controller!.evaluateJavascript(
         source: "document.readyState === 'complete'"
       );
@@ -27,18 +23,14 @@ class JavaScriptBridge {
         throw Exception("WebView page not fully loaded");
       }
 
-      // Vérifier que les fonctions JavaScript sont disponibles
       final checkResult = await _controller!.evaluateJavascript(
         source: "typeof startAutomation !== 'undefined' && typeof extractFinalResponse !== 'undefined'"
       );
-
-      print("🔍 JavaScript functions available: $checkResult");
 
       if (checkResult != true) {
         throw Exception("Automation functions not available in WebView. Script may not be injected yet.");
       }
 
-      // Échapper le prompt pour éviter les erreurs JavaScript
       final escapedPrompt = prompt
           .replaceAll('\\', '\\\\')
           .replaceAll("'", "\\'")
@@ -46,14 +38,10 @@ class JavaScriptBridge {
           .replaceAll('\n', '\\n')
           .replaceAll('\r', '\\r');
 
-      print("📤 Calling JavaScript startAutomation...");
       await _controller!.evaluateJavascript(
         source: "startAutomation('$escapedPrompt');"
       );
-
-      print("✅ JavaScript automation started successfully");
     } catch (e) {
-      print("❌ Automation failed: $e");
       throw Exception("Failed to start automation: $e");
     }
   }
@@ -70,7 +58,7 @@ class JavaScriptBridge {
         throw Exception("No response available or extraction failed");
       }
 
-      return result as String;
+      return result;
     } catch (e) {
       throw Exception("Failed to extract response: $e");
     }

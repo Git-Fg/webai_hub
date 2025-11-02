@@ -46,7 +46,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider);
 
-    // Scroll vers le bas quand de nouveaux messages sont ajoutés
     ref.listen<List<dynamic>>(conversationProvider, (previous, next) {
       if (next.length > (previous?.length ?? 0)) {
         _scrollToBottom();
@@ -69,7 +68,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
       ),
       body: Column(
         children: [
-          // Zone de messages
           Expanded(
             child: conversation.isEmpty
                 ? Center(
@@ -83,7 +81,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Bienvenue dans AI Hybrid Hub !',
+                          'Welcome to AI Hybrid Hub!',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w500,
@@ -92,7 +90,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Envoyez votre premier message pour commencer',
+                          'Send your first message to start',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey.shade500,
@@ -110,8 +108,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                     },
                   ),
           ),
-
-          // Zone de saisie
           Container(
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
@@ -130,7 +126,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                   child: TextField(
                     controller: _textController,
                     decoration: InputDecoration(
-                      hintText: 'Tapez votre message...',
+                      hintText: 'Type your message...',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,

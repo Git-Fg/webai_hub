@@ -20,28 +20,21 @@ class Conversation extends _$Conversation {
   }
 
   Future<void> sendPromptToAutomation(String prompt) async {
-    // 1. Ajouter le message de l'utilisateur
     addMessage(prompt, true);
 
-    // 2. Ajouter un message "envoi en cours"
     final assistantMessageId = Random().nextDouble().toString();
     state = [
       ...state,
-      Message(id: assistantMessageId, text: "Envoi en cours...", isFromUser: false, status: MessageStatus.sending)
+      Message(id: assistantMessageId, text: "Sending...", isFromUser: false, status: MessageStatus.sending)
     ];
 
-    // 3. Appeler le pont
     try {
-      print("🤖 Calling automation bridge...");
       final bridge = ref.read(javaScriptBridgeProvider);
       await bridge.startAutomation(prompt);
-      print("✅ Automation bridge call completed");
     } catch (e) {
-      print("❌ Automation bridge failed: $e");
-      // Gérer l'échec de l'automatisation
       state = state.map((m) {
         if (m.id == assistantMessageId) {
-          return m.copyWith(text: "Erreur d'automatisation: ${e.toString()}", status: MessageStatus.error);
+          return m.copyWith(text: "Automation error: ${e.toString()}", status: MessageStatus.error);
         }
         return m;
       }).toList();

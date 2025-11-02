@@ -19,60 +19,44 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   bool scriptInjected = false;
 
   void _handleGenerationComplete(InAppWebViewController controller) async {
-    print("Generation completed, extracting response...");
-
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
       final response = await bridge.extractFinalResponse();
 
-      // Mettre à jour le message dans la conversation
-      final conversationNotifier = ref.read(conversationProvider.notifier);
       final currentMessages = ref.read(conversationProvider);
 
-      // Trouver le dernier message "Envoi en cours..." et le remplacer
       if (currentMessages.isNotEmpty) {
         final lastMessage = currentMessages.last;
         if (!lastMessage.isFromUser && lastMessage.status == MessageStatus.sending) {
-          // Mettre à jour le message avec la réponse extraite
-          final notifier = ref.read(conversationProvider.notifier);
           final newMessages = List<Message>.from(currentMessages);
           newMessages[newMessages.length - 1] = lastMessage.copyWith(
             text: response.trim(),
             status: MessageStatus.success,
           );
-          notifier.state = newMessages;
+          ref.read(conversationProvider.notifier).state = newMessages;
         } else {
-          // Ajouter la réponse comme nouveau message si pas de message en cours
-          conversationNotifier.addMessage(response.trim(), false);
+          ref.read(conversationProvider.notifier).addMessage(response.trim(), false);
         }
       } else {
-        conversationNotifier.addMessage(response.trim(), false);
+        ref.read(conversationProvider.notifier).addMessage(response.trim(), false);
       }
-
-      print("Response extracted and displayed: ${response.length} characters");
     } catch (e) {
-      print("Failed to extract response: $e");
       _handleAutomationFailed("Failed to extract response: $e");
     }
   }
 
   void _handleAutomationFailed(String? error) {
-    print("Automation failed: $error");
-
-    final conversationNotifier = ref.read(conversationProvider.notifier);
     final currentMessages = ref.read(conversationProvider);
 
-    // Mettre à jour le dernier message "Envoi en cours..." avec une erreur
     if (currentMessages.isNotEmpty) {
       final lastMessage = currentMessages.last;
       if (!lastMessage.isFromUser && lastMessage.status == MessageStatus.sending) {
-        final notifier = ref.read(conversationProvider.notifier);
         final newMessages = List<Message>.from(currentMessages);
         newMessages[newMessages.length - 1] = lastMessage.copyWith(
-          text: "Erreur d'automatisation: ${error ?? 'Unknown error'}",
+          text: "Automation error: ${error ?? 'Unknown error'}",
           status: MessageStatus.error,
         );
-        notifier.state = newMessages;
+        ref.read(conversationProvider.notifier).state = newMessages;
       }
     }
   }
@@ -118,26 +102,21 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               domStorageEnabled: true,
               databaseEnabled: true,
               supportZoom: false,
-              clearCache: false, // Garder le cache pour maintenir la session
-              clearSessionCache: false, // Garder les cookies de session
+              clearCache: false,
+              clearSessionCache: false,
               mediaPlaybackRequiresUserGesture: false,
               userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
             ),
             onWebViewCreated: (controller) {
               webViewController = controller;
-
-              // Stocker le contrôleur dans Riverpod
               ref.read(webViewControllerProvider.notifier).state = controller;
 
-              // CRITIQUE : Enregistrer le handler pour écouter les messages du TS
               controller.addJavaScriptHandler(
                 handlerName: 'automationBridge',
                 callback: (args) {
                   if (args.isNotEmpty) {
                     final event = args[0] as Map<String, dynamic>;
                     final eventType = event['type'] as String?;
-
-                    print("Received from JS: $eventType");
 
                     switch (eventType) {
                       case 'GENERATION_COMPLETE':
@@ -146,8 +125,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                       case 'AUTOMATION_FAILED':
                         _handleAutomationFailed(event['payload'] as String?);
                         break;
-                      default:
-                        print("Unknown event type: $eventType");
                     }
                   }
                 },
@@ -159,15 +136,12 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               });
             },
             onLoadStop: (controller, url) async {
-              // Ne charger que pour la page principale, pas pour les iframes ou ressources
               if (url != null && url.toString().contains('aistudio.google.com') && !scriptInjected) {
                 setState(() {
                   isLoading = false;
                 });
 
-                // CRITIQUE : Injecter notre script d'automatisation UNE SEULE FOIS
                 try {
-                  // Attendre un peu que la page soit complètement chargée
                   await Future.delayed(const Duration(seconds: 2));
 
                   final bridgeFile = await rootBundle.loadString('assets/js/bridge.js');
@@ -176,10 +150,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                   setState(() {
                     scriptInjected = true;
                   });
-
-                  print("Bridge script injected successfully!");
                 } catch (e) {
-                  print("Error injecting bridge script: $e");
                 }
               } else {
                 setState(() {
@@ -188,14 +159,12 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               }
             },
             onReceivedError: (controller, request, error) {
-              print("WebView error: ${error.description}");
               setState(() {
                 isLoading = false;
               });
             },
           ),
 
-          // Overlay de chargement
           if (isLoading)
             Container(
               color: Colors.white,
@@ -206,7 +175,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
                     Text(
-                      'Chargement de Google AI Studio...',
+                      'Loading Google AI Studio...',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey,
