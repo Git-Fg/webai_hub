@@ -96,40 +96,39 @@ async function startAutomation(prompt: string): Promise<void> {
         const sendButton = await waitForElement(SEND_BUTTON_SELECTORS) as HTMLElement;
         sendButton.click();
 
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log("Automation sent. Now observing for response completion...");
 
-        await new Promise<void>((resolve, reject) => {
-            const timeout = 45000;
-            let checkCount = 0;
+        // Wait for generation indicator to appear first
+        await waitForElement(GENERATION_INDICATOR_SELECTORS, 5000);
+        console.log("Generation indicator appeared. Observing for its disappearance.");
 
-            const checkResponse = async () => {
-                checkCount++;
+        // Now observe its disappearance with MutationObserver
+        await new Promise<void>((resolve) => {
+            const observer = new MutationObserver((mutations, obs) => {
+                const isGenerating = document.querySelector(GENERATION_INDICATOR_SELECTORS[0]); // Check primary selector for MVP simplicity
 
-                const isGenerating = GENERATION_INDICATOR_SELECTORS.some(selector =>
-                    document.querySelector(selector)
-                );
-
-                if (isGenerating) {
-                    setTimeout(checkResponse, 2000);
-                    return;
-                }
-
-                const responseElements = RESPONSE_CONTAINER_SELECTORS.map(selector =>
-                    document.querySelectorAll(selector)
-                ).flat();
-
-                if (responseElements.length > 0) {
+                if (!isGenerating) {
+                    console.log("Generation indicator disappeared. Generation complete.");
                     notifyDart({ type: 'GENERATION_COMPLETE' });
+                    obs.disconnect(); // Clean up the observer
+                    clearTimeout(timeoutId);
                     resolve();
-                } else if (checkCount * 2000 >= timeout) {
-                    notifyDart({ type: 'GENERATION_COMPLETE' });
-                    resolve();
-                } else {
-                    setTimeout(checkResponse, 2000);
                 }
-            };
+            });
 
-            checkResponse();
+            // Observe changes in the document body
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
+
+            // Add safety timeout
+            const timeoutId = setTimeout(() => {
+                console.warn("Observation timed out after 45s. Assuming completion.");
+                observer.disconnect();
+                notifyDart({ type: 'GENERATION_COMPLETE' });
+                resolve();
+            }, 45000);
         });
 
     } catch (error) {

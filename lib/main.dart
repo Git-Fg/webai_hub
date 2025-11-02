@@ -3,6 +3,9 @@ import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+// Create a provider for the TabController
+final tabControllerProvider = Provider<TabController?>((ref) => null);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const ProviderScope(child: MyApp()));
@@ -25,23 +28,48 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MainScreen extends StatelessWidget {
+// Transform MainScreen to ConsumerStatefulWidget
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
+  ConsumerState<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends ConsumerState<MainScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const DefaultTabController(
-      length: 2,
+    // Expose the controller via a ProviderScope local override
+    return ProviderScope(
+      overrides: [
+        tabControllerProvider.overrideWithValue(_tabController),
+      ],
       child: Scaffold(
         body: TabBarView(
-          physics: NeverScrollableScrollPhysics(),
-          children: [
+          controller: _tabController,
+          physics: const NeverScrollableScrollPhysics(),
+          children: const [
             HubScreen(),
             AiWebviewScreen(),
           ],
         ),
         bottomNavigationBar: TabBar(
-          tabs: [
+          controller: _tabController,
+          tabs: const [
             Tab(
               icon: Icon(Icons.chat),
               text: 'Hub',

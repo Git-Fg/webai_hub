@@ -34,6 +34,24 @@ npm run build
 flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
+**CRITICAL**: You MUST run build_runner if you perform any of the following actions:
+
+#### 1. For Riverpod (@riverpod)
+✅ **Create a new provider** by annotating a class or function with @riverpod.
+✅ **Rename an existing provider** (e.g., Conversation becomes ChatConversation).
+✅ **Change provider parameters** (e.g., myProvider(ref) becomes myProvider(ref, String userId)).
+✅ **Change provider return type** (e.g., returning List<Message> now returns Future<List<Message>>).
+
+#### 2. For Freezed (@freezed)
+✅ **Create new model class** annotated with @freezed (as done for Message model).
+✅ **Add, remove, or rename fields** in @freezed class (e.g., adding DateTime timestamp to Message model).
+✅ **Change field types** in @freezed class.
+✅ **Add or modify factories** (e.g., for creating union types for state management).
+
+#### 3. For Project Configuration
+✅ **Add new dependencies** that use build_runner in pubspec.yaml (after running flutter pub get).
+✅ **Update package versions** like riverpod_generator or freezed, as new versions may generate different code.
+
 ### Running the App
 ```bash
 # Run the app in debug mode
@@ -79,7 +97,6 @@ Always refer to the active blueprint for the precise API contract for the curren
   ```bash
   feat: add new automation workflow
   fix: resolve WebView initialization issue
-  docs: update API documentation
   refactor: simplify state management
   ```
 
@@ -87,13 +104,6 @@ Always refer to the active blueprint for the precise API contract for the curren
 1. **Complete a meaningful unit of work**
 2. **Test the functionality thoroughly**
 3. **Commit with descriptive message**
-4. **Push to remote repository immediately**
-5. **Update relevant documentation if needed**
-
-### Branch Strategy
-- **`main`**: Always stable, deployable code
-- **Feature branches**: Use for major features, merge back to main when complete
-- **Hotfixes**: Branch from main, fix, merge back with fast-forward
 
 **Remember**: Uncommitted work is lost work. Commit frequently and meaningfully!
 

@@ -1,10 +1,10 @@
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 
 class AiWebviewScreen extends ConsumerStatefulWidget {
   const AiWebviewScreen({super.key});
@@ -16,51 +16,20 @@ class AiWebviewScreen extends ConsumerStatefulWidget {
 class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   InAppWebViewController? webViewController;
   bool isLoading = true;
-  bool scriptInjected = false;
+  String? _bridgeScript;
 
-  void _handleGenerationComplete(InAppWebViewController controller) async {
-    try {
-      final bridge = ref.read(javaScriptBridgeProvider);
-      final response = await bridge.extractFinalResponse();
-
-      final currentMessages = ref.read(conversationProvider);
-
-      if (currentMessages.isNotEmpty) {
-        final lastMessage = currentMessages.last;
-        if (!lastMessage.isFromUser && lastMessage.status == MessageStatus.sending) {
-          final newMessages = List<Message>.from(currentMessages);
-          newMessages[newMessages.length - 1] = lastMessage.copyWith(
-            text: response.trim(),
-            status: MessageStatus.success,
-          );
-          ref.read(conversationProvider.notifier).state = newMessages;
-        } else {
-          ref.read(conversationProvider.notifier).addMessage(response.trim(), false);
-        }
-      } else {
-        ref.read(conversationProvider.notifier).addMessage(response.trim(), false);
-      }
-    } catch (e) {
-      _handleAutomationFailed("Failed to extract response: $e");
-    }
+  @override
+  void initState() {
+    super.initState();
+    // Load the script once when the widget starts
+    rootBundle.loadString('assets/js/bridge.js').then((script) {
+      setState(() {
+        _bridgeScript = script;
+      });
+    });
   }
 
-  void _handleAutomationFailed(String? error) {
-    final currentMessages = ref.read(conversationProvider);
-
-    if (currentMessages.isNotEmpty) {
-      final lastMessage = currentMessages.last;
-      if (!lastMessage.isFromUser && lastMessage.status == MessageStatus.sending) {
-        final newMessages = List<Message>.from(currentMessages);
-        newMessages[newMessages.length - 1] = lastMessage.copyWith(
-          text: "Automation error: ${error ?? 'Unknown error'}",
-          status: MessageStatus.error,
-        );
-        ref.read(conversationProvider.notifier).state = newMessages;
-      }
-    }
-  }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,77 +62,72 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
       ),
       body: Stack(
         children: [
-          InAppWebView(
-            initialUrlRequest: URLRequest(
-              url: WebUri("https://aistudio.google.com/prompts/new_chat"),
-            ),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              domStorageEnabled: true,
-              databaseEnabled: true,
-              supportZoom: false,
-              clearCache: false,
-              clearSessionCache: false,
-              mediaPlaybackRequiresUserGesture: false,
-              userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
-            ),
-            onWebViewCreated: (controller) {
-              webViewController = controller;
-              ref.read(webViewControllerProvider.notifier).state = controller;
+          // Wait for script to be loaded before building WebView
+          if (_bridgeScript != null)
+            InAppWebView(
+              initialUrlRequest: URLRequest(
+                url: WebUri("https://aistudio.google.com/prompts/new_chat"),
+              ),
+              // CRITICAL: Use initialUserScripts for injection
+              initialUserScripts: UnmodifiableListView<UserScript>([
+                UserScript(
+                  source: _bridgeScript!,
+                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                ),
+              ]),
+              initialSettings: InAppWebViewSettings(
+                javaScriptEnabled: true,
+                domStorageEnabled: true,
+                databaseEnabled: true,
+                supportZoom: false,
+                clearCache: false,
+                clearSessionCache: false,
+                mediaPlaybackRequiresUserGesture: false,
+                userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
+              ),
+              onWebViewCreated: (controller) {
+                webViewController = controller;
+                ref.read(webViewControllerProvider.notifier).state = controller;
 
-              controller.addJavaScriptHandler(
-                handlerName: 'automationBridge',
-                callback: (args) {
-                  if (args.isNotEmpty) {
-                    final event = args[0] as Map<String, dynamic>;
-                    final eventType = event['type'] as String?;
+                controller.addJavaScriptHandler(
+                  handlerName: 'automationBridge',
+                  callback: (args) {
+                    if (args.isNotEmpty) {
+                      final event = args[0] as Map<String, dynamic>;
+                      final eventType = event['type'] as String?;
 
-                    switch (eventType) {
-                      case 'GENERATION_COMPLETE':
-                        _handleGenerationComplete(controller);
-                        break;
-                      case 'AUTOMATION_FAILED':
-                        _handleAutomationFailed(event['payload'] as String?);
-                        break;
+                      // Route events to the ConversationProvider
+                      final notifier = ref.read(conversationProvider.notifier);
+
+                      switch (eventType) {
+                        case 'GENERATION_COMPLETE':
+                          notifier.onGenerationComplete();
+                          break;
+                        case 'AUTOMATION_FAILED':
+                          final payload = event['payload'] as String? ?? 'Unknown error';
+                          notifier.onAutomationFailed(payload);
+                          break;
+                      }
                     }
-                  }
-                },
-              );
-            },
-            onLoadStart: (controller, url) {
-              setState(() {
-                isLoading = true;
-              });
-            },
-            onLoadStop: (controller, url) async {
-              if (url != null && url.toString().contains('aistudio.google.com') && !scriptInjected) {
+                  },
+                );
+              },
+              onLoadStart: (controller, url) {
+                setState(() {
+                  isLoading = true;
+                });
+              },
+              onLoadStop: (controller, url) async {
                 setState(() {
                   isLoading = false;
                 });
-
-                try {
-                  await Future.delayed(const Duration(seconds: 2));
-
-                  final bridgeFile = await rootBundle.loadString('assets/js/bridge.js');
-                  await controller.evaluateJavascript(source: bridgeFile);
-
-                  setState(() {
-                    scriptInjected = true;
-                  });
-                } catch (e) {
-                }
-              } else {
+              },
+              onReceivedError: (controller, request, error) {
                 setState(() {
                   isLoading = false;
                 });
-              }
-            },
-            onReceivedError: (controller, request, error) {
-              setState(() {
-                isLoading = false;
-              });
-            },
-          ),
+              },
+            ),
 
           if (isLoading)
             Container(
