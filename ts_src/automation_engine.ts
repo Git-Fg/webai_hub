@@ -60,71 +60,92 @@ function waitForElement(selectors: string[], timeout = 10000): Promise<Element> 
     });
 }
 
-function debugPageElements() {
-    const textInputs = document.querySelectorAll('textarea, input[type="text"], [contenteditable="true"]');
-    const buttons = document.querySelectorAll('button');
-    const containers = document.querySelectorAll('[class*="response"], [class*="message"], [class*="content"]');
+interface FlutterInAppWebView {
+    callHandler(handlerName: string, ...args: unknown[]): void;
 }
 
-function notifyDart(event: { type: 'GENERATION_COMPLETE' | 'AUTOMATION_FAILED', payload?: any }) {
-    // @ts-ignore
-    if (window.flutter_inappwebview) {
-        // @ts-ignore
-        window.flutter_inappwebview.callHandler('automationBridge', event);
+interface WindowWithFlutterInAppWebView extends Window {
+    flutter_inappwebview?: FlutterInAppWebView;
+    startAutomation?: (prompt: string) => Promise<void>;
+    extractFinalResponse?: () => Promise<string>;
+}
+
+function notifyDart(event: { 
+    type: 'GENERATION_COMPLETE' | 'AUTOMATION_FAILED', 
+    payload?: string,
+    errorCode?: string,
+    location?: string,
+    diagnostics?: Record<string, unknown>
+}) {
+    const windowWithFlutter = window as WindowWithFlutterInAppWebView;
+    if (windowWithFlutter.flutter_inappwebview) {
+        windowWithFlutter.flutter_inappwebview.callHandler('automationBridge', event);
     }
+}
+
+function getPageDiagnostics(): Record<string, unknown> {
+    return {
+        'documentReadyState': document.readyState,
+        'hasFlutterBridge': !!(window as WindowWithFlutterInAppWebView).flutter_inappwebview,
+        'hasStartAutomation': typeof (window as WindowWithFlutterInAppWebView).startAutomation !== 'undefined',
+        'hasExtractFinalResponse': typeof (window as WindowWithFlutterInAppWebView).extractFinalResponse !== 'undefined',
+        'url': window.location.href,
+        'timestamp': new Date().toISOString(),
+    };
 }
 
 async function startAutomation(prompt: string): Promise<void> {
     try {
-        debugPageElements();
-
-        const inputArea = await waitForElement(PROMPT_INPUT_SELECTORS) as any;
+        const inputArea = await waitForElement(PROMPT_INPUT_SELECTORS);
 
         if (inputArea.tagName === 'TEXTAREA' || inputArea.tagName === 'INPUT') {
-            inputArea.value = prompt;
+            const input = inputArea as HTMLInputElement | HTMLTextAreaElement;
+            input.value = prompt;
             inputArea.dispatchEvent(new Event('input', { bubbles: true }));
             inputArea.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (inputArea.contentEditable === 'true') {
-            inputArea.innerText = prompt;
+        } else if (inputArea instanceof HTMLElement && inputArea.contentEditable === 'true') {
+            const editable = inputArea as HTMLElement;
+            editable.innerText = prompt;
             inputArea.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
-            inputArea.click();
-            await new Promise(resolve => setTimeout(resolve, 500));
-            (inputArea as any).value = prompt;
+            const element = inputArea as HTMLElement;
+            element.click();
+            await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
+            const fallbackInput = element as HTMLInputElement;
+            if (fallbackInput.value !== undefined) {
+                fallbackInput.value = prompt;
+            }
         }
 
         const sendButton = await waitForElement(SEND_BUTTON_SELECTORS) as HTMLElement;
         sendButton.click();
 
-        console.log("Automation sent. Now observing for response completion...");
-
-        // Wait for generation indicator to appear first
         await waitForElement(GENERATION_INDICATOR_SELECTORS, 5000);
-        console.log("Generation indicator appeared. Observing for its disappearance.");
 
-        // Now observe its disappearance with MutationObserver
         await new Promise<void>((resolve) => {
-            const observer = new MutationObserver((mutations, obs) => {
-                const isGenerating = document.querySelector(GENERATION_INDICATOR_SELECTORS[0]); // Check primary selector for MVP simplicity
+            const primarySelector = GENERATION_INDICATOR_SELECTORS[0];
+            if (!primarySelector) {
+                resolve();
+                return;
+            }
+
+            const observer = new MutationObserver((_mutations, obs) => {
+                const isGenerating = document.querySelector(primarySelector);
 
                 if (!isGenerating) {
-                    console.log("Generation indicator disappeared. Generation complete.");
                     notifyDart({ type: 'GENERATION_COMPLETE' });
-                    obs.disconnect(); // Clean up the observer
+                    obs.disconnect();
                     clearTimeout(timeoutId);
                     resolve();
                 }
             });
 
-            // Observe changes in the document body
             observer.observe(document.body, {
                 childList: true,
                 subtree: true,
             });
 
-            // Add safety timeout
             const timeoutId = setTimeout(() => {
-                console.warn("Observation timed out after 45s. Assuming completion.");
                 observer.disconnect();
                 notifyDart({ type: 'GENERATION_COMPLETE' });
                 resolve();
@@ -132,7 +153,25 @@ async function startAutomation(prompt: string): Promise<void> {
         });
 
     } catch (error) {
-        notifyDart({ type: 'AUTOMATION_FAILED', payload: error instanceof Error ? error.message : String(error) });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const diagnostics: Record<string, unknown> = {
+            ...getPageDiagnostics(),
+            'promptLength': prompt.length,
+            'promptPreview': prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt,
+        };
+        
+        if (error instanceof Error && error.message.includes('not found within')) {
+            diagnostics['errorType'] = 'ELEMENT_NOT_FOUND';
+            diagnostics['timeoutReached'] = true;
+        }
+        
+        notifyDart({ 
+            type: 'AUTOMATION_FAILED', 
+            payload: errorMessage,
+            errorCode: 'AUTOMATION_EXECUTION_FAILED',
+            location: 'startAutomation',
+            diagnostics: diagnostics
+        });
         throw error;
     }
 }
@@ -165,17 +204,42 @@ async function extractFinalResponse(): Promise<string> {
         }
 
         const lastResponse = allResponses[allResponses.length - 1];
-        const responseText = lastResponse.innerText?.trim() || "";
 
+        if (!lastResponse) {
+            return "No last response element found, though the array was not empty.";
+        }
+
+        const responseText = lastResponse.innerText?.trim() || "";
         return responseText;
 
     } catch (error) {
-        notifyDart({ type: 'AUTOMATION_FAILED', payload: error instanceof Error ? error.message : String(error) });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const diagnostics = {
+            ...getPageDiagnostics(),
+            'responseContainerSelectors': RESPONSE_CONTAINER_SELECTORS.length,
+            'foundResponseElements': 0,
+        };
+        
+        notifyDart({ 
+            type: 'AUTOMATION_FAILED', 
+            payload: errorMessage,
+            errorCode: 'RESPONSE_EXTRACTION_FAILED',
+            location: 'extractFinalResponse',
+            diagnostics: diagnostics
+        });
         throw error;
     }
 }
 
-// @ts-ignore
-window.startAutomation = startAutomation;
-// @ts-ignore
-window.extractFinalResponse = extractFinalResponse;
+function signalReady() {
+    const windowWithFlutter = window as WindowWithFlutterInAppWebView;
+    if (windowWithFlutter.flutter_inappwebview) {
+        windowWithFlutter.flutter_inappwebview.callHandler('bridgeReady');
+    }
+}
+
+const windowWithFlutter = window as WindowWithFlutterInAppWebView;
+windowWithFlutter.startAutomation = startAutomation;
+windowWithFlutter.extractFinalResponse = extractFinalResponse;
+
+signalReady();

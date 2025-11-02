@@ -1,68 +1,300 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'automation_errors.dart';
+import 'bridge_diagnostics_provider.dart';
+import 'javascript_bridge_interface.dart';
 
-final webViewControllerProvider = StateProvider<InAppWebViewController?>((ref) => null);
+part 'javascript_bridge.g.dart';
 
-class JavaScriptBridge {
-  final Ref ref;
-  JavaScriptBridge(this.ref);
+@riverpod
+class WebViewController extends _$WebViewController {
+  @override
+  InAppWebViewController? build() => null;
 
-  InAppWebViewController? get _controller => ref.read(webViewControllerProvider);
+  void setController(InAppWebViewController? controller) {
+    state = controller;
+  }
+}
 
-  Future<void> startAutomation(String prompt) async {
-    if (_controller == null) {
-      throw Exception("WebView not ready");
-    }
+@riverpod
+class BridgeReady extends _$BridgeReady {
+  @override
+  Completer<void> build() {
+    return Completer<void>();
+  }
 
-    try {
-      final isPageLoaded = await _controller!.evaluateJavascript(
-        source: "document.readyState === 'complete'"
-      );
-
-      if (isPageLoaded != true) {
-        throw Exception("WebView page not fully loaded");
-      }
-
-      final checkResult = await _controller!.evaluateJavascript(
-        source: "typeof startAutomation !== 'undefined' && typeof extractFinalResponse !== 'undefined'"
-      );
-
-      if (checkResult != true) {
-        throw Exception("Automation functions not available in WebView. Script may not be injected yet.");
-      }
-
-      final escapedPrompt = prompt
-          .replaceAll('\\', '\\\\')
-          .replaceAll("'", "\\'")
-          .replaceAll('"', '\\"')
-          .replaceAll('\n', '\\n')
-          .replaceAll('\r', '\\r');
-
-      await _controller!.evaluateJavascript(
-        source: "startAutomation('$escapedPrompt');"
-      );
-    } catch (e) {
-      throw Exception("Failed to start automation: $e");
+  void complete() {
+    if (!state.isCompleted) {
+      state.complete();
     }
   }
 
-  Future<String> extractFinalResponse() async {
-    if (_controller == null) throw Exception("WebView not ready");
+  void reset() {
+    state = Completer<void>();
+  }
+}
 
+class JavaScriptBridge implements JavaScriptBridgeInterface {
+  final Ref ref;
+  JavaScriptBridge(this.ref);
+
+  InAppWebViewController? get _controller =>
+      ref.read(webViewControllerProvider);
+
+  Map<String, dynamic> _getBridgeDiagnostics() {
+    final completer = ref.read(bridgeReadyProvider);
+    final controller = ref.read(webViewControllerProvider);
+    return {
+      'completerInitialized': true,
+      'completerCompleted': completer.isCompleted,
+      'webViewControllerExists': controller != null,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<void> _waitForBridgeToBeReady() async {
+    final completer = ref.read(bridgeReadyProvider);
+
+    int attempts = 0;
+    const maxAttempts = 15;
+
+    while (attempts < maxAttempts) {
+      if (!ref.mounted) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeNotInitialized,
+          location: '_waitForBridgeToBeReady',
+          message: 'Provider disposed while waiting for bridge',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final controller = _controller;
+      if (controller != null) {
+        try {
+          final checkBridge = await controller.evaluateJavascript(
+            source:
+                "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'",
+          );
+          if (checkBridge == true && completer.isCompleted) {
+            return;
+          }
+        } catch (_) {}
+      }
+
+      if (completer.isCompleted) {
+        return;
+      }
+
+      try {
+        await completer.future.timeout(
+          const Duration(seconds: 1),
+        );
+        return;
+      } on TimeoutException {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+                AutomationErrorCode.bridgeTimeout.name,
+                '_waitForBridgeToBeReady',
+              );
+          throw AutomationError(
+            errorCode: AutomationErrorCode.bridgeTimeout,
+            location: '_waitForBridgeToBeReady',
+            message: 'Bridge readiness timeout.',
+            diagnostics: _getBridgeDiagnostics(),
+            originalError: TimeoutException(
+              "Bridge readiness signal not received within timeout.",
+            ),
+          );
+        }
+      } catch (e) {
+        if (e is AutomationError) rethrow;
+        attempts++;
+        if (attempts >= maxAttempts) {
+          throw AutomationError(
+            errorCode: AutomationErrorCode.bridgeTimeout,
+            location: '_waitForBridgeToBeReady',
+            message: 'Bridge readiness timeout.',
+            diagnostics: _getBridgeDiagnostics(),
+            originalError: e,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  Future<void> startAutomation(String prompt) async {
     try {
-      final result = await _controller!.evaluateJavascript(
-        source: "typeof extractFinalResponse !== 'undefined' ? extractFinalResponse() : null"
+      await _waitForBridgeToBeReady();
+
+      final controller = _controller;
+      if (controller == null) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.webViewNotReady,
+          location: 'startAutomation',
+          message: 'WebView controller is null',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      dynamic isPageLoaded;
+      try {
+        isPageLoaded = await controller.evaluateJavascript(
+            source: "document.readyState === 'complete'");
+      } catch (e, stackTrace) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.webViewNotReady,
+          location: 'startAutomation',
+          message: 'Failed to check page load state',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'javascriptEvaluationError': e.toString(),
+          },
+          originalError: e,
+          stackTrace: stackTrace,
+        );
+      }
+
+      if (isPageLoaded != true) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.pageNotLoaded,
+          location: 'startAutomation',
+          message: 'WebView page not fully loaded',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'documentReadyState': isPageLoaded.toString(),
+          },
+        );
+      }
+
+      dynamic checkResult;
+      try {
+        checkResult = await controller.evaluateJavascript(
+            source:
+                "typeof startAutomation !== 'undefined' && typeof extractFinalResponse !== 'undefined'");
+      } catch (e, stackTrace) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.scriptNotInjected,
+          location: 'startAutomation',
+          message: 'Failed to check script availability',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'javascriptEvaluationError': e.toString(),
+          },
+          originalError: e,
+          stackTrace: stackTrace,
+        );
+      }
+
+      if (checkResult != true) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.scriptNotInjected,
+          location: 'startAutomation',
+          message: 'Automation functions not available in WebView',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'functionCheckResult': checkResult.toString(),
+          },
+        );
+      }
+
+      final encodedPrompt = jsonEncode(prompt);
+      try {
+        await controller.evaluateJavascript(
+            source: "startAutomation($encodedPrompt);");
+      } catch (e, stackTrace) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.automationExecutionFailed,
+          location: 'startAutomation',
+          message: 'Failed to execute automation script',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'promptLength': prompt.length,
+            'promptPreview':
+                prompt.length > 50 ? '${prompt.substring(0, 50)}...' : prompt,
+          },
+          originalError: e,
+          stackTrace: stackTrace,
+        );
+      }
+    } on AutomationError {
+      rethrow;
+    } catch (e, stackTrace) {
+      throw AutomationError(
+        errorCode: AutomationErrorCode.automationExecutionFailed,
+        location: 'startAutomation',
+        message: 'Unexpected error during automation',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+        stackTrace: stackTrace,
       );
+    }
+  }
+
+  @override
+  Future<String> extractFinalResponse() async {
+    try {
+      await _waitForBridgeToBeReady();
+
+      final controller = _controller;
+      if (controller == null) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.webViewNotReady,
+          location: 'extractFinalResponse',
+          message: 'WebView controller is null',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      dynamic result;
+      try {
+        result = await controller.evaluateJavascript(
+            source:
+                "typeof extractFinalResponse !== 'undefined' ? extractFinalResponse() : null");
+      } catch (e, stackTrace) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.responseExtractionFailed,
+          location: 'extractFinalResponse',
+          message: 'Failed to execute extraction script',
+          diagnostics: _getBridgeDiagnostics(),
+          originalError: e,
+          stackTrace: stackTrace,
+        );
+      }
 
       if (result == null || result is! String) {
-        throw Exception("No response available or extraction failed");
+        throw AutomationError(
+          errorCode: AutomationErrorCode.responseExtractionFailed,
+          location: 'extractFinalResponse',
+          message: 'No response available or extraction failed',
+          diagnostics: {
+            ..._getBridgeDiagnostics(),
+            'resultType': result.runtimeType.toString(),
+            'resultIsNull': result == null,
+          },
+        );
       }
 
       return result;
-    } catch (e) {
-      throw Exception("Failed to extract response: $e");
+    } on AutomationError {
+      rethrow;
+    } catch (e, stackTrace) {
+      throw AutomationError(
+        errorCode: AutomationErrorCode.responseExtractionFailed,
+        location: 'extractFinalResponse',
+        message: 'Unexpected error during response extraction',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 }
 
-final javaScriptBridgeProvider = Provider((ref) => JavaScriptBridge(ref));
+@Riverpod(keepAlive: true)
+JavaScriptBridgeInterface javaScriptBridge(Ref ref) {
+  return JavaScriptBridge(ref);
+}

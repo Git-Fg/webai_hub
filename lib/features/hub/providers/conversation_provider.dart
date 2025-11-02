@@ -1,8 +1,9 @@
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/main.dart';
-import 'dart:math';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 
 part 'conversation_provider.g.dart';
 
@@ -13,7 +14,7 @@ class Conversation extends _$Conversation {
 
   void addMessage(String text, bool isFromUser) {
     final message = Message(
-      id: Random().nextDouble().toString(),
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
       text: text,
       isFromUser: isFromUser,
     );
@@ -23,48 +24,133 @@ class Conversation extends _$Conversation {
   Future<void> sendPromptToAutomation(String prompt) async {
     addMessage(prompt, true);
 
-    final assistantMessageId = Random().nextDouble().toString();
-    state = [
-      ...state,
-      Message(id: assistantMessageId, text: "Sending...", isFromUser: false, status: MessageStatus.sending)
-    ];
+    final assistantMessage = Message(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        text: "Sending...",
+        isFromUser: false,
+        status: MessageStatus.sending);
+    state = [...state, assistantMessage];
 
-    // Switch to WebView tab when automation starts
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(AutomationStatus.sending);
+
     final tabController = ref.read(tabControllerProvider);
-    tabController?.animateTo(1); // Index 1 for WebView tab
+    tabController?.animateTo(1);
+
+    if (!ref.mounted) return;
 
     try {
+      if (!ref.mounted) return;
+
       final bridge = ref.read(javaScriptBridgeProvider);
       await bridge.startAutomation(prompt);
+
+      if (ref.mounted) {
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(AutomationStatus.observing);
+      }
     } catch (e) {
-      state = state.map((m) {
-        if (m.id == assistantMessageId) {
-          return m.copyWith(text: "Automation error: ${e.toString()}", status: MessageStatus.error);
+      if (ref.mounted) {
+        String errorMessage;
+        if (e is AutomationError) {
+          errorMessage = '[${e.errorCode.name.toUpperCase()}]\n'
+              '${e.message}\n'
+              'Location: ${e.location}';
+
+          if (e.diagnostics.isNotEmpty) {
+            final stateInfo = e.diagnostics.entries
+                .where((entry) => entry.key != 'timestamp')
+                .map((entry) => '${entry.key}: ${entry.value}')
+                .join(', ');
+            if (stateInfo.isNotEmpty) {
+              errorMessage += '\nState: $stateInfo';
+            }
+          }
+        } else {
+          errorMessage = 'Automation failed: ${e.toString()}';
         }
-        return m;
-      }).toList();
+
+        _updateLastMessage(errorMessage, MessageStatus.error);
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(AutomationStatus.failed);
+      }
     }
   }
 
-  void onGenerationComplete() async {
+  void onGenerationComplete() {
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(AutomationStatus.refining);
+  }
+
+  Future<void> validateAndFinalizeResponse() async {
     final bridge = ref.read(javaScriptBridgeProvider);
     try {
       final responseText = await bridge.extractFinalResponse();
-      _updateLastMessage(responseText, MessageStatus.success);
+      if (ref.mounted) {
+        _updateLastMessage(responseText, MessageStatus.success);
+
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(AutomationStatus.idle);
+
+        final tabController = ref.read(tabControllerProvider);
+        tabController?.animateTo(0);
+      }
     } catch (e) {
-      _updateLastMessage("Failed to extract response: ${e.toString()}", MessageStatus.error);
+      if (ref.mounted) {
+        String errorMessage;
+        if (e is AutomationError) {
+          errorMessage = '[${e.errorCode.name.toUpperCase()}]\n'
+              '${e.message}\n'
+              'Location: ${e.location}';
+
+          if (e.diagnostics.isNotEmpty) {
+            final stateInfo = e.diagnostics.entries
+                .where((entry) => entry.key != 'timestamp')
+                .map((entry) => '${entry.key}: ${entry.value}')
+                .join(', ');
+            if (stateInfo.isNotEmpty) {
+              errorMessage += '\nState: $stateInfo';
+            }
+          }
+        } else {
+          errorMessage = 'Failed to extract response: ${e.toString()}';
+        }
+
+        _updateLastMessage(errorMessage, MessageStatus.error);
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(AutomationStatus.failed);
+      }
     }
+  }
+
+  void cancelAutomation() {
+    _updateLastMessage("Automation cancelled by user", MessageStatus.error);
+    ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.idle);
+
+    final tabController = ref.read(tabControllerProvider);
+    tabController?.animateTo(0);
   }
 
   void onAutomationFailed(String error) {
     _updateLastMessage("Automation failed: $error", MessageStatus.error);
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(AutomationStatus.failed);
   }
 
   void _updateLastMessage(String text, MessageStatus status) {
+    if (!ref.mounted) return;
+
     if (state.isNotEmpty) {
       final lastMessage = state.last;
-      if (!lastMessage.isFromUser && lastMessage.status == MessageStatus.sending) {
-        // Create a new list to ensure immutability
+      if (!lastMessage.isFromUser &&
+          lastMessage.status == MessageStatus.sending) {
         final newMessages = List<Message>.from(state);
         newMessages[newMessages.length - 1] = lastMessage.copyWith(
           text: text,

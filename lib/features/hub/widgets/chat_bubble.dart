@@ -32,7 +32,8 @@ class ChatBubble extends StatelessWidget {
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
               decoration: BoxDecoration(
                 color: message.isFromUser
                     ? Colors.blue.shade500
@@ -43,7 +44,7 @@ class ChatBubble extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
@@ -71,7 +72,9 @@ class ChatBubble extends StatelessWidget {
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                message.isFromUser ? Colors.white70 : Colors.grey.shade600,
+                                message.isFromUser
+                                    ? Colors.white70
+                                    : Colors.grey.shade600,
                               ),
                             ),
                           ),
@@ -80,7 +83,9 @@ class ChatBubble extends StatelessWidget {
                             'Sending...',
                             style: TextStyle(
                               fontSize: 12,
-                              color: message.isFromUser ? Colors.white70 : Colors.grey.shade600,
+                              color: message.isFromUser
+                                  ? Colors.white70
+                                  : Colors.grey.shade600,
                             ),
                           ),
                         ],
@@ -95,14 +100,18 @@ class ChatBubble extends StatelessWidget {
                           Icon(
                             Icons.error_outline,
                             size: 12,
-                            color: message.isFromUser ? Colors.red.shade200 : Colors.red.shade600,
+                            color: message.isFromUser
+                                ? Colors.red.shade200
+                                : Colors.red.shade600,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             'Error',
                             style: TextStyle(
                               fontSize: 12,
-                              color: message.isFromUser ? Colors.red.shade200 : Colors.red.shade600,
+                              color: message.isFromUser
+                                  ? Colors.red.shade200
+                                  : Colors.red.shade600,
                             ),
                           ),
                         ],

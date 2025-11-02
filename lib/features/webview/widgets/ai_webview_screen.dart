@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 
 class AiWebviewScreen extends ConsumerStatefulWidget {
@@ -21,7 +22,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   @override
   void initState() {
     super.initState();
-    // Load the script once when the widget starts
     rootBundle.loadString('assets/js/bridge.js').then((script) {
       setState(() {
         _bridgeScript = script;
@@ -29,7 +29,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
     });
   }
 
-  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -62,13 +61,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
       ),
       body: Stack(
         children: [
-          // Wait for script to be loaded before building WebView
           if (_bridgeScript != null)
             InAppWebView(
               initialUrlRequest: URLRequest(
                 url: WebUri("https://aistudio.google.com/prompts/new_chat"),
               ),
-              // CRITICAL: Use initialUserScripts for injection
               initialUserScripts: UnmodifiableListView<UserScript>([
                 UserScript(
                   source: _bridgeScript!,
@@ -83,11 +80,19 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                 clearCache: false,
                 clearSessionCache: false,
                 mediaPlaybackRequiresUserGesture: false,
-                userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
+                userAgent:
+                    'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36',
               ),
               onWebViewCreated: (controller) {
                 webViewController = controller;
-                ref.read(webViewControllerProvider.notifier).state = controller;
+                ref
+                    .read(webViewControllerProvider.notifier)
+                    .setController(controller);
+                ref
+                    .read(bridgeDiagnosticsStateProvider.notifier)
+                    .recordWebViewCreated();
+
+                ref.read(bridgeReadyProvider.notifier).reset();
 
                 controller.addJavaScriptHandler(
                   handlerName: 'automationBridge',
@@ -96,7 +101,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                       final event = args[0] as Map<String, dynamic>;
                       final eventType = event['type'] as String?;
 
-                      // Route events to the ConversationProvider
                       final notifier = ref.read(conversationProvider.notifier);
 
                       switch (eventType) {
@@ -104,11 +108,45 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                           notifier.onGenerationComplete();
                           break;
                         case 'AUTOMATION_FAILED':
-                          final payload = event['payload'] as String? ?? 'Unknown error';
-                          notifier.onAutomationFailed(payload);
+                          final payload =
+                              event['payload'] as String? ?? 'Unknown error';
+                          final errorCode = event['errorCode'] as String?;
+                          final location = event['location'] as String?;
+                          final diagnostics =
+                              event['diagnostics'] as Map<String, dynamic>?;
+
+                          String errorMessage;
+                          if (errorCode != null && location != null) {
+                            errorMessage =
+                                '[$errorCode]\n$payload\nLocation: $location';
+                            if (diagnostics != null && diagnostics.isNotEmpty) {
+                              final stateInfo = diagnostics.entries
+                                  .where((entry) => entry.key != 'timestamp')
+                                  .map(
+                                      (entry) => '${entry.key}: ${entry.value}')
+                                  .join(', ');
+                              if (stateInfo.isNotEmpty) {
+                                errorMessage += '\nState: $stateInfo';
+                              }
+                            }
+                          } else {
+                            errorMessage = payload;
+                          }
+
+                          notifier.onAutomationFailed(errorMessage);
                           break;
                       }
                     }
+                  },
+                );
+
+                controller.addJavaScriptHandler(
+                  handlerName: 'bridgeReady',
+                  callback: (args) {
+                    ref.read(bridgeReadyProvider.notifier).complete();
+                    ref
+                        .read(bridgeDiagnosticsStateProvider.notifier)
+                        .recordBridgeReady();
                   },
                 );
               },
@@ -128,7 +166,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                 });
               },
             ),
-
           if (isLoading)
             Container(
               color: Colors.white,

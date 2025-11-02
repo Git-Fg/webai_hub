@@ -1,9 +1,12 @@
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
+import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/providers/app_ready_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Create a provider for the TabController
 final tabControllerProvider = Provider<TabController?>((ref) => null);
 
 void main() async {
@@ -28,7 +31,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Transform MainScreen to ConsumerStatefulWidget
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
@@ -36,13 +38,47 @@ class MainScreen extends ConsumerStatefulWidget {
   ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends ConsumerState<MainScreen> with SingleTickerProviderStateMixin {
+class _MainScreenState extends ConsumerState<MainScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      setState(() {
+        _currentIndex = _tabController.index;
+      });
+    });
+
+    _prewarmWebView();
+  }
+
+  void _prewarmWebView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (!mounted) return;
+
+      _tabController.animateTo(1);
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      try {
+        await ref.read(bridgeReadyProvider).future.timeout(
+              const Duration(seconds: 15),
+            );
+      } catch (e) {
+      } finally {
+        if (mounted) {
+          _tabController.animateTo(0);
+          ref.read(appReadyProvider.notifier).setReady();
+        }
+      }
+    });
   }
 
   @override
@@ -53,18 +89,30 @@ class _MainScreenState extends ConsumerState<MainScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    // Expose the controller via a ProviderScope local override
     return ProviderScope(
       overrides: [
         tabControllerProvider.overrideWithValue(_tabController),
       ],
       child: Scaffold(
-        body: TabBarView(
-          controller: _tabController,
-          physics: const NeverScrollableScrollPhysics(),
-          children: const [
-            HubScreen(),
-            AiWebviewScreen(),
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: _currentIndex,
+              children: [
+                const HubScreen(),
+                const AiWebviewScreen(),
+              ],
+            ),
+            Consumer(
+              builder: (context, ref, _) {
+                final status = ref.watch(automationStateProvider);
+
+                if (status != AutomationStatus.idle && _currentIndex == 1) {
+                  return const CompanionOverlay();
+                }
+                return const SizedBox.shrink();
+              },
+            ),
           ],
         ),
         bottomNavigationBar: TabBar(

@@ -1,26 +1,27 @@
 name: ai_hybrid_hub
 description: "AI Hybrid Hub MVP"
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
-  freezed_annotation: ^2.4.1
+  flutter_riverpod: ^3.0.1
+  riverpod_annotation: ^3.0.1
+  freezed_annotation: ^3.0.0
   flutter_inappwebview: ^6.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  build_runner: ^2.4.9
-  riverpod_generator: ^2.4.0
-  freezed: ^2.5.2
-  flutter_lints: ^3.0.0
+  build_runner: ^2.4.11
+  riverpod_generator: ^3.0.1
+  freezed: ^3.0.0
+  flutter_lints: ^4.0.0
+  mockito: ^5.4.4
 
 flutter:
   uses-material-design: true
