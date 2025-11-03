@@ -1,46 +1,62 @@
-# Fichiers générés par les outils de build et les IDE
-.dart_tool/
-.idea/
-.claude/
-build/
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+
+# IntelliJ
 *.iml
 *.ipr
 *.iws
+.idea/
 
-# Fichiers générés par Flutter
-.metadata
+# VS Code
+.vscode/
+
+# Flutter/Dart
+.dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
-pubspec.lock
+.pub-cache/
+.pub/
+/build/
 
-# Fichiers générés par Node.js/npm
-node_modules/
-package-lock.json
+# Node.js
+/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-assets/js/bridge.js
 
-# Fichiers de configuration spécifiques à l'OS
-.DS_Store
-Thumbs.db
+# Fichiers générés spécifiques au projet
+# C'est un artefact de build, il DOIT être ignoré.
+/assets/js/bridge.js
 
-# Coverage et documentation
-/coverage/
-**/doc/api/
+# Android
+/android/.gradle/
+/android/app/build/
+/android/local.properties
+/android/.idea/
 
-# Build artifacts
-/android/app/debug
-/android/app/profile
-/android/app/release
+# iOS
+/ios/Pods/
+/ios/Flutter/App.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/flutter_export_environment.sh
+/ios/Flutter/.last_build_id
+/ios/.symlinks/
+/ios/Runner/GeneratedPluginRegistrant.*
+/ios/Runner.xcworkspace/xcshareddata/
+/ios/Runner.xcworkspace/xcuserdata/
+/ios/Runner.xcodeproj/project.xcworkspace/
+/ios/Runner.xcodeproj/xcuserdata/
+/ios/Podfile.lock
 
-# Symbolication related
+# Fichiers de build génériques
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
-
-# Autres fichiers générés
-.pub-cache/
-.pub/
-**/ios/Flutter/.last_build_id
