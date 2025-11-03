@@ -1,4 +1,6 @@
-# AI Hybrid Hub
+# AI Hybrid Hub - WIP 
+
+Thanks to Code Web Chat for the inspiration : https://github.com/robertpiosik/CodeWebChat
 
 **An intelligent, hybrid AI assistant that bridges a native Flutter interface with the power of web-based AI providers through JavaScript automation.**
 
