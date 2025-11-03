@@ -65,9 +65,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
   void _onTabChanged() {
     if (!mounted) return;
     final newIndex = _tabController.index;
-    final currentProviderIndex = ref.read(currentTabIndexProvider);
-    if (currentProviderIndex != newIndex) {
-      ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
+      final currentProviderIndex = ref.read(currentTabIndexProvider);
+      if (currentProviderIndex != newIndex) {
+        ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
     }
   }
 
@@ -94,12 +94,13 @@ class _MainScreenState extends ConsumerState<MainScreen>
         children: [
           // Use IndexedStack - WebView will be built when tab switches to index 1
           IndexedStack(
-            index: currentIndex,
-            sizing: StackFit.expand,
-            children: const [
-              HubScreen(),
-              AiWebviewScreen(),
-            ],
+          index: currentIndex,
+          sizing: StackFit.expand,
+          children: const [
+            HubScreen(),
+            // Remove const to allow widget to rebuild when tab changes
+            AiWebviewScreen(),
+          ],
           ),
           Consumer(
             builder: (context, ref, _) {

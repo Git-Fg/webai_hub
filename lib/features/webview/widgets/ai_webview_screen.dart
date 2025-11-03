@@ -1,11 +1,13 @@
 import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
 
 class AiWebviewScreen extends ConsumerStatefulWidget {
@@ -18,6 +20,33 @@ class AiWebviewScreen extends ConsumerStatefulWidget {
 class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   InAppWebViewController? webViewController;
   double _progress = 0;
+  String? _htmlContent;
+
+  @override
+  void initState() {
+    super.initState();
+    // Charger le HTML depuis les assets de manière asynchrone
+    _loadHtmlContent();
+  }
+
+  Future<void> _loadHtmlContent() async {
+    try {
+      final content = await rootBundle.loadString('assets/test_page.html');
+      if (mounted) {
+        setState(() {
+          _htmlContent = content;
+        });
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[AiWebviewScreen] Error loading HTML: $e');
+      if (mounted) {
+        setState(() {
+          _htmlContent = '';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +120,14 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               : null,
         ),
         body: bridgeScriptAsync.when(
-          data: (bridgeScript) => _buildWebView(bridgeScript),
+          data: (bridgeScript) {
+            if (_htmlContent == null) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            return _buildWebView(bridgeScript, _htmlContent!);
+          },
           loading: () => const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           ),
@@ -105,23 +141,34 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
     );
   }
 
-  Widget _buildWebView(String bridgeScript) {
+  Widget _buildWebView(String bridgeScript, String htmlContent) {
     // Définir une variable pour switcher facilement
-    const bool useLocalSandbox = true;
+    const bool useLocalSandbox =
+        true; // Activé pour tester avec sandbox représentatif
 
     return InAppWebView(
       key: const ValueKey('ai_webview'), // Key to force rebuild if needed
-      // MODIFICATION CLÉ : Charger localement ou à distance
+      // Charger le HTML directement via loadData (sans script pré-injecté)
+      initialData: useLocalSandbox
+          ? InAppWebViewInitialData(
+              data: htmlContent, // HTML pur, sans script pré-injecté
+              mimeType: 'text/html',
+              encoding: 'utf8',
+              baseUrl: WebUri('file:///android_asset/flutter_assets/'),
+            )
+          // ignore: dead_code
+          : null,
       initialUrlRequest: useLocalSandbox
-          ? URLRequest(
-              url: WebUri(
-                  "file:///android_asset/flutter_assets/assets/test_page.html"))
+          ? null
+          // ignore: dead_code
           : URLRequest(
               url: WebUri("https://aistudio.google.com/prompts/new_chat")),
+      // Injecter le script bridge via initialUserScripts (comme le vrai site)
+      // Cela rend le sandbox représentatif : le script est injecté de la même manière
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: bridgeScript,
-          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
         ),
       ]),
       initialSettings: InAppWebViewSettings(
@@ -132,8 +179,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         clearCache: false,
         clearSessionCache: false,
         mediaPlaybackRequiresUserGesture: false,
-        userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
       ),
       onWebViewCreated: (controller) {
         // Debug: Log WebView creation (remove in production)
@@ -160,6 +205,12 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               switch (eventType) {
                 case 'GENERATION_COMPLETE':
                   notifier.onGenerationComplete();
+                  break;
+                case 'LOGIN_REQUIRED':
+                  // Mettre le statut à needsLogin pour afficher l'overlay de login
+                  ref
+                      .read(automationStateProvider.notifier)
+                      .setStatus(AutomationStatus.needsLogin);
                   break;
                 case 'AUTOMATION_FAILED':
                   final payload =
@@ -196,7 +247,14 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         controller.addJavaScriptHandler(
           handlerName: 'bridgeReady',
           callback: (args) {
+            // ignore: avoid_print
+            print('[AiWebviewScreen] bridgeReady handler called');
+            // Le ref du ConsumerStatefulWidget pointe vers le même container
+            // que celui utilisé dans UncontrolledProviderScope
             ref.read(bridgeReadyProvider.notifier).markReady();
+            // ignore: avoid_print
+            print(
+                '[AiWebviewScreen] bridgeReadyProvider marked as ready, state=${ref.read(bridgeReadyProvider)}');
             ref
                 .read(bridgeDiagnosticsStateProvider.notifier)
                 .recordBridgeReady();
@@ -212,17 +270,22 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         setState(() {
           _progress = 0;
         });
+        // Reset bridge ready when a new page starts loading
+        ref.read(bridgeReadyProvider.notifier).reset();
       },
       onLoadStop: (controller, url) async {
         setState(() {
           _progress = 1.0;
         });
-        // Reset bridge ready when page is fully loaded so JS can signal ready
-        ref.read(bridgeReadyProvider.notifier).reset();
 
         // Capture console logs
         final bridge = ref.read(javaScriptBridgeProvider);
         await (bridge as JavaScriptBridge).captureConsoleLogs();
+      },
+      onConsoleMessage: (controller, consoleMessage) {
+        // Capture console messages for debugging
+        // ignore: avoid_print
+        print('[WebView CONSOLE] ${consoleMessage.message}');
       },
       onReceivedError: (controller, request, error) {
         setState(() {

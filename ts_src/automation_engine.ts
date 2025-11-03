@@ -1,7 +1,8 @@
 // Selectors based on actual DOM inspection via mobile-mcp
-// Input detected: EditText with label "Start typing a prompt"
+// High-fidelity selectors matching real Google AI Studio structure
 const PROMPT_INPUT_SELECTORS = [
-    "textarea[placeholder*='Start typing a prompt']",
+    "textarea[placeholder*='Start typing a prompt']",  // High-fidelity: real site structure
+    "textarea[aria-label*='Start typing a prompt']",  // Alternative aria-label
     "textarea[placeholder*='typing a prompt']",
     "input[placeholder*='Start typing a prompt']",
     "input[placeholder*='typing a prompt']",
@@ -17,31 +18,40 @@ const PROMPT_INPUT_SELECTORS = [
     "input[type='text']"
 ];
 
-// Button detected: aria-label "Append to prompt and run (Ctrl + Enter)" and text "Run"
+// Button detected: aria-label "Run" in high-fidelity structure
 const SEND_BUTTON_SELECTORS = [
+    'button[aria-label="Run"]',  // High-fidelity: exact match for real site
+    'button[aria-label*="Run"]',
     'button[aria-label*="Append to prompt and run"]',
     'button[aria-label*="Append to Prompt and run"]',
-    'button[aria-label*="run" i]',
-    'button[aria-label*="Run"]',
+    'button[aria-label*="run"]',
     'send-button[variant="primary"]',  // Original blueprint selector
     'button[aria-label*="Send"]',
     'button:contains("Run")',
     '.send-button button',
-    'button[type="submit"]'
+    'button[type="submit"]',
+    'button'  // Fallback to any button
 ];
 
+// Response containers: targeting ms-chat-turn with Model role and cmark-node
 const RESPONSE_CONTAINER_SELECTORS = [
+    'ms-chat-turn[data-turn-role="Model"] ms-cmark-node',  // High-fidelity: real structure
+    'ms-chat-turn[data-turn-role="Model"] .response-content',  // Alternative: response content wrapper
+    'ms-chat-turn[data-turn-role="Model"]',  // Fallback to entire turn
+    '.response-content',  // High-fidelity sandbox fallback
     "response-container",
     ".response-message",
     ".message-response",
     ".markdown",
-    ".response-content",
     "[data-testid*='response']",
     ".message-content"
 ];
 
+// Generation indicators: targeting ms-thought-chunk and mat-icon[data-mat-icon-name="stop"]
 const GENERATION_INDICATOR_SELECTORS = [
-    'mat-icon[data-mat-icon-name="stop"]',
+    'ms-thought-chunk',  // High-fidelity: thought chunk appears during generation
+    'ms-thought-chunk .thinking-progress-icon.in-progress',  // Specific indicator with class
+    'mat-icon[data-mat-icon-name="stop"]',  // Real site: stop icon during generation
     ".generating-indicator",
     ".loading-indicator",
     "[data-testid*='generating']",
@@ -130,7 +140,7 @@ interface WindowWithFlutterInAppWebView extends Window {
 }
 
 function notifyDart(event: { 
-    type: 'GENERATION_COMPLETE' | 'AUTOMATION_FAILED', 
+    type: 'GENERATION_COMPLETE' | 'AUTOMATION_FAILED' | 'LOGIN_REQUIRED', 
     payload?: string,
     errorCode?: string,
     location?: string,
@@ -140,6 +150,36 @@ function notifyDart(event: {
     if (windowWithFlutter.flutter_inappwebview) {
         windowWithFlutter.flutter_inappwebview.callHandler('automationBridge', event);
     }
+}
+
+// Détecte si la page actuelle est une page de login Google
+function isLoginPage(): boolean {
+    // Sélecteurs typiques de la page de login Google
+    const loginSelectors = [
+        'input[placeholder*="Email or phone"]',
+        'input[type="email"]',
+        'text:contains("Sign in")',
+        'text:contains("Use your Google Account")',
+        'button:contains("Next")',
+    ];
+    
+    // Vérifier l'URL
+    const url = window.location.href.toLowerCase();
+    if (url.includes('accounts.google.com') || url.includes('/signin')) {
+        return true;
+    }
+    
+    // Vérifier les éléments du DOM
+    const emailInput = document.querySelector('input[placeholder*="Email or phone"], input[type="email"]');
+    const signInText = document.body?.innerText?.includes('Sign in') || 
+                      document.body?.innerText?.includes('Use your Google Account');
+    
+    if (emailInput && signInText) {
+        console.log('[isLoginPage] Login page detected via DOM elements');
+        return true;
+    }
+    
+    return false;
 }
 
 function getPageDiagnostics(): Record<string, unknown> {
@@ -178,9 +218,21 @@ function debugDOMStructure(): void {
     })));
 }
 
-async function startAutomation(prompt: string): Promise<void> {
+// Déclarer startAutomation DIRECTEMENT sur window
+(window as any).startAutomation = async function(prompt: string): Promise<void> {
     try {
         console.log('[startAutomation] Starting automation with prompt:', prompt.substring(0, 50));
+        
+        // Vérifier si on est sur une page de login
+        if (isLoginPage()) {
+            console.log('[startAutomation] Login page detected. Pausing automation.');
+            notifyDart({ 
+                type: 'LOGIN_REQUIRED',
+                location: 'startAutomation',
+                payload: 'User needs to sign in to Google Account'
+            });
+            return; // Arrêter ici, attendre que l'utilisateur se connecte
+        }
         
         // Debug DOM structure
         debugDOMStructure();
@@ -208,43 +260,71 @@ async function startAutomation(prompt: string): Promise<void> {
             }
         }
 
+        // Coussin de sécurité: pause après remplissage du champ
+        await new Promise(resolve => setTimeout(resolve, 200));
+
         console.log('[startAutomation] Waiting for send button...');
         const sendButton = await waitForElement(SEND_BUTTON_SELECTORS) as HTMLElement;
         console.log('[startAutomation] Found send button:', sendButton.tagName, sendButton.className, sendButton.getAttribute('aria-label'));
         sendButton.click();
         console.log('[startAutomation] Clicked send button');
 
-        await waitForElement(GENERATION_INDICATOR_SELECTORS, 5000);
+        // Coussin de sécurité: pause après le clic
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        await new Promise<void>((resolve) => {
-            const primarySelector = GENERATION_INDICATOR_SELECTORS[0];
-            if (!primarySelector) {
-                resolve();
-                return;
-            }
+        // Wait for generation indicator and observe when it disappears
+        try {
+            const indicator = await waitForElement(GENERATION_INDICATOR_SELECTORS, 5000);
+            console.log('[startAutomation] Generation indicator found. Observing for changes...');
 
-            const observer = new MutationObserver((_mutations, obs) => {
-                const isGenerating = document.querySelector(primarySelector);
-
-                if (!isGenerating) {
+            // ✅ NOUVELLE LOGIQUE ROBUSTE AVEC MUTATION OBSERVER
+            await new Promise<void>((resolve) => {
+                const primarySelector = GENERATION_INDICATOR_SELECTORS[0];
+                if (!primarySelector) {
+                    console.warn('[Observer] No selector available, forcing completion.');
                     notifyDart({ type: 'GENERATION_COMPLETE' });
-                    obs.disconnect();
-                    clearTimeout(timeoutId);
                     resolve();
+                    return;
                 }
+
+                const observer = new MutationObserver((mutations, obs) => {
+                    // On vérifie si l'indicateur est toujours visible
+                    const indicatorElement = document.querySelector(primarySelector) as HTMLElement;
+                    const isVisible = indicatorElement && 
+                        (indicatorElement.style.display !== 'none' && 
+                         window.getComputedStyle(indicatorElement).display !== 'none');
+
+                    if (!isVisible) {
+                        console.log('[Observer] Generation indicator has disappeared.');
+                        notifyDart({ type: 'GENERATION_COMPLETE' });
+                        obs.disconnect(); // Arrêter l'observation
+                        clearTimeout(fallbackTimeout); // Annuler le timeout de secours
+                        resolve(); // Résoudre la promesse, ce qui débloque le Future Dart
+                    }
+                });
+
+                // Observer les changements d'attributs (comme `style`) sur l'indicateur lui-même
+                // et les changements dans le body (s'il est supprimé du DOM)
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['style']
+                });
+
+                // Timeout de secours TRES important, au cas où quelque chose se passe mal
+                const fallbackTimeout = setTimeout(() => {
+                    console.warn('[Observer] Fallback timeout reached. Forcing completion.');
+                    notifyDart({ type: 'GENERATION_COMPLETE' });
+                    observer.disconnect();
+                    resolve();
+                }, 45000); // Timeout long de 45 secondes
             });
 
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-            });
-
-            const timeoutId = setTimeout(() => {
-                observer.disconnect();
-                notifyDart({ type: 'GENERATION_COMPLETE' });
-                resolve();
-            }, 45000);
-        });
+        } catch (e) {
+            console.log('[startAutomation] Generation indicator not found, assuming generation is fast and complete.');
+            notifyDart({ type: 'GENERATION_COMPLETE' });
+        }
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -268,62 +348,70 @@ async function startAutomation(prompt: string): Promise<void> {
         });
         throw error;
     }
-}
+};
 
-async function extractFinalResponse(): Promise<string> {
+// Déclarer extractFinalResponse DIRECTEMENT sur window
+(window as any).extractFinalResponse = async function(): Promise<string> {
+        console.log('[extractFinalResponse] Starting extraction...');
     try {
-        let allResponses: HTMLElement[] = [];
+        let allResponseElements: HTMLElement[] = [];
 
+        // Itérer sur les sélecteurs pour trouver TOUS les éléments correspondants
         for (const selector of RESPONSE_CONTAINER_SELECTORS) {
             const elements = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
-            allResponses.push(...elements);
+            if (elements.length > 0) {
+                console.log(`[extractFinalResponse] Found ${elements.length} element(s) with selector: ${selector}`);
+                allResponseElements.push(...elements);
+            }
+        }
+        
+        // S'il n'y a absolument aucun élément correspondant aux sélecteurs
+        if (allResponseElements.length === 0) {
+            console.warn('[extractFinalResponse] No elements found with any of the primary selectors. Using fallback.');
+            // Le fallback est une source d'erreur, on le simplifie: juste le body.
+            const bodyText = (document.body?.innerText || "").trim();
+            if (!bodyText) {
+                throw new Error("No response elements found and body is empty.");
+            }
+            console.log('[extractFinalResponse] Returning fallback body text.');
+            return bodyText;
+            }
+
+        // Filtrer pour ne garder que les éléments visibles
+        const visibleElements = allResponseElements.filter(el => el.offsetParent !== null);
+
+        if (visibleElements.length === 0) {
+            throw new Error("Response elements were found but none are visible.");
         }
 
-        if (allResponses.length === 0) {
-            const candidates = Array.from(document.querySelectorAll('*')) as HTMLElement[];
-
-            allResponses = candidates.filter(el => {
-                const text = el.innerText?.trim() || '';
-                const hasContent = text.length > 50;
-                const notInput = !el.matches('input, textarea, button, select, option');
-                const visible = el.offsetParent !== null;
-
-                return hasContent && notInput && visible;
-            });
+        // Prendre le dernier élément visible de la liste
+        const lastElement = visibleElements[visibleElements.length - 1];
+        if (!lastElement) {
+            throw new Error("No visible response element found after filtering.");
         }
+        const responseText = (lastElement.innerText || "").trim();
 
-        if (allResponses.length === 0) {
-            const bodyText = document.body?.innerText || '';
-            return bodyText.trim() || "No response available";
-        }
-
-        const lastResponse = allResponses[allResponses.length - 1];
-
-        if (!lastResponse) {
-            return "No last response element found, though the array was not empty.";
-        }
-
-        const responseText = lastResponse.innerText?.trim() || "";
+        console.log('[extractFinalResponse] Returning value:', `"${responseText.substring(0, 50)}..."`, 'with type:', typeof responseText);
+        
+        // S'assurer qu'on retourne bien une chaîne de caractères
         return responseText;
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const diagnostics = {
-            ...getPageDiagnostics(),
-            'responseContainerSelectors': RESPONSE_CONTAINER_SELECTORS.length,
-            'foundResponseElements': 0,
-        };
+        console.error('[extractFinalResponse] CRITICAL ERROR during extraction:', errorMessage);
         
+        // Notifier Dart de l'échec
         notifyDart({ 
             type: 'AUTOMATION_FAILED', 
             payload: errorMessage,
             errorCode: 'RESPONSE_EXTRACTION_FAILED',
-            location: 'extractFinalResponse',
-            diagnostics: diagnostics
+            location: 'extractFinalResponse'
         });
+
+        // Rejeter la promesse pour que le `await` en Dart échoue proprement
         throw error;
     }
-}
+};
 
 function signalReady() {
     const windowWithFlutter = window as WindowWithFlutterInAppWebView;
@@ -375,8 +463,8 @@ function findInShadowDOM(selector: string, root: Document | ShadowRoot = documen
     return null;
 }
 
-// Export debug function for external inspection
-function inspectDOMForSelectors(): Record<string, unknown> {
+// Déclarer inspectDOMForSelectors DIRECTEMENT sur window
+(window as any).inspectDOMForSelectors = function(): Record<string, unknown> {
     const result: Record<string, unknown> = {
         inputs: [],
         buttons: [],
@@ -457,18 +545,18 @@ function inspectDOMForSelectors(): Record<string, unknown> {
     });
     
     return result;
-}
+};
 
-const windowWithFlutter = window as WindowWithFlutterInAppWebView;
-windowWithFlutter.startAutomation = startAutomation;
-windowWithFlutter.extractFinalResponse = extractFinalResponse;
-// Expose debug function
-(windowWithFlutter as any).inspectDOMForSelectors = inspectDOMForSelectors;
+// Puisque nous injectons à AT_DOCUMENT_END, le DOM est déjà prêt ou presque
+// L'appel direct est suffisant
+console.log('[Bridge] Script injected and functions attached to window.');
+console.log('[Bridge] startAutomation available:', typeof (window as any).startAutomation);
+console.log('[Bridge] extractFinalResponse available:', typeof (window as any).extractFinalResponse);
+console.log('[Bridge] window.flutter_inappwebview available:', typeof (window as WindowWithFlutterInAppWebView).flutter_inappwebview);
+console.log('[Bridge] Document ready state:', document.readyState);
+console.log('[Bridge] Document body exists:', !!document.body);
+console.log('[Bridge] Prompt input element:', document.querySelector('#prompt-input') ? 'FOUND' : 'NOT FOUND');
+console.log('[Bridge] Send button element:', document.querySelector('#send-button') ? 'FOUND' : 'NOT FOUND');
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        trySignalReady();
-    });
-} else {
-    trySignalReady();
-}
+// Signal that bridge is ready
+trySignalReady();

@@ -8,7 +8,7 @@ import 'javascript_bridge_interface.dart';
 
 part 'javascript_bridge.g.dart';
 
-@riverpod
+@Riverpod(keepAlive: true)
 class WebViewController extends _$WebViewController {
   @override
   InAppWebViewController? build() => null;
@@ -18,7 +18,7 @@ class WebViewController extends _$WebViewController {
   }
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class BridgeReady extends _$BridgeReady {
   @override
   bool build() => false;
@@ -186,9 +186,10 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       dynamic checkResult;
       try {
+        // Simple check: verify window.startAutomation is available
         checkResult = await controller.evaluateJavascript(
             source:
-                "typeof startAutomation !== 'undefined' && typeof extractFinalResponse !== 'undefined'");
+                "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'");
       } catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.scriptNotInjected,
@@ -217,8 +218,9 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       final encodedPrompt = jsonEncode(prompt);
       try {
+        // Simple, direct call - functions are guaranteed to be on window
         await controller.evaluateJavascript(
-            source: "startAutomation($encodedPrompt);");
+            source: "window.startAutomation($encodedPrompt);");
       } catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.automationExecutionFailed,
@@ -327,9 +329,25 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       dynamic result;
       try {
+        // extractFinalResponse est async, utiliser une variable globale pour contourner
+        // le problème de sérialisation des Promises par evaluateJavascript
+        // Étape 1: Exécuter l'extraction et stocker le résultat
+        await controller.evaluateJavascript(source: '''
+              (async () => {
+                if (typeof extractFinalResponse !== 'undefined') {
+                  window.__lastExtractedResponse__ = await extractFinalResponse();
+                } else {
+                  window.__lastExtractedResponse__ = null;
+                }
+              })()
+            ''');
+
+        // Étape 2: Attendre un peu pour que la Promise soit résolue
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Étape 3: Récupérer le résultat stocké
         result = await controller.evaluateJavascript(
-            source:
-                "typeof extractFinalResponse !== 'undefined' ? extractFinalResponse() : null");
+            source: "window.__lastExtractedResponse__ || null");
       } catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.responseExtractionFailed,

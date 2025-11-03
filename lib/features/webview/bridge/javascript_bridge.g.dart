@@ -20,7 +20,7 @@ final class WebViewControllerProvider
           argument: null,
           retry: null,
           name: r'webViewControllerProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -41,7 +41,7 @@ final class WebViewControllerProvider
   }
 }
 
-String _$webViewControllerHash() => r'5fc254eb0cadbff22ff27bf20cf9382d9d0296b1';
+String _$webViewControllerHash() => r'87aa407ef46f6d31fd3df1401e023f7535373732';
 
 abstract class _$WebViewController extends $Notifier<InAppWebViewController?> {
   InAppWebViewController? build();
@@ -70,7 +70,7 @@ final class BridgeReadyProvider extends $NotifierProvider<BridgeReady, bool> {
           argument: null,
           retry: null,
           name: r'bridgeReadyProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -91,7 +91,7 @@ final class BridgeReadyProvider extends $NotifierProvider<BridgeReady, bool> {
   }
 }
 
-String _$bridgeReadyHash() => r'04a6d5d8db70cbb0f42310d5e824bbb0b154c331';
+String _$bridgeReadyHash() => r'97fb2cf8f0e3847b7da807973058f4ef81ec89f8';
 
 abstract class _$BridgeReady extends $Notifier<bool> {
   bool build();

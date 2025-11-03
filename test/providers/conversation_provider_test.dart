@@ -145,5 +145,131 @@ void main() {
       conversationSub.close();
       tabIndexSub.close();
     });
+
+    test(
+        'sendPromptToAutomation handles bridge errors gracefully (generic Exception)',
+        () async {
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      fakeBridge.startAutomationErrorType = ErrorType.genericException;
+
+      final notifier = container.read(conversationProvider.notifier);
+
+      await notifier.sendPromptToAutomation("a prompt that will fail");
+
+      final finalState = container.read(automationStateProvider);
+      final conversation = container.read(conversationProvider);
+
+      expect(finalState, AutomationStatus.failed,
+          reason: "L'état d'automatisation devrait être 'failed'");
+      expect(conversation.last.status, MessageStatus.error,
+          reason: "Le dernier message devrait avoir un statut d'erreur");
+      expect(conversation.last.text, contains("An unexpected error occurred"),
+          reason: "Le message d'erreur devrait être affiché");
+      expect(conversation.last.text, contains("Fake automation error"),
+          reason:
+              "Le message d'erreur devrait contenir le détail de l'exception");
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
+
+    test('sendPromptToAutomation handles AutomationError correctly', () async {
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      fakeBridge.startAutomationErrorType = ErrorType.automationError;
+
+      final notifier = container.read(conversationProvider.notifier);
+
+      await notifier.sendPromptToAutomation("a prompt that will fail");
+
+      final finalState = container.read(automationStateProvider);
+      final conversation = container.read(conversationProvider);
+
+      expect(finalState, AutomationStatus.failed,
+          reason: "L'état d'automatisation devrait être 'failed'");
+      expect(conversation.last.status, MessageStatus.error,
+          reason: "Le dernier message devrait avoir un statut d'erreur");
+      expect(conversation.last.text, contains("Error:"),
+          reason: "Le message d'erreur devrait commencer par 'Error:'");
+      expect(conversation.last.text, contains("automationExecutionFailed"),
+          reason: "Le message d'erreur devrait contenir le code d'erreur");
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
+
+    test('validateAndFinalizeResponse handles extraction errors gracefully',
+        () async {
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      fakeBridge.extractFinalResponseErrorType = ErrorType.genericException;
+
+      final notifier = container.read(conversationProvider.notifier);
+
+      await notifier.sendPromptToAutomation("Hello");
+      notifier.onGenerationComplete();
+
+      await notifier.validateAndFinalizeResponse();
+
+      final finalState = container.read(automationStateProvider);
+      final conversation = container.read(conversationProvider);
+
+      expect(finalState, AutomationStatus.failed,
+          reason: "L'état d'automatisation devrait être 'failed'");
+      expect(conversation.last.status, MessageStatus.error,
+          reason: "Le dernier message devrait avoir un statut d'erreur");
+      expect(conversation.last.text, contains("Failed to extract response"),
+          reason: "Le message d'erreur devrait indiquer l'échec d'extraction");
+      expect(conversation.last.text, contains("Fake extraction error"),
+          reason:
+              "Le message d'erreur devrait contenir le détail de l'exception");
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
+
+    test(
+        'validateAndFinalizeResponse handles AutomationError during extraction',
+        () async {
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      fakeBridge.extractFinalResponseErrorType = ErrorType.automationError;
+
+      final notifier = container.read(conversationProvider.notifier);
+
+      await notifier.sendPromptToAutomation("Hello");
+      notifier.onGenerationComplete();
+
+      await notifier.validateAndFinalizeResponse();
+
+      final finalState = container.read(automationStateProvider);
+      final conversation = container.read(conversationProvider);
+
+      expect(finalState, AutomationStatus.failed,
+          reason: "L'état d'automatisation devrait être 'failed'");
+      expect(conversation.last.status, MessageStatus.error,
+          reason: "Le dernier message devrait avoir un statut d'erreur");
+      expect(conversation.last.text, contains("Extraction Error:"),
+          reason:
+              "Le message d'erreur devrait commencer par 'Extraction Error:'");
+      expect(conversation.last.text, contains("responseExtractionFailed"),
+          reason: "Le message d'erreur devrait contenir le code d'erreur");
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
   });
 }

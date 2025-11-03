@@ -70,8 +70,8 @@ class ChatBubble extends StatelessWidget {
                           LoadingIndicator(
                             size: 12,
                             color: message.isFromUser
-                                ? Colors.white70
-                                : Colors.grey.shade600,
+                                    ? Colors.white70
+                                    : Colors.grey.shade600,
                           ),
                           const SizedBox(width: 6),
                           Text(

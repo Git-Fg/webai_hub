@@ -1,64 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Test Sandbox</title>
+    <title>High-Fidelity Sandbox</title>
+    <style>
+        /* Styles basiques pour la visibilité */
+        body { font-family: sans-serif; padding: 20px; }
+        footer { border: 1px solid #ccc; padding: 10px; margin-top: 20px; max-width: 800px; }
+        .chat-container { border: 1px solid #eee; padding: 10px; min-height: 200px; max-width: 800px; }
+        ms-chat-turn { display: block; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
+        ms-chat-turn[data-turn-role="User"] { background-color: #e1f5fe; }
+        ms-chat-turn[data-turn-role="Model"] { background-color: #f1f8e9; }
+        .thinking-progress-icon { display: none; }
+        .thinking-progress-icon.in-progress { display: inline-block; animation: rotate 2s linear infinite; }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
 </head>
 <body>
-    <h1>Automation Sandbox</h1>
+    <h1>High-Fidelity Sandbox</h1>
     
-    <!-- 1. Champ de saisie (simule l'input du prompt) -->
-    <textarea 
-        placeholder="Start typing a prompt..." 
-        id="prompt-input" 
-        rows="4" 
-        cols="50"></textarea>
-    <br/>
-    
-    <!-- 2. Bouton d'envoi (simule le bouton Run) -->
-    <button 
-        id="send-button" 
-        aria-label="Append to prompt and run">Run</button>
-
-    <hr/>
-    
-    <!-- 3. Indicateur de génération (simule le spinner) -->
-    <div id="generation-indicator" style="display: none;">
-        <p>🔄 Generating...</p>
+    <!-- Structure du Chat -->
+    <div class="chat-container">
+        <ms-chat-turn data-turn-role="User">
+            <div class="author-label">User</div>
+            <ms-cmark-node><p><span>This is a previous user message.</span></p></ms-cmark-node>
+        </ms-chat-turn>
+        <ms-chat-turn data-turn-role="Model">
+            <div class="author-label">Model</div>
+            <ms-cmark-node><p><span>This is an old AI response.</span></p></ms-cmark-node>
+        </ms-chat-turn>
+        <!-- Les nouvelles réponses seront ajoutées ici -->
+        <div id="new-turns-container"></div>
     </div>
     
-    <!-- 4. Conteneur de réponse (simule la zone où le texte de l'IA apparaît) -->
-    <div id="response-container">
-        <h2>Response:</h2>
-        <div class="message-response">
-            <!-- La réponse sera injectée ici -->
+    <!-- Structure du Footer (zone de saisie) -->
+    <footer>
+        <ms-prompt-input-wrapper>
+            <div class="prompt-input-wrapper-container">
+                <div class="text-wrapper">
+                    <ms-chunk-input>
+                        <ms-text-chunk>
+                            <ms-autosize-textarea>
+                                <!-- 1. LE CHAMP DE SAISIE -->
+                                <textarea placeholder="Start typing a prompt" aria-label="Start typing a prompt"></textarea>
+                            </ms-autosize-textarea>
+                        </ms-text-chunk>
+                    </ms-chunk-input>
+                </div>
+                <div class="button-wrapper">
+                    <ms-run-button>
+                        <!-- 2. LE BOUTON D'ENVOI -->
+                        <button type="submit" aria-label="Run" class="run-button">
+                            <mat-icon>arrow_upward_alt</mat-icon>
+                        </button>
+                    </ms-run-button>
         </div>
     </div>
+        </ms-prompt-input-wrapper>
+    </footer>
 
-    <!-- Script pour simuler le comportement de la page distante -->
     <script>
-        const input = document.getElementById('prompt-input');
-        const sendBtn = document.getElementById('send-button');
-        const indicator = document.getElementById('generation-indicator');
-        const responseContainer = document.querySelector('.message-response');
+        // Sélection des éléments basée sur la nouvelle structure
+        const textarea = document.querySelector("textarea[placeholder*='Start typing a prompt']");
+        const runButton = document.querySelector("button[aria-label='Run']");
+        const newTurnsContainer = document.getElementById('new-turns-container');
 
-        sendBtn.addEventListener('click', () => {
-            console.log('[SANDBOX] "Run" button clicked.');
+        runButton.addEventListener('click', () => {
+            console.log('[SANDBOX] Run button clicked.');
+            const promptText = textarea.value;
+            textarea.value = ''; // Vider le champ
             
-            // Affiche l'indicateur de chargement
-            indicator.style.display = 'block';
+            // 1. Ajouter le tour de l'utilisateur
+            const userTurn = document.createElement('ms-chat-turn');
+            userTurn.setAttribute('data-turn-role', 'User');
+            userTurn.innerHTML = `
+                <div class="author-label">User</div>
+                <ms-cmark-node><p><span>${promptText}</span></p></ms-cmark-node>
+            `;
+            newTurnsContainer.appendChild(userTurn);
             
-            // Simule une attente de 2 secondes pour la réponse
+            // 2. Simuler la génération de la réponse du modèle
+            const modelTurn = document.createElement('ms-chat-turn');
+            modelTurn.setAttribute('data-turn-role', 'Model');
+            
+            // Créer l'indicateur de "pensée"
+            modelTurn.innerHTML = `
+                <div class="author-label">Model</div>
+                <!-- 3. L'INDICATEUR DE GÉNÉRATION -->
+                <ms-thought-chunk>
+                    <img src="indicator.png" alt="Thinking" class="thinking-progress-icon in-progress">
+                    Thoughts
+                </ms-thought-chunk>
+                <div class="response-content"></div>
+            `;
+            newTurnsContainer.appendChild(modelTurn);
+            
+            // Simuler une attente
             setTimeout(() => {
-                const promptText = input.value;
-                responseContainer.innerText = `This is a simulated response to: "${promptText}"`;
-                
-                // Cache l'indicateur de chargement
-                indicator.style.display = 'none';
                 console.log('[SANDBOX] Generation complete.');
-
-                // Notifie Flutter que la génération est terminée
-                // Ton bridge.js va écouter cet événement implicitement via le MutationObserver
-                // Mais on peut aussi le rendre explicite si besoin.
+                const thoughtChunk = modelTurn.querySelector('ms-thought-chunk');
+                const responseContent = modelTurn.querySelector('.response-content');
+                
+                // Cacher l'indicateur
+                if (thoughtChunk) {
+                    thoughtChunk.style.display = 'none';
+                }
+                
+                // 4. LE CONTENEUR DE RÉPONSE FINAL
+                responseContent.innerHTML = `
+                    <ms-cmark-node>
+                        <p><span>This is the high-fidelity response to: "${promptText}"</span></p>
+                    </ms-cmark-node>
+                `;
+                
+                // Notifier Flutter
                 if (window.flutter_inappwebview) {
                     window.flutter_inappwebview.callHandler('automationBridge', { type: 'GENERATION_COMPLETE' });
                     console.log('[SANDBOX] Sent GENERATION_COMPLETE to Flutter.');
@@ -68,4 +122,3 @@
     </script>
 </body>
 </html>
-
