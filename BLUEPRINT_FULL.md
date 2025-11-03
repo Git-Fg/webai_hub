@@ -116,8 +116,8 @@ The workflow is implemented with its 4 complete phases, driven by the Companion 
 | **Scope**           | 1 Provider (Google AI Studio)   | 4+ Providers                                           |
 | **Database**        | **None** (in-memory state)      | ✅ **Drift** for history                               |
 | **CSS Selectors**   | **Hardcoded** in TypeScript     | ✅ **Remote JSON Configuration**                       |
-| **Fallback Strategy** | No (single selector)            | ✅ **Yes (array of fallbacks)**                        |
-| **Error Handling**  | Generic (`AUTOMATION_FAILED`)   | ✅ **Specific Heuristic Triage**                       |
-| **`MutationObserver`**| Simple implementation           | ✅ **Optimized (two-step)**                            |
+| **Fallback Strategy** | Yes (simple hardcoded array)    | ✅ **Yes (array of fallbacks)**                        |
+| **Error Handling**  | Structured (code, location)     | ✅ **Specific Heuristic Triage**                       |
+| **`MutationObserver`**| Simple (absence of indicator)   | ✅ **Optimized (two-step)**                            |
 | **Advanced Cases**  | Ignored (e.g., Shadow DOM)      | ✅ **Handled**                                         |
 | **Code Quality**    | `flutter_lints` (standard)      | ✅ **`very_good_analysis` (strict)**                   |
