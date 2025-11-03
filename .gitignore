@@ -19,6 +19,7 @@ package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+assets/js/bridge.js
 
 # Fichiers de configuration spécifiques à l'OS
 .DS_Store
