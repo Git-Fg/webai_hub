@@ -9,7 +9,7 @@ interface WindowWithFlutterInAppWebView extends Window {
 }
 
 export function notifyDart(event: { 
-  type: 'GENERATION_COMPLETE' | 'AUTOMATION_FAILED' | 'LOGIN_REQUIRED', 
+  type: 'AUTOMATION_FAILED' | 'LOGIN_REQUIRED', 
   payload?: string,
   errorCode?: string,
   location?: string,

@@ -233,74 +233,62 @@ export const aiStudioChatbot: Chatbot = {
     const sendButton = await waitForElement([SEND_BUTTON_SELECTOR, ...SEND_BUTTON_SELECTORS]) as HTMLElement;
     console.log('[AI Studio] Found send button:', sendButton.tagName, sendButton.className, sendButton.getAttribute('aria-label'));
     sendButton.click();
-    console.log('[AI Studio] Clicked send button');
+    console.log('[AI Studio] Clicked send button. Prompt sent.');
     
-    // 4. Attendre la fin de la génération
-    // On attend d'abord que l'indicateur APPARAISSE...
-    try {
-      await waitForElement([GENERATION_INDICATOR_SELECTOR, ...GENERATION_INDICATOR_SELECTORS], 10000);
-      console.log('[AI Studio] Generation started, observing for completion...');
-    } catch (e) {
-      console.log('[AI Studio] Generation indicator not found, assuming generation is fast and complete.');
-      notifyDart({ type: 'GENERATION_COMPLETE' });
-      return;
-    }
-
-    // ...puis on attend qu'il DISPARAISSE.
-    await new Promise<void>((resolve) => {
-      const observer = new MutationObserver(() => {
-        if (!document.querySelector(GENERATION_INDICATOR_SELECTOR)) {
-          console.log('[AI Studio] Generation indicator disappeared.');
-          // On notifie immédiatement Dart de la fin de la génération.
-          notifyDart({ type: 'GENERATION_COMPLETE' });
-          observer.disconnect();
-          clearTimeout(fallbackTimeout);
-          resolve();
-        }
-      });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      const fallbackTimeout = setTimeout(() => {
-        console.warn('[AI Studio] Generation observer timed out.');
-        notifyDart({ type: 'GENERATION_COMPLETE' });
-        observer.disconnect();
-        resolve();
-      }, 60000);
-    });
+    // sendPrompt now returns immediately after clicking send.
+    // The observation phase is handled separately by waitForResponse.
   },
 
   extractResponse: async () => {
-    console.log('[AI Studio] Starting extraction...');
+    console.log('[AI Studio] Starting robust extraction...');
     
-    // Attendre que la dernière réponse soit stable (que son footer soit visible)
-    try {
-      await waitForElement([RESPONSE_FOOTER_SELECTOR], 3000);
-      console.log('[AI Studio] Response footer detected, response is stable.');
-    } catch (e) {
-      console.log('[AI Studio] Footer not found, assuming response is ready.');
-    }
+    // Attendre directement que le dernier tour du modèle soit présent ET contienne son footer
+    const lastTurn = await waitForElement(
+      [`${MODEL_TURN_SELECTOR}:has(.turn-footer button[iconname="thumb_up"])`], 
+      15000 
+    ) as HTMLElement;
+    console.log('[AI Studio] Last model turn with footer is stable.');
     
-    // Cibler tous les tours du modèle
-    const modelTurns = document.querySelectorAll(MODEL_TURN_SELECTOR);
-    console.log(`[AI Studio] Found ${modelTurns.length} model turn(s)`);
-    
-    if (modelTurns.length === 0) {
-        throw new Error("No model turns found on the page.");
-    }
-
-    // Prendre le tout dernier tour
-    const lastElement = modelTurns[modelTurns.length - 1] as HTMLElement;
-    
-    // Extraire le texte propre en excluant les éléments UI
-    const responseText = extractCleanResponseText(lastElement);
-
+    const responseText = extractCleanResponseText(lastTurn);
     if (!responseText) {
       throw new Error("Extraction resulted in an empty string after cleaning.");
     }
-
+    
     console.log('[AI Studio] Returning value:', `"${responseText.substring(0, 100)}..."`, 'with type:', typeof responseText);
     return responseText;
+  },
+
+  waitForResponse: (timeout: number) => {
+    return new Promise<void>((resolve, reject) => {
+      let debounceTimer: number;
+      const observer = new MutationObserver(() => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          console.log('[Observer] DOM is stable. Checking for new response footer...');
+          
+          const allFooters = document.querySelectorAll('ms-chat-turn[data-turn-role="Model"] .turn-footer');
+          
+          const lastFooter = allFooters.length > 0 ? allFooters[allFooters.length - 1] : null;
+          if (lastFooter && lastFooter.querySelector('button[iconname="thumb_up"]') && !(lastFooter as any).__cwc_processed) {
+            console.log('[Observer] New, complete response footer found. Success!');
+            (lastFooter as any).__cwc_processed = true;
+            observer.disconnect();
+            clearTimeout(fallbackTimeout);
+            resolve();
+          }
+        }, 200);
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+
+      const fallbackTimeout = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(`Timeout: No stable response detected within ${timeout / 1000}s.`));
+      }, timeout);
+    });
   },
 };
 

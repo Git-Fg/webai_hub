@@ -88,7 +88,7 @@ final class ConversationProvider
   }
 }
 
-String _$conversationHash() => r'289af5684ad5c4093785812acd9b2b97554efea5';
+String _$conversationHash() => r'ab710f8e69a286da96e1517823e501fc4aea62f4';
 
 abstract class _$Conversation extends $Notifier<List<Message>> {
   List<Message> build();

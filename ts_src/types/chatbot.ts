@@ -19,5 +19,11 @@ export interface Chatbot {
    * Extrait le texte de la dernière réponse du modèle, de manière nettoyée.
    */
   extractResponse: () => Promise<string>;
+
+  /**
+   * Attend activement que la réponse du modèle soit entièrement rendue dans le DOM.
+   * Doit lever une erreur en cas de timeout.
+   */
+  waitForResponse: (timeout: number) => Promise<void>;
 }
 

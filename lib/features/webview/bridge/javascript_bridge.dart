@@ -386,6 +386,30 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       );
     }
   }
+
+  @override
+  Future<bool> waitForResponseCompletion(
+      {Duration timeout = const Duration(seconds: 60)}) async {
+    try {
+      await _waitForWebViewToBeCreated();
+      final controller = _controller;
+
+      final result = await controller.evaluateJavascript(
+          source:
+              'window.waitForResponseCompletion(${timeout.inMilliseconds})');
+
+      return result == true;
+    } catch (e, stackTrace) {
+      throw AutomationError(
+        errorCode: AutomationErrorCode.responseObservationFailed,
+        location: 'waitForResponseCompletion',
+        message: 'Failed to observe response completion',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
 }
 
 @Riverpod(keepAlive: true)

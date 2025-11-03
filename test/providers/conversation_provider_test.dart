@@ -91,7 +91,6 @@ void main() {
       final notifier = container.read(conversationProvider.notifier);
 
       await notifier.sendPromptToAutomation("Hello");
-      notifier.onGenerationComplete();
 
       await notifier.validateAndFinalizeResponse();
 
@@ -217,7 +216,6 @@ void main() {
       final notifier = container.read(conversationProvider.notifier);
 
       await notifier.sendPromptToAutomation("Hello");
-      notifier.onGenerationComplete();
 
       await notifier.validateAndFinalizeResponse();
 
@@ -251,7 +249,6 @@ void main() {
       final notifier = container.read(conversationProvider.notifier);
 
       await notifier.sendPromptToAutomation("Hello");
-      notifier.onGenerationComplete();
 
       await notifier.validateAndFinalizeResponse();
 

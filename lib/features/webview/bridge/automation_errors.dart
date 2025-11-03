@@ -6,6 +6,7 @@ enum AutomationErrorCode {
   scriptNotInjected,
   automationExecutionFailed,
   responseExtractionFailed,
+  responseObservationFailed,
   unknown,
 }
 

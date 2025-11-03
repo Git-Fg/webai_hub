@@ -81,6 +81,13 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
+  @override
+  Future<bool> waitForResponseCompletion({Duration? timeout}) async {
+    // In tests, response is always ready immediately
+    await Future.delayed(const Duration(milliseconds: 10));
+    return true;
+  }
+
   // Méthode pour simuler getCapturedLogs (utilisée par conversation_provider)
   Future<List<Map<String, dynamic>>> getCapturedLogs() async {
     return [];

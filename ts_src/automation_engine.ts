@@ -3,6 +3,9 @@ import { Chatbot } from './types/chatbot';
 import { aiStudioChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
 
+// Initialize global counter for tracking processed response footers
+(window as any).__processedFootersCount = 0;
+
 // --- Définition des sites supportés ---
 const SUPPORTED_SITES = {
   'https://aistudio.google.com/prompts/new_chat': aiStudioChatbot,
@@ -51,7 +54,7 @@ function getChatbot(): Chatbot | null {
     await chatbot.waitForReady();
     console.log('[Engine] Page is ready. Sending prompt...');
     await chatbot.sendPrompt(prompt);
-    console.log('[Engine] Prompt sent and generation completed successfully.');
+    console.log('[Engine] Prompt sent. Observation will be handled by Dart.');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     notifyDart({
@@ -85,6 +88,22 @@ function getChatbot(): Chatbot | null {
       payload: errorMessage,
     });
     throw error;
+  }
+};
+
+// Fonction globale appelée par Dart pour attendre que la réponse soit complètement rendue
+(window as any).waitForResponseCompletion = async function(timeout: number = 60000): Promise<boolean> {
+  const chatbot = getChatbot();
+  if (!chatbot || !chatbot.waitForResponse) {
+    console.warn('[Engine] Current chatbot does not support waitForResponse.');
+    return true; 
+  }
+  try {
+    await chatbot.waitForResponse(timeout);
+    return true;
+  } catch (error) {
+    console.error('[Engine] Error waiting for response:', error);
+    return false;
   }
 };
 

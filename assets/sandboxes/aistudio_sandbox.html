@@ -152,12 +152,6 @@
                 console.log('[SANDBOX] Footer added with button iconname="thumb_up"');
                 
                 console.log('[SANDBOX] Response added. Accessible via ms-chat-turn[data-turn-role="Model"] ms-cmark-node');
-                
-                // Notifier Flutter
-                if (window.flutter_inappwebview) {
-                    window.flutter_inappwebview.callHandler('automationBridge', { type: 'GENERATION_COMPLETE' });
-                    console.log('[SANDBOX] Sent GENERATION_COMPLETE to Flutter.');
-                }
             }, 2000);
         });
         

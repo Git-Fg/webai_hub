@@ -33,7 +33,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
 
   Future<void> _loadHtmlContent() async {
     try {
-      final content = await rootBundle.loadString('assets/test_page.html');
+      final content =
+          await rootBundle.loadString('assets/sandboxes/aistudio_sandbox.html');
       if (mounted) {
         setState(() {
           _htmlContent = content;
@@ -199,9 +200,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
               final notifier = ref.read(conversationProvider.notifier);
 
               switch (eventType) {
-                case 'GENERATION_COMPLETE':
-                  notifier.onGenerationComplete();
-                  break;
                 case 'LOGIN_REQUIRED':
                   // Mettre le statut à needsLogin pour afficher l'overlay de login
                   ref

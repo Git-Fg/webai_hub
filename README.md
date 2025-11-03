@@ -1,83 +1,207 @@
 # AI Hybrid Hub
 
+## ⚠️ Work in Progress ⚠️
+
+![Status](https://img.shields.io/badge/Status-Active_Development-green)
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Platform](https://img.shields.io/badge/Platform-Flutter-02569B?logo=flutter)
+
 **An intelligent, hybrid AI assistant that bridges a native Flutter interface with the power of web-based AI providers through JavaScript automation.**
 
-This project aims to transform a simple WebView manager into a sophisticated AI hub, implementing the complete "Assist & Validate" workflow. It combines a native chat UI with automated interactions, providing a seamless and powerful user experience.
+Inspired by the powerful workflow of [Code Web Chat](https://github.com/robertpiosik/CodeWebChat).
 
----
+AI Hybrid Hub transforms your mobile device into a sophisticated control center for web-based AI tools. It combines a native chat UI with a powerful JavaScript automation bridge, allowing you to interact with AI providers like Google AI Studio directly from a single, unified interface.
 
-### 📊 **Project Status: 🏗️ MVP In Progress**
+### ✨ Key Features
 
--   **✅ Architecture Defined**: The foundational structure of the project is in place.
--   **🎯 Current Focus**: Implementing the end-to-end automation workflow for a **single provider**: Google AI Studio.
--   **🚀 Next Steps**: Finalize the JavaScript bridge logic, state management, and the core "Assist & Validate" orchestration.
+-   ✅ **Native Chat Experience** — A modern, intuitive chat UI for sending prompts and viewing conversations with features like message editing and copying.
+-   ✅ **Multi-Provider Integration** — Connects seamlessly to multiple providers like Google AI Studio, with a modular architecture ready for ChatGPT, Claude, and more.
+-   ✅ **"Assist & Validate" Workflow** — A unique process (Sending, Observing, Refining, Extraction) that gives you full control by visually validating each step in the integrated WebView.
+-   ✅ **JavaScript Automation Engine** — A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
+-   ❤️ **Free and Open-Source** — Released under the MIT license.
 
-### ✨ Key Features (Vision)
+### 📊 Project Status & Roadmap
 
--   **Native Chat Interface**: A modern, bubble-style UI for sending prompts and viewing aggregated conversations.
--   **Multi-Provider Integration**: Seamlessly switch between and interact with providers like Google AI Studio, Qwen, Z-ai, and Kimi.
--   **"Assist & Validate" Workflow**: A 4-phase automation process (Sending, Observing, Refining, Extraction) that combines automated assistance with full user control.
--   **JavaScript Automation Bridge**: A robust, bi-directional communication layer to pilot web interfaces from the native application.
--   **Session Persistence**: Maintain login states across all providers for a frictionless experience.
+This project is under active development.
+
+#### ✅ Currently Functional:
+-   Core "Assist & Validate" workflow.
+-   Integration with **Google AI Studio**.
+-   Native chat interface with message history, editing, and copying.
+-   Robust, modular TypeScript architecture for the automation engine.
+-   Sandbox mode for integration testing.
+
+#### 🚀 On the Roadmap:
+-   Adding more AI providers (ChatGPT, Claude, etc.).
+-   Advanced chat features: conversation export (Markdown), multi-message selection.
+-   File attachments (TXT, PDF) for context augmentation.
+-   UI for managing provider-specific settings (model selection, temperature, etc.).
 
 ### 🛠️ Technology Stack
 
--   **Framework**: Flutter 3.19+ / Dart 3.3+
--   **State Management**: Riverpod (with `riverpod_generator`)
+-   **Framework**: Flutter & Dart
+-   **State Management**: Riverpod (`riverpod_generator`)
 -   **WebView Integration**: `flutter_inappwebview`
 -   **Automation Bridge**: TypeScript + Vite
 
 ### 🚀 Quick Start
 
-#### **Prerequisites**
-
--   Flutter SDK (>= 3.19.0)
+**Prerequisites**
+-   Flutter SDK (>= 3.3.0)
 -   Node.js and npm
 
-#### **Installation & Launch**
-
+**Installation & Launch**
 1.  **Clone the repository:**
     ```bash
     git clone <YOUR_REPO_URL>
     cd ai_hybrid_hub
     ```
 
-2.  **Install Flutter dependencies:**
+2.  **Install dependencies:**
     ```bash
     flutter pub get
-    ```
-
-3.  **Install TypeScript dependencies:**
-    ```bash
     npm install
     ```
 
-4.  **Build the JavaScript bridge:**
+3.  **Build the JavaScript bridge:**
+    *This command is mandatory after any change in the `ts_src/` directory.*
     ```bash
     npm run build
     ```
-    *(This command **must** be run after every modification to `ts_src/automation_engine.ts`)*
 
-5.  **Generate Dart code (Riverpod/Freezed):**
+4.  **Generate Dart code:**
+    *Run this after modifying Riverpod providers or Freezed models.*
     ```bash
     flutter pub run build_runner build --delete-conflicting-outputs
     ```
 
-6.  **Run the application:**
+5.  **Run the application:**
     ```bash
     flutter run
     ```
+    *(Use the launch configurations in VS Code or Android Studio to switch between production and sandbox modes).*
 
 ### 🏗️ Project Structure
 
 ```
 lib/
 ├── features/
-│   ├── hub/         # UI and logic for the native chat
-│   └── webview/     # WebView management and the bridge
-├── assets/
-│   └── js/
-│       └── bridge.js  # JS bundle generated by Vite
+│   ├── hub/         # Native chat UI and state management
+│   └── webview/     # WebView widget and Dart-JS bridge logic
+└── config/          # Environment configuration (sandbox vs production)
+assets/
+├── js/
+│   └── bridge.js    # Compiled JS bundle (generated by Vite)
+└── sandboxes/
+    └── aistudio_sandbox.html # Local HTML for testing
 ts_src/
-└── automation_engine.ts # Source code for the automation engine
+├── chatbots/        # Logic for each specific AI provider
+├── types/           # Shared TypeScript interfaces (e.g., Chatbot)
+├── utils/           # Utility functions (waitForElement, etc.)
+└── automation_engine.ts # Core automation orchestrator
+```
+
+---
+
+# AI Hybrid Hub (Français)
+
+## ⚠️ Projet en Cours de Développement ⚠️
+
+![Status](https://img.shields.io/badge/Statut-Développement_Actif-green)
+![License](https://img.shields.io/badge/Licence-MIT-blue)
+![Platform](https://img.shields.io/badge/Plateforme-Flutter-02569B?logo=flutter)
+
+**Un assistant IA hybride et intelligent qui fait le pont entre une interface native Flutter et la puissance des fournisseurs d'IA basés sur le web grâce à l'automatisation JavaScript.**
+
+Inspiré par le workflow de [Code Web Chat](https://github.com/robertpiosik/CodeWebChat).
+
+AI Hybrid Hub transforme votre appareil mobile en un centre de contrôle sophistiqué pour les outils d'IA en ligne. Il combine une interface de chat native avec un puissant pont d'automatisation JavaScript, vous permettant d'interagir avec des fournisseurs comme Google AI Studio depuis une interface unique et unifiée.
+
+### ✨ Fonctionnalités Clés
+
+-   ✅ **Expérience de Chat Native** — Une interface de chat moderne et intuitive pour envoyer des prompts et visualiser les conversations, avec des fonctions d'édition et de copie.
+-   ✅ **Intégration Multi-Fournisseurs** — Se connecte de manière transparente à plusieurs fournisseurs comme Google AI Studio, avec une architecture modulaire prête pour ChatGPT, Claude, et d'autres.
+-   ✅ **Workflow "Assister & Valider"** — Un processus unique (Envoi, Observation, Raffinement, Extraction) qui vous donne le contrôle total en validant visuellement chaque étape dans le WebView intégré.
+-   ✅ **Moteur d'Automatisation JavaScript** — Un puissant moteur basé sur TypeScript pilote les interfaces web, gérant les connexions, la soumission des prompts et l'extraction des réponses.
+-   ❤️ **Gratuit et Open-Source** — Publié sous la licence MIT.
+
+### 📊 Statut du Projet & Feuille de Route
+
+Ce projet est en développement actif.
+
+#### ✅ Actuellement Fonctionnel :
+-   Workflow principal "Assister & Valider".
+-   Intégration avec **Google AI Studio**.
+-   Interface de chat native avec historique, édition et copie des messages.
+-   Architecture TypeScript robuste et modulaire pour le moteur d'automatisation.
+-   Mode "sandbox" pour les tests d'intégration.
+
+#### 🚀 Sur la Feuille de Route :
+-   Ajout de nouveaux fournisseurs d'IA (ChatGPT, Claude, etc.).
+-   Fonctionnalités de chat avancées : exportation de conversation (Markdown), sélection multiple.
+-   Pièces jointes (TXT, PDF) pour augmenter le contexte.
+-   Interface pour gérer les paramètres spécifiques à chaque fournisseur (sélection du modèle, température, etc.).
+
+### 🛠️ Stack Technologique
+
+-   **Framework**: Flutter & Dart
+-   **Gestion d'état**: Riverpod (`riverpod_generator`)
+-   **Intégration WebView**: `flutter_inappwebview`
+-   **Pont d'Automatisation**: TypeScript + Vite
+
+### 🚀 Démarrage Rapide
+
+**Prérequis**
+-   Flutter SDK (>= 3.3.0)
+-   Node.js et npm
+
+**Installation & Lancement**
+1.  **Cloner le dépôt :**
+    ```bash
+    git clone <VOTRE_URL_DE_DÉPÔT>
+    cd ai_hybrid_hub
+    ```
+
+2.  **Installer les dépendances :**
+    ```bash
+    flutter pub get
+    npm install
+    ```
+
+3.  **Compiler le pont JavaScript :**
+    *Cette commande est obligatoire après toute modification dans le dossier `ts_src/`.*
+    ```bash
+    npm run build
+    ```
+
+4.  **Générer le code Dart :**
+    *À exécuter après avoir modifié des providers Riverpod ou des modèles Freezed.*
+    ```bash
+    flutter pub run build_runner build --delete-conflicting-outputs
+    ```
+
+5.  **Lancer l'application :**
+    ```bash
+    flutter run
+    ```
+    *(Utilisez les configurations de lancement dans VS Code ou Android Studio pour basculer entre les modes production et sandbox).*
+
+### 🏗️ Structure du Projet
+
+```
+lib/
+├── features/
+│   ├── hub/         # UI du chat natif et gestion d'état
+│   └── webview/     # Widget WebView et logique du pont Dart-JS
+└── config/          # Configuration d'environnement (sandbox vs production)
+assets/
+├── js/
+│   └── bridge.js    # Bundle JS compilé (généré par Vite)
+└── sandboxes/
+    └── aistudio_sandbox.html # Fichier HTML local pour les tests
+ts_src/
+├── chatbots/        # Logique pour chaque fournisseur d'IA spécifique
+├── types/           # Interfaces TypeScript partagées (ex: Chatbot)
+├── utils/           # Fonctions utilitaires (waitForElement, etc.)
+└── automation_engine.ts # Orchestrateur principal de l'automatisation
 ```
