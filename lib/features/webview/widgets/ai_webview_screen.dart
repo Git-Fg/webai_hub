@@ -9,6 +9,8 @@ import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provide
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/webview_content_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/models/webview_content.dart';
 
 class AiWebviewScreen extends ConsumerStatefulWidget {
   const AiWebviewScreen({super.key});
@@ -54,6 +56,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
     // ignore: avoid_print
     // print('[AiWebviewScreen] build() called. webViewController is ${webViewController != null ? "set" : "null"}');
     final bridgeScriptAsync = ref.watch(bridgeScriptProvider);
+    final webViewContent = ref.watch(initialWebViewContentProvider);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) async {
@@ -90,7 +93,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
                   );
                   if (result != null) {
                     // Affiche le JSON joliment formaté
-                    final encoder = JsonEncoder.withIndent('  ');
+                    const encoder = JsonEncoder.withIndent('  ');
                     final prettyJson = encoder.convert(result);
                     // ignore: avoid_print
                     print('[DOM INSPECT] Result:\n$prettyJson');
@@ -121,12 +124,13 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         ),
         body: bridgeScriptAsync.when(
           data: (bridgeScript) {
-            if (_htmlContent == null) {
+            if (webViewContent is WebViewContentHtmlFile &&
+                _htmlContent == null) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
               );
             }
-            return _buildWebView(bridgeScript, _htmlContent!);
+            return _buildWebView(bridgeScript, webViewContent);
           },
           loading: () => const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -141,28 +145,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
     );
   }
 
-  Widget _buildWebView(String bridgeScript, String htmlContent) {
-    // Définir une variable pour switcher facilement
-    const bool useLocalSandbox =
-        true; // Activé pour tester avec sandbox représentatif
-
+  Widget _buildWebView(String bridgeScript, WebViewContent content) {
     return InAppWebView(
       key: const ValueKey('ai_webview'), // Key to force rebuild if needed
-      // Charger le HTML directement via loadData (sans script pré-injecté)
-      initialData: useLocalSandbox
+      initialUrlRequest: content is WebViewContentUrl
+          ? URLRequest(url: WebUri(content.url))
+          : null,
+      initialData: content is WebViewContentHtmlFile
           ? InAppWebViewInitialData(
-              data: htmlContent, // HTML pur, sans script pré-injecté
+              data: _htmlContent ?? '', // HTML pur, sans script pré-injecté
               mimeType: 'text/html',
               encoding: 'utf8',
               baseUrl: WebUri('file:///android_asset/flutter_assets/'),
             )
-          // ignore: dead_code
           : null,
-      initialUrlRequest: useLocalSandbox
-          ? null
-          // ignore: dead_code
-          : URLRequest(
-              url: WebUri("https://aistudio.google.com/prompts/new_chat")),
       // Injecter le script bridge via initialUserScripts (comme le vrai site)
       // Cela rend le sandbox représentatif : le script est injecté de la même manière
       initialUserScripts: UnmodifiableListView<UserScript>([

@@ -271,5 +271,78 @@ void main() {
       conversationSub.close();
       tabIndexSub.close();
     });
+
+    test('clearConversation resets the state to an empty list', () {
+      // Keep providers alive by listening to them
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+
+      // ARRANGE: Pré-peupler le provider avec des messages.
+      final notifier = container.read(conversationProvider.notifier);
+
+      notifier.addMessage("Message 1", true);
+      notifier.addMessage("Message 2", false);
+
+      // S'assurer que l'état n'est pas vide au départ.
+      expect(container.read(conversationProvider), isNotEmpty);
+
+      // ACT: Appeler la nouvelle méthode que nous allons créer.
+      notifier.clearConversation();
+
+      // ASSERT: Vérifier que l'état est maintenant une liste vide.
+      expect(container.read(conversationProvider), isEmpty);
+
+      // Vérifier aussi que l'automatisation est réinitialisée à idle
+      expect(container.read(automationStateProvider), AutomationStatus.idle);
+
+      conversationSub.close();
+    });
+
+    test('editAndResendPrompt removes subsequent messages and resends prompt',
+        () async {
+      // Keep providers alive by listening to them
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      // ARRANGE
+      final notifier = container.read(conversationProvider.notifier);
+
+      // Créer une conversation initiale
+      notifier.addMessage("Original Prompt", true);
+      final originalMessageId = notifier.state.last.id;
+      notifier.addMessage("Original Response", false);
+      notifier.addMessage("Another Prompt", true);
+      notifier.addMessage("Another Response", false);
+      expect(container.read(conversationProvider).length, 4,
+          reason: "Initial conversation should have 4 messages.");
+
+      // ACT
+      const newPrompt = "Edited Prompt";
+      await notifier.editAndResendPrompt(originalMessageId, newPrompt);
+
+      // ASSERT
+      final conversation = container.read(conversationProvider);
+
+      // 1. La conversation doit avoir 2 messages : le prompt édité, et le message "Sending...".
+      //    Les messages qui suivaient le prompt original ont été supprimés.
+      expect(conversation.length, 2,
+          reason:
+              "Conversation should be truncated to 2 messages (edited + sending).");
+
+      // 2. Le premier message a été mis à jour.
+      expect(conversation[0].text, newPrompt);
+
+      // 3. Un nouveau message "Sending..." a été ajouté.
+      expect(conversation[1].status, MessageStatus.sending);
+      expect(conversation[1].isFromUser, false);
+
+      // 4. Le bridge a bien été appelé avec le nouveau prompt.
+      expect(fakeBridge.lastPromptSent, newPrompt);
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
   });
 }

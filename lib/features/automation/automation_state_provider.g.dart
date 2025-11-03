@@ -58,3 +58,55 @@ abstract class _$AutomationState extends $Notifier<AutomationStatus> {
     element.handleValue(ref, created);
   }
 }
+
+/// Provider pour l'état d'extraction pendant la phase 3
+
+@ProviderFor(IsExtracting)
+const isExtractingProvider = IsExtractingProvider._();
+
+/// Provider pour l'état d'extraction pendant la phase 3
+final class IsExtractingProvider extends $NotifierProvider<IsExtracting, bool> {
+  /// Provider pour l'état d'extraction pendant la phase 3
+  const IsExtractingProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'isExtractingProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$isExtractingHash();
+
+  @$internal
+  @override
+  IsExtracting create() => IsExtracting();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(bool value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<bool>(value),
+    );
+  }
+}
+
+String _$isExtractingHash() => r'504af2c83363ee55c63ca8e079ba22c6e5f16e03';
+
+/// Provider pour l'état d'extraction pendant la phase 3
+
+abstract class _$IsExtracting extends $Notifier<bool> {
+  bool build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref = this.ref as $Ref<bool, bool>;
+    final element = ref.element as $ClassProviderElement<
+        AnyNotifier<bool, bool>, bool, Object?, Object?>;
+    element.handleValue(ref, created);
+  }
+}

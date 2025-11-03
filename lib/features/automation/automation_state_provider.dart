@@ -13,3 +13,10 @@ class AutomationState extends _$AutomationState {
     state = newStatus;
   }
 }
+
+/// Provider pour l'état d'extraction pendant la phase 3
+@riverpod
+class IsExtracting extends _$IsExtracting {
+  @override
+  bool build() => false;
+}

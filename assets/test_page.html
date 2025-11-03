@@ -12,6 +12,10 @@
         ms-chat-turn[data-turn-role="Model"] { background-color: #f1f8e9; }
         .thinking-progress-icon { display: none; }
         .thinking-progress-icon.in-progress { display: inline-block; animation: rotate 2s linear infinite; }
+        mat-icon { display: inline-block; width: 24px; height: 24px; }
+        mat-icon[data-mat-icon-name="stop"] { background-color: #f44336; border-radius: 50%; }
+        .token-counter { margin-top: 5px; font-size: 12px; color: #666; }
+        .turn-footer { margin-top: 10px; border-top: 1px solid #ddd; padding-top: 5px; }
         @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -32,37 +36,52 @@
         <div id="new-turns-container"></div>
     </div>
     
-    <!-- Structure du Footer (zone de saisie) -->
+    <!-- Structure du Footer (zone de saisie) - Structure exacte d'AI Studio -->
     <footer>
         <ms-prompt-input-wrapper>
             <div class="prompt-input-wrapper-container">
                 <div class="text-wrapper">
+                    <!-- Structure hiérarchique exacte pour ms-chunk-input textarea -->
                     <ms-chunk-input>
                         <ms-text-chunk>
                             <ms-autosize-textarea>
-                                <!-- 1. LE CHAMP DE SAISIE -->
+                                <!-- 1. LE CHAMP DE SAISIE - doit être trouvable par 'ms-chunk-input textarea' -->
                                 <textarea placeholder="Start typing a prompt" aria-label="Start typing a prompt"></textarea>
                             </ms-autosize-textarea>
                         </ms-text-chunk>
                     </ms-chunk-input>
                 </div>
                 <div class="button-wrapper">
+                    <!-- Structure exacte pour ms-run-button > button[aria-label="Run"] -->
                     <ms-run-button>
                         <!-- 2. LE BOUTON D'ENVOI -->
                         <button type="submit" aria-label="Run" class="run-button">
                             <mat-icon>arrow_upward_alt</mat-icon>
                         </button>
                     </ms-run-button>
-        </div>
-    </div>
+                </div>
+            </div>
+            <!-- Compteur de tokens -->
+            <div class="token-counter">
+                <span class="v3-token-count-value">0</span> tokens
+            </div>
         </ms-prompt-input-wrapper>
     </footer>
 
     <script>
-        // Sélection des éléments basée sur la nouvelle structure
-        const textarea = document.querySelector("textarea[placeholder*='Start typing a prompt']");
-        const runButton = document.querySelector("button[aria-label='Run']");
+        // Sélection des éléments basée sur la structure exacte d'AI Studio
+        const textarea = document.querySelector("ms-chunk-input textarea") || 
+                        document.querySelector("textarea[placeholder*='Start typing a prompt']");
+        const runButton = document.querySelector("ms-run-button > button[aria-label='Run']") ||
+                         document.querySelector("button[aria-label='Run']");
         const newTurnsContainer = document.getElementById('new-turns-container');
+        const tokenCounter = document.querySelector('.v3-token-count-value');
+
+        // Observer textarea pour compteur tokens
+        textarea.addEventListener('input', () => {
+            const tokenCount = Math.ceil(textarea.value.length / 4); // Approximation
+            tokenCounter.textContent = tokenCount;
+        });
 
         runButton.addEventListener('click', () => {
             console.log('[SANDBOX] Run button clicked.');
@@ -72,45 +91,67 @@
             // 1. Ajouter le tour de l'utilisateur
             const userTurn = document.createElement('ms-chat-turn');
             userTurn.setAttribute('data-turn-role', 'User');
+            // S'assurer que le texte est directement accessible via innerText sur ms-cmark-node
+            const cmarkNode = document.createElement('ms-cmark-node');
+            cmarkNode.innerHTML = `<p><span>${promptText}</span></p>`;
+            // Ajouter le textContent pour garantir que innerText fonctionne
             userTurn.innerHTML = `
                 <div class="author-label">User</div>
-                <ms-cmark-node><p><span>${promptText}</span></p></ms-cmark-node>
             `;
+            userTurn.appendChild(cmarkNode);
             newTurnsContainer.appendChild(userTurn);
+            console.log('[SANDBOX] User turn added with prompt:', promptText);
             
             // 2. Simuler la génération de la réponse du modèle
             const modelTurn = document.createElement('ms-chat-turn');
             modelTurn.setAttribute('data-turn-role', 'Model');
             
-            // Créer l'indicateur de "pensée"
+            // Créer l'indicateur de génération avec mat-icon[data-mat-icon-name="stop"]
+            // C'est le sélecteur prioritaire dans GENERATION_INDICATOR_SELECTORS
             modelTurn.innerHTML = `
                 <div class="author-label">Model</div>
-                <!-- 3. L'INDICATEUR DE GÉNÉRATION -->
+                <!-- 3. L'INDICATEUR DE GÉNÉRATION - avec mat-icon pour le sélecteur prioritaire -->
                 <ms-thought-chunk>
-                    <img src="indicator.png" alt="Thinking" class="thinking-progress-icon in-progress">
-                    Thoughts
+                    <mat-icon data-mat-icon-name="stop"></mat-icon>
+                    <span class="thinking-progress-icon in-progress">Thinking...</span>
                 </ms-thought-chunk>
-                <div class="response-content"></div>
             `;
             newTurnsContainer.appendChild(modelTurn);
+            
+            console.log('[SANDBOX] Generation started. mat-icon[data-mat-icon-name="stop"] visible.');
             
             // Simuler une attente
             setTimeout(() => {
                 console.log('[SANDBOX] Generation complete.');
                 const thoughtChunk = modelTurn.querySelector('ms-thought-chunk');
-                const responseContent = modelTurn.querySelector('.response-content');
+                const stopIcon = modelTurn.querySelector('mat-icon[data-mat-icon-name="stop"]');
                 
-                // Cacher l'indicateur
+                // Cacher l'indicateur (comme le fait AI Studio réel)
+                if (stopIcon) {
+                    stopIcon.style.display = 'none';
+                    console.log('[SANDBOX] mat-icon[data-mat-icon-name="stop"] hidden.');
+                }
                 if (thoughtChunk) {
                     thoughtChunk.style.display = 'none';
                 }
                 
-                // 4. LE CONTENEUR DE RÉPONSE FINAL
-                responseContent.innerHTML = `
-                    <ms-cmark-node>
-                        <p><span>This is the high-fidelity response to: "${promptText}"</span></p>
-                    </ms-cmark-node>
+                // 4. LE CONTENEUR DE RÉPONSE FINAL - doit être directement accessible via
+                // ms-chat-turn[data-turn-role="Model"] ms-cmark-node (sélecteur prioritaire)
+                const responseNode = document.createElement('ms-cmark-node');
+                responseNode.innerHTML = `
+                    <p><span>This is the high-fidelity response to: "${promptText}"</span></p>
                 `;
+                // Ajouter directement dans ms-chat-turn, pas dans un div intermédiaire
+                modelTurn.appendChild(responseNode);
+                
+                // 5. Ajouter le footer avec bouton pouce levé
+                const footer = document.createElement('div');
+                footer.className = 'turn-footer';
+                footer.innerHTML = '<button iconname="thumb_up">👍</button>';
+                modelTurn.appendChild(footer);
+                console.log('[SANDBOX] Footer added with button iconname="thumb_up"');
+                
+                console.log('[SANDBOX] Response added. Accessible via ms-chat-turn[data-turn-role="Model"] ms-cmark-node');
                 
                 // Notifier Flutter
                 if (window.flutter_inappwebview) {
@@ -119,6 +160,10 @@
                 }
             }, 2000);
         });
+        
+        // S'assurer que le textarea et le bouton sont disponibles dès le chargement
+        console.log('[SANDBOX] Page loaded. Textarea found:', !!textarea);
+        console.log('[SANDBOX] Run button found:', !!runButton);
     </script>
 </body>
 </html>

@@ -36,17 +36,45 @@ class Conversation extends _$Conversation {
     state = [...state, message];
   }
 
+  void clearConversation() {
+    state = [];
+    ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.idle);
+  }
+
+  Future<void> editAndResendPrompt(String messageId, String newText) async {
+    // Trouver l'index du message à éditer.
+    final messageIndex = state.indexWhere((msg) => msg.id == messageId);
+    if (messageIndex == -1) return; // Message non trouvé
+
+    // Tronquer la conversation jusqu'au message édité (inclus).
+    final truncatedConversation = state.sublist(0, messageIndex + 1);
+
+    // Mettre à jour le texte du message édité.
+    final editedMessage = truncatedConversation.last.copyWith(text: newText);
+    truncatedConversation[messageIndex] = editedMessage;
+    // Mettre à jour l'état avec la conversation tronquée et éditée.
+    state = truncatedConversation;
+
+    // Renvoyer le prompt.
+    // On peut réutiliser la logique existante.
+    await sendPromptToAutomation(newText,
+        isResend: true, excludeMessageId: messageId);
+  }
+
   /// Construit le prompt avec le contexte de conversation
-  String _buildPromptWithContext(String newPrompt) {
+  String _buildPromptWithContext(String newPrompt, {String? excludeMessageId}) {
     // Si c'est le premier message, retourner juste le prompt
-    if (state.isEmpty || state.where((m) => m.status == MessageStatus.success).isEmpty) {
+    if (state.isEmpty ||
+        state.where((m) => m.status == MessageStatus.success).isEmpty) {
       return newPrompt;
     }
 
     // Construire le contexte à partir des messages précédents (en excluant les messages d'erreur/envoi)
-    final previousMessages = state
-        .where((m) => m.status == MessageStatus.success)
-        .toList();
+    final previousMessages = state.where((m) {
+      if (m.status != MessageStatus.success) return false;
+      if (excludeMessageId != null && m.id == excludeMessageId) return false;
+      return true;
+    }).toList();
 
     if (previousMessages.isEmpty) {
       return newPrompt;
@@ -75,14 +103,20 @@ User: $newPrompt
     return fullPrompt.trim();
   }
 
-  Future<void> sendPromptToAutomation(String prompt) async {
+  Future<void> sendPromptToAutomation(String prompt,
+      {bool isResend = false, String? excludeMessageId}) async {
     // Construire le prompt avec contexte
-    final promptWithContext = _buildPromptWithContext(prompt);
-    
+    final promptWithContext =
+        _buildPromptWithContext(prompt, excludeMessageId: excludeMessageId);
+
     // Stocker le prompt original (sans contexte) pour pouvoir le reprendre après login
     ref.read(pendingPromptProvider.notifier).set(prompt);
-    
-    addMessage(prompt, true);
+
+    // Si ce n'est pas un "resend", on ajoute le message utilisateur.
+    // Si c'est un "resend", le message est déjà dans la liste.
+    if (!isResend) {
+      addMessage(prompt, true);
+    }
 
     final assistantMessage = Message(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -165,6 +199,10 @@ User: $newPrompt
 
   Future<void> validateAndFinalizeResponse() async {
     final bridge = ref.read(javaScriptBridgeProvider);
+
+    // Mettre l'état à "chargement"
+    ref.read(isExtractingProvider.notifier).state = true;
+
     try {
       final responseText = await bridge.extractFinalResponse();
       if (ref.mounted) {
@@ -193,6 +231,11 @@ User: $newPrompt
         ref
             .read(automationStateProvider.notifier)
             .setStatus(AutomationStatus.failed);
+      }
+    } finally {
+      // TRES IMPORTANT : remettre l'état à "pas de chargement", même en cas d'erreur.
+      if (ref.mounted) {
+        ref.read(isExtractingProvider.notifier).state = false;
       }
     }
   }
@@ -223,10 +266,11 @@ User: $newPrompt
 
     // Reconstruire le prompt avec contexte (car la conversation peut avoir changé)
     final promptWithContext = _buildPromptWithContext(pendingPrompt);
-    
+
     // Mettre à jour le message "Sending..." pour indiquer qu'on reprend
-    _updateLastMessage("Resuming automation after login...", MessageStatus.sending);
-    
+    _updateLastMessage(
+        "Resuming automation after login...", MessageStatus.sending);
+
     ref
         .read(automationStateProvider.notifier)
         .setStatus(AutomationStatus.sending);

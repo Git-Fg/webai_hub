@@ -2,6 +2,8 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/webview_content_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/models/webview_content.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +19,13 @@ void main() {
       // 1. MISE EN PLACE
       // On prépare un ProviderContainer pour écouter les changements d'état
       // en dehors de l'arbre des widgets. C'est crucial pour nos assertions.
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          initialWebViewContentProvider.overrideWithValue(
+            WebViewContentHtmlFile('assets/test_page.html'),
+          ),
+        ],
+      );
 
       // On s'abonne à notre état d'automatisation. On veut voir s'il passe
       // de 'idle' à 'refining' après l'événement 'GENERATION_COMPLETE'.
@@ -29,13 +37,13 @@ void main() {
       );
 
       // 2. RENDU DU WIDGET
-      // On affiche SEULEMENT l'écran du WebView dans un ProviderScope.
+      // On affiche SEULEMENT l'écran du WebView dans un UncontrolledProviderScope.
       // Cela isole complètement le composant que nous voulons tester.
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
           child: const MaterialApp(
-            home: AiWebviewScreen(), // On charge notre sandbox par défaut
+            home: AiWebviewScreen(), // Le widget n'a plus besoin de paramètre
           ),
         ),
       );
@@ -116,7 +124,13 @@ void main() {
   testWidgets(
     'JavaScript automation correctly manipulates the sandbox DOM',
     (WidgetTester tester) async {
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          initialWebViewContentProvider.overrideWithValue(
+            WebViewContentHtmlFile('assets/test_page.html'),
+          ),
+        ],
+      );
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -195,7 +209,14 @@ void main() {
       'Extraction Test: extractFinalResponse returns the correct string',
       (WidgetTester tester) async {
     // 1. MISE EN PLACE (similaire au test précédent)
-    final container = ProviderContainer();
+    final container = ProviderContainer(
+      overrides: [
+        initialWebViewContentProvider.overrideWithValue(
+          WebViewContentHtmlFile('assets/test_page.html'),
+        ),
+      ],
+    );
+
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,

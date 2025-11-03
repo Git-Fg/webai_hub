@@ -68,6 +68,43 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         backgroundColor: Colors.blue.shade600,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            color: Colors.white,
+            tooltip: 'New Chat',
+            onPressed: () {
+              // Affiche une boîte de dialogue de confirmation pour éviter les erreurs.
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text('Start New Chat?'),
+                    content:
+                        const Text('This will clear the current conversation.'),
+                    actions: <Widget>[
+                      TextButton(
+                        child: const Text('Cancel'),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                      TextButton(
+                        child: const Text('Confirm'),
+                        onPressed: () {
+                          ref
+                              .read(conversationProvider.notifier)
+                              .clearConversation();
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
