@@ -173,7 +173,7 @@ User: $newPrompt
         ref
             .read(automationStateProvider.notifier)
             .setStatus(AutomationStatus.observing);
-        
+
         // Déclencher l'observation active
         await _observeForCompletion();
       }
@@ -197,14 +197,18 @@ User: $newPrompt
   Future<void> _observeForCompletion() async {
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
-      
-      await bridge.waitForResponseCompletion(timeout: const Duration(seconds: 60));
+
+      await bridge.waitForResponseCompletion(
+          timeout: const Duration(seconds: 60));
       if (ref.mounted) {
-        ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.refining);
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(AutomationStatus.refining);
       }
     } catch (e) {
       if (ref.mounted) {
-        onAutomationFailed('Timeout: The model response took too long to appear or was not detected.');
+        onAutomationFailed(
+            'Timeout: The model response took too long to appear or was not detected.');
       }
     }
   }
@@ -308,7 +312,7 @@ User: $newPrompt
         ref
             .read(automationStateProvider.notifier)
             .setStatus(AutomationStatus.observing);
-        
+
         // Déclencher l'observation active
         await _observeForCompletion();
       }

@@ -1,6 +1,4 @@
-# AI Hybrid Hub - WIP 
-
-Thanks to Code Web Chat for the inspiration : https://github.com/robertpiosik/CodeWebChat
+# AI Hybrid Hub
 
 ## ⚠️ Work in Progress ⚠️
 
@@ -97,7 +95,6 @@ assets/
 └── sandboxes/
     └── aistudio_sandbox.html # Local HTML for testing
 ts_src/
-<<<<<<< HEAD
 ├── chatbots/        # Logic for each specific AI provider
 ├── types/           # Shared TypeScript interfaces (e.g., Chatbot)
 ├── utils/           # Utility functions (waitForElement, etc.)
@@ -208,7 +205,3 @@ ts_src/
 ├── utils/           # Fonctions utilitaires (waitForElement, etc.)
 └── automation_engine.ts # Orchestrateur principal de l'automatisation
 ```
-=======
-└── automation_engine.ts # Source code for the automation engine
-```
->>>>>>> 3fbf68bdf4919e9cb83f62af5b5856d6d3834292
