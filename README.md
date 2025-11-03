@@ -1,9 +1,9 @@
-# AI Hybrid Hub - GNU
+# AI Hybrid Hub
 
 ## ⚠️ Work in Progress ⚠️
 
 ![Status](https://img.shields.io/badge/Status-Active_Development-green)
-![License](https://img.shields.io/badge/License-MIT-blue)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 ![Platform](https://img.shields.io/badge/Platform-Flutter-02569B?logo=flutter)
 
 **An intelligent, hybrid AI assistant that bridges a native Flutter interface with the power of web-based AI providers through JavaScript automation.**
