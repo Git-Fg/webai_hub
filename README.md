@@ -1,4 +1,4 @@
-# AI Hybrid Hub
+# AI Hybrid Hub - GNU
 
 ## ⚠️ Work in Progress ⚠️
 
