@@ -13,7 +13,7 @@ part of 'automation_state_provider.dart';
 const automationStateProvider = AutomationStateProvider._();
 
 final class AutomationStateProvider
-    extends $NotifierProvider<AutomationState, AutomationStatus> {
+    extends $NotifierProvider<AutomationState, AutomationStateData> {
   const AutomationStateProvider._()
       : super(
           from: null,
@@ -33,26 +33,26 @@ final class AutomationStateProvider
   AutomationState create() => AutomationState();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(AutomationStatus value) {
+  Override overrideWithValue(AutomationStateData value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<AutomationStatus>(value),
+      providerOverride: $SyncValueProvider<AutomationStateData>(value),
     );
   }
 }
 
-String _$automationStateHash() => r'526af3c3295550915331f10a4488c222fee7cae5';
+String _$automationStateHash() => r'6cb8a698a310a92991a618d129b26640cc916f8a';
 
-abstract class _$AutomationState extends $Notifier<AutomationStatus> {
-  AutomationStatus build();
+abstract class _$AutomationState extends $Notifier<AutomationStateData> {
+  AutomationStateData build();
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build();
-    final ref = this.ref as $Ref<AutomationStatus, AutomationStatus>;
+    final ref = this.ref as $Ref<AutomationStateData, AutomationStateData>;
     final element = ref.element as $ClassProviderElement<
-        AnyNotifier<AutomationStatus, AutomationStatus>,
-        AutomationStatus,
+        AnyNotifier<AutomationStateData, AutomationStateData>,
+        AutomationStateData,
         Object?,
         Object?>;
     element.handleValue(ref, created);

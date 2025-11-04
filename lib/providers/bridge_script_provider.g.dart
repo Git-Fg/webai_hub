@@ -40,4 +40,4 @@ final class BridgeScriptProvider
   }
 }
 
-String _$bridgeScriptHash() => r'832d022fa4d378e1d3c379ed073f53a7ab0d76da';
+String _$bridgeScriptHash() => r'f76f00eb9743726df37faaab020cbbe854bc2eca';

@@ -1,9 +1,10 @@
-import 'package:ai_hybrid_hub/features/hub/models/message.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
-import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/main.dart';
+import 'package:flutter/foundation.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
 
@@ -26,6 +27,7 @@ class Conversation extends _$Conversation {
   @override
   List<Message> build() => [];
 
+  // ignore: avoid_positional_boolean_parameters, reason: Compact API for widget call sites
   void addMessage(String text, bool isFromUser, {MessageStatus? status}) {
     final message = Message(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -38,7 +40,9 @@ class Conversation extends _$Conversation {
 
   void clearConversation() {
     state = [];
-    ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.idle);
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(const AutomationStateData.idle());
   }
 
   Future<void> editAndResendPrompt(String messageId, String newText) async {
@@ -57,8 +61,11 @@ class Conversation extends _$Conversation {
 
     // Renvoyer le prompt.
     // On peut réutiliser la logique existante.
-    await sendPromptToAutomation(newText,
-        isResend: true, excludeMessageId: messageId);
+    await sendPromptToAutomation(
+      newText,
+      isResend: true,
+      excludeMessageId: messageId,
+    );
   }
 
   /// Construit le prompt avec le contexte de conversation
@@ -103,8 +110,11 @@ User: $newPrompt
     return fullPrompt.trim();
   }
 
-  Future<void> sendPromptToAutomation(String prompt,
-      {bool isResend = false, String? excludeMessageId}) async {
+  Future<void> sendPromptToAutomation(
+    String prompt, {
+    bool isResend = false,
+    String? excludeMessageId,
+  }) async {
     // Construire le prompt avec contexte
     final promptWithContext =
         _buildPromptWithContext(prompt, excludeMessageId: excludeMessageId);
@@ -119,15 +129,16 @@ User: $newPrompt
     }
 
     final assistantMessage = Message(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        text: "Sending...",
-        isFromUser: false,
-        status: MessageStatus.sending);
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      text: 'Sending...',
+      isFromUser: false,
+      status: MessageStatus.sending,
+    );
     state = [...state, assistantMessage];
 
     ref
         .read(automationStateProvider.notifier)
-        .setStatus(AutomationStatus.sending);
+        .setStatus(const AutomationStateData.sending());
 
     if (!ref.mounted) return;
 
@@ -138,7 +149,7 @@ User: $newPrompt
       // Let Flutter's render cycle complete to build the WebView widget
       // Duration.zero cedes control to the event loop, allowing Flutter to
       // process widget rebuilds (IndexedStack shows WebView, AiWebviewScreen is created)
-      await Future.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
       if (!ref.mounted) return;
 
@@ -148,8 +159,7 @@ User: $newPrompt
       // This method handles all timing internally (WebView creation + JS bridge ready)
       await bridge.waitForBridgeReady();
 
-      // Coussin de sécurité: laisser le temps au JS de la page de s'initialiser
-      await Future.delayed(const Duration(milliseconds: 500));
+      // TIMING: plus de délai fixe; la détection se fait côté JS par notification immédiate
 
       if (!ref.mounted) return;
 
@@ -159,115 +169,156 @@ User: $newPrompt
         final jsBridge = bridge as JavaScriptBridge;
         final logs = await jsBridge.getCapturedLogs();
         if (logs.isNotEmpty) {
-          // ignore: avoid_print
-          print(
-              '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}');
+          debugPrint(
+            '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
+          );
         }
-      } catch (e) {
+      } on Object catch (_) {
         // Ignore cast errors in tests - FakeJavaScriptBridge doesn't extend JavaScriptBridge
       }
 
       await bridge.startAutomation(promptWithContext);
 
+      // --- MODIFICATION CRUCIALE ---
+      // On ne tente plus d'observer. On passe DIRECTEMENT à la phase de raffinement.
       if (ref.mounted) {
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.observing);
+        // Mettre à jour le message "placeholder" pour inviter l'utilisateur à valider
+        _updateLastMessage(
+          'Assistant is responding in the WebView...',
+          MessageStatus.sending,
+        );
 
-        // Déclencher l'observation active
-        await _observeForCompletion();
+        // Passer directement à l'état "refining"
+        ref.read(automationStateProvider.notifier).setStatus(
+              AutomationStateData.refining(
+                messageCount: state.length,
+              ),
+            );
       }
-    } catch (e) {
+
+      // --- SUPPRIMÉ ---
+      // Toute la logique d'attente de complétion est retirée.
+      // await bridge.waitForResponseCompletion(...);
+    } on Object catch (e) {
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
-          errorMessage = "Error: ${e.message} (Code: ${e.errorCode.name})";
+          errorMessage = 'Error: ${e.message} (Code: ${e.errorCode.name})';
         } else {
-          errorMessage = 'An unexpected error occurred: ${e.toString()}';
+          errorMessage = 'An unexpected error occurred: $e';
         }
 
         _updateLastMessage(errorMessage, MessageStatus.error);
         ref
             .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.failed);
+            .setStatus(const AutomationStateData.failed());
       }
     }
   }
 
-  Future<void> _observeForCompletion() async {
-    try {
-      final bridge = ref.read(javaScriptBridgeProvider);
-
-      await bridge.waitForResponseCompletion(
-          timeout: const Duration(seconds: 60));
-      if (ref.mounted) {
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.refining);
-      }
-    } catch (e) {
-      if (ref.mounted) {
-        onAutomationFailed(
-            'Timeout: The model response took too long to appear or was not detected.');
-      }
-    }
-  }
-
+  // Cette méthode extrait la réponse mais ne finalise pas le cycle
   Future<void> validateAndFinalizeResponse() async {
     final bridge = ref.read(javaScriptBridgeProvider);
-
-    // Mettre l'état à "chargement"
     ref.read(isExtractingProvider.notifier).state = true;
 
     try {
       final responseText = await bridge.extractFinalResponse();
       if (ref.mounted) {
         _updateLastMessage(responseText, MessageStatus.success);
-
-        // Nettoyer le prompt en attente
         ref.read(pendingPromptProvider.notifier).clear();
 
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.idle);
-
-        ref.read(currentTabIndexProvider.notifier).changeTo(0);
+        // --- MODIFICATION CRUCIALE ---
+        // On garde l'état refining avec isExtracted: true pour permettre
+        // à l'utilisateur de raffiner et de remplacer la réponse
+        ref.read(automationStateProvider.notifier).setStatus(
+              AutomationStateData.refining(
+                messageCount: state.length,
+                isExtracted: true,
+              ),
+            );
+        // On ne change PAS d'onglet pour laisser l'utilisateur voir la réponse dans WebView
       }
-    } catch (e) {
+    } on Object catch (e) {
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
           errorMessage =
-              "Extraction Error: ${e.message} (Code: ${e.errorCode.name})";
+              'Extraction Error: ${e.message} (Code: ${e.errorCode.name})';
         } else {
-          errorMessage = 'Failed to extract response: ${e.toString()}';
+          errorMessage = 'Failed to extract response: $e';
         }
-
         _updateLastMessage(errorMessage, MessageStatus.error);
         ref
             .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.failed);
+            .setStatus(const AutomationStateData.failed());
       }
     } finally {
-      // TRES IMPORTANT : remettre l'état à "pas de chargement", même en cas d'erreur.
       if (ref.mounted) {
         ref.read(isExtractingProvider.notifier).state = false;
       }
     }
   }
 
+  // Ré-extraire la réponse depuis WebView et remplacer le message
+  Future<void> replaceExtractedResponse() async {
+    final bridge = ref.read(javaScriptBridgeProvider);
+    ref.read(isExtractingProvider.notifier).state = true;
+
+    try {
+      final responseText = await bridge.extractFinalResponse();
+      if (ref.mounted) {
+        _updateLastMessage(responseText, MessageStatus.success);
+        // On reste en refining(isExtracted: true) pour permettre d'autres remplacements
+        ref.read(automationStateProvider.notifier).setStatus(
+              AutomationStateData.refining(
+                messageCount: state.length,
+                isExtracted: true,
+              ),
+            );
+      }
+    } on Object catch (e) {
+      if (ref.mounted) {
+        String errorMessage;
+        if (e is AutomationError) {
+          errorMessage =
+              'Extraction Error: ${e.message} (Code: ${e.errorCode.name})';
+        } else {
+          errorMessage = 'Failed to replace response: $e';
+        }
+        _updateLastMessage(errorMessage, MessageStatus.error);
+        ref
+            .read(automationStateProvider.notifier)
+            .setStatus(const AutomationStateData.failed());
+      }
+    } finally {
+      if (ref.mounted) {
+        ref.read(isExtractingProvider.notifier).state = false;
+      }
+    }
+  }
+
+  // Finalise l'automatisation et retourne au Hub
+  void finalizeAutomation() {
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(const AutomationStateData.idle());
+    ref.read(currentTabIndexProvider.notifier).changeTo(0);
+  }
+
   void cancelAutomation() {
-    _updateLastMessage("Automation cancelled by user", MessageStatus.error);
-    ref.read(automationStateProvider.notifier).setStatus(AutomationStatus.idle);
+    _updateLastMessage('Automation cancelled by user', MessageStatus.error);
+    ref
+        .read(automationStateProvider.notifier)
+        .setStatus(const AutomationStateData.idle());
 
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }
 
   void onAutomationFailed(String error) {
-    _updateLastMessage("Automation failed: $error", MessageStatus.error);
+    _updateLastMessage('Automation failed: $error', MessageStatus.error);
     ref
         .read(automationStateProvider.notifier)
-        .setStatus(AutomationStatus.failed);
+        .setStatus(const AutomationStateData.failed());
   }
 
   Future<void> resumeAutomationAfterLogin() async {
@@ -276,7 +327,7 @@ User: $newPrompt
       // Pas de prompt en attente, on arrête
       ref
           .read(automationStateProvider.notifier)
-          .setStatus(AutomationStatus.idle);
+          .setStatus(const AutomationStateData.idle());
       return;
     }
 
@@ -285,11 +336,13 @@ User: $newPrompt
 
     // Mettre à jour le message "Sending..." pour indiquer qu'on reprend
     _updateLastMessage(
-        "Resuming automation after login...", MessageStatus.sending);
+      'Resuming automation after login...',
+      MessageStatus.sending,
+    );
 
     ref
         .read(automationStateProvider.notifier)
-        .setStatus(AutomationStatus.sending);
+        .setStatus(const AutomationStateData.sending());
 
     if (!ref.mounted) return;
 
@@ -298,7 +351,6 @@ User: $newPrompt
 
       // Attendre que le bridge soit prêt (au cas où le WebView a été rechargé)
       await bridge.waitForBridgeReady();
-      await Future.delayed(const Duration(milliseconds: 500));
 
       if (!ref.mounted) return;
 
@@ -309,26 +361,32 @@ User: $newPrompt
       await bridge.startAutomation(promptWithContext);
 
       if (ref.mounted) {
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.observing);
+        // Mettre à jour le message "placeholder" pour inviter l'utilisateur à valider
+        _updateLastMessage(
+          'Assistant is responding in the WebView...',
+          MessageStatus.sending,
+        );
 
-        // Déclencher l'observation active
-        await _observeForCompletion();
+        // Passer directement à l'état "refining"
+        ref.read(automationStateProvider.notifier).setStatus(
+              AutomationStateData.refining(
+                messageCount: state.length,
+              ),
+            );
       }
-    } catch (e) {
+    } on Object catch (e) {
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
-          errorMessage = "Error: ${e.message} (Code: ${e.errorCode.name})";
+          errorMessage = 'Error: ${e.message} (Code: ${e.errorCode.name})';
         } else {
-          errorMessage = 'An unexpected error occurred: ${e.toString()}';
+          errorMessage = 'An unexpected error occurred: $e';
         }
 
         _updateLastMessage(errorMessage, MessageStatus.error);
         ref
             .read(automationStateProvider.notifier)
-            .setStatus(AutomationStatus.failed);
+            .setStatus(const AutomationStateData.failed());
       }
     }
   }

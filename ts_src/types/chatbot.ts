@@ -20,10 +20,7 @@ export interface Chatbot {
    */
   extractResponse: () => Promise<string>;
 
-  /**
-   * Attend activement que la réponse du modèle soit entièrement rendue dans le DOM.
-   * Doit lever une erreur en cas de timeout.
-   */
-  waitForResponse: (timeout: number) => Promise<void>;
+  // SUPPRIMÉ : Cette méthode n'est plus nécessaire.
+  // waitForResponse: (timeout: number) => Promise<void>;
 }
 

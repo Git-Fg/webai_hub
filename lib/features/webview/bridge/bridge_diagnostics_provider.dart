@@ -3,15 +3,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'bridge_diagnostics_provider.g.dart';
 
 class BridgeDiagnostics {
-  final bool completerInitialized;
-  final bool completerCompleted;
-  final bool webViewControllerExists;
-  final DateTime? lastErrorTimestamp;
-  final String? lastErrorCode;
-  final String? lastErrorLocation;
-  final DateTime? bridgeSignaledReadyTimestamp;
-  final DateTime? webViewCreatedTimestamp;
-
   const BridgeDiagnostics({
     required this.completerInitialized,
     required this.completerCompleted,
@@ -22,6 +13,14 @@ class BridgeDiagnostics {
     this.bridgeSignaledReadyTimestamp,
     this.webViewCreatedTimestamp,
   });
+  final bool completerInitialized;
+  final bool completerCompleted;
+  final bool webViewControllerExists;
+  final DateTime? lastErrorTimestamp;
+  final String? lastErrorCode;
+  final String? lastErrorLocation;
+  final DateTime? bridgeSignaledReadyTimestamp;
+  final DateTime? webViewCreatedTimestamp;
 
   BridgeDiagnostics copyWith({
     bool? completerInitialized,
@@ -84,7 +83,8 @@ class BridgeDiagnosticsState extends _$BridgeDiagnosticsState {
   }
 
   void updateDiagnostics(
-      BridgeDiagnostics Function(BridgeDiagnostics) updater) {
+    BridgeDiagnostics Function(BridgeDiagnostics) updater,
+  ) {
     state = updater(state);
   }
 

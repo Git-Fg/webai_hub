@@ -1,15 +1,30 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+part 'automation_state_provider.freezed.dart';
 part 'automation_state_provider.g.dart';
 
-enum AutomationStatus { idle, sending, observing, refining, failed, needsLogin }
+@freezed
+sealed class AutomationStateData with _$AutomationStateData {
+  const factory AutomationStateData.idle() = _Idle;
+  const factory AutomationStateData.sending() = _Sending;
+  // --- SUPPRIMÉ ---
+  // const factory AutomationStateData.observing() = _Observing;
+  const factory AutomationStateData.refining({
+    required int messageCount,
+    @Default(false) bool isExtracted,
+  }) = _Refining;
+  const factory AutomationStateData.failed() = _Failed;
+  const factory AutomationStateData.needsLogin() = _NeedsLogin;
+}
 
 @riverpod
 class AutomationState extends _$AutomationState {
   @override
-  AutomationStatus build() => AutomationStatus.idle;
+  AutomationStateData build() => const AutomationStateData.idle();
 
-  void setStatus(AutomationStatus newStatus) {
+  // ignore: use_setters_to_change_properties, reason: Preserve existing API for MVP stability
+  void setStatus(AutomationStateData newStatus) {
     state = newStatus;
   }
 }

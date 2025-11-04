@@ -71,15 +71,54 @@ npm run build
 - ✅ **TOUJOURS** : `ref.read(currentTabIndexProvider.notifier).changeTo(index)`
 - **Pourquoi** : `TabController` est lourd à synchroniser et ne peut pas être partagé entre widgets et providers. Voir `BLUEPRINT_MVP.md` section 7.1 pour détails.
 
-#### Anti-Pattern 2 : Utiliser des délais arbitraires (`Future.delayed`, `setTimeout`)
+#### Principe de Gestion du Timing : Les Délais en Dernier Recours
 
-- ❌ **JAMAIS** : Ajouter `Future.delayed(Duration(seconds: 2))` au premier problème de timing
-- ✅ **TOUJOURS** : Chercher la cause racine :
-  - Race condition dans le cycle de vie des widgets/WebView
-  - État provider mal synchronisé
-  - Événements dans le mauvais ordre
-  - Sélecteurs CSS incorrects ou éléments non disponibles
-- **Règle** : Si un délai résout le symptôme mais pas la cause, **SUPPRIMER le délai**. Les délais sont un dernier recours uniquement. Voir `BLUEPRINT_MVP.md` section 7.3 pour l'approche correcte.
+Les délais (`Future.delayed`, `setTimeout`) sont des outils puissants pour gérer l'asynchronisme, mais leur utilisation abusive masque les problèmes de fond et crée une application fragile. Ils traitent les **symptômes** (une action échoue car un élément n'est pas prêt) et non la **cause** (pourquoi l'élément n'était-il pas prêt ?).
+
+- ❌ **L'Approche Symptomatique (à proscrire)** : Ajouter ou augmenter un `Future.delayed(Duration(seconds: 2))` dès qu'un problème de timing apparaît, sans investigation.
+
+- ✅ **L'Approche Fondamentale (Priorité Absolue)** : **TOUJOURS** commencer par chercher la cause racine :
+  - Y a-t-il un événement ou un callback que l'on peut écouter ? (ex: `onLoadStop`, un signal du bridge JS)
+  - L'état d'un provider Riverpod est-il mal synchronisé ?
+  - S'agit-il d'une race condition dans le cycle de vie des widgets/WebView ?
+  - Le sélecteur CSS cible-t-il un élément qui apparaît après une animation ? Peut-on attendre la fin de l'animation avec une `MutationObserver` plus précise ?
+
+#### Quand un délai est-il acceptable ?
+
+Un délai est considéré comme un **dernier recours légitime** uniquement dans les cas suivants :
+
+1. **Interaction avec un système externe opaque** : Lorsque vous attendez la fin d'une animation CSS ou d'un script tiers dans la `WebView` qui ne fournit **aucun événement de complétion** observable.
+
+2. **Coussin de sécurité minimal** : Un délai très court (ex: 100-300ms) peut être utilisé pour s'assurer que le thread UI a eu le temps de finaliser un rendu complexe après un changement d'état, bien que des solutions comme `WidgetsBinding.instance.addPostFrameCallback` soient souvent préférables.
+
+**Règle d'or** : Si un délai est ajouté, il doit être **court**, **borné**, et accompagné d'un commentaire expliquant **pourquoi** une solution événementielle n'était pas possible.
+
+```dart
+// TIMING: Attente de 300ms pour permettre à l'animation de fermeture du panneau de se terminer.
+// Aucune callback JS n'est disponible pour cet événement.
+await Future.delayed(const Duration(milliseconds: 300));
+```
+
+#### Règle pour l'ajustement des délais existants
+
+Il est parfois nécessaire d'augmenter un délai existant car le comportement de la page web a changé. **Ne jamais augmenter un délai à l'aveugle.**
+
+**Workflow obligatoire pour modifier un délai :**
+
+1. **Diagnostiquer** : Comprendre *précisément pourquoi* le délai initial n'est plus suffisant. (Ex: "Le spinner de chargement de l'IA dure maintenant en moyenne 500ms de plus").
+
+2. **Documenter** : Ajouter ou mettre à jour le commentaire pour justifier l'augmentation.
+   ```dart
+   // TIMING (MAJ 03/11/2025): Augmenté de 300ms à 800ms car la nouvelle interface
+   // de l'IA ajoute une animation de fondu qui retarde l'apparition du bouton.
+   await Future.delayed(const Duration(milliseconds: 800));
+   ```
+
+3. **Ajuster au minimum** : N'augmentez le délai que de la durée strictement nécessaire, avec une petite marge de sécurité. Ne doublez pas la valeur "juste au cas où".
+
+4. **Considérer l'alternative** : Chaque fois que vous touchez à un délai, demandez-vous si une nouvelle méthode de détection (un nouvel attribut sur un élément, un événement) n'est pas devenue disponible.
+
+**Conclusion : Chaque délai est une dette technique. Justifiez-le.**
 
 ### Erreurs Courantes à Éviter
 

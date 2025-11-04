@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 
 class LoadingIndicator extends StatelessWidget {
-  final double size;
-  final Color color;
-
   const LoadingIndicator({
     super.key,
     this.size = 16,
     this.color = Colors.blue,
   });
+  final double size;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -22,4 +21,3 @@ class LoadingIndicator extends StatelessWidget {
     );
   }
 }
-

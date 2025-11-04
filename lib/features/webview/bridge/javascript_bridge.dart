@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'automation_errors.dart';
-import 'bridge_diagnostics_provider.dart';
-import 'javascript_bridge_interface.dart';
 
 part 'javascript_bridge.g.dart';
 
@@ -13,6 +14,7 @@ class WebViewController extends _$WebViewController {
   @override
   InAppWebViewController? build() => null;
 
+  // ignore: use_setters_to_change_properties, reason: Clear intent; method aligns with Riverpod notifier APIs
   void setController(InAppWebViewController? controller) {
     state = controller;
   }
@@ -33,8 +35,8 @@ class BridgeReady extends _$BridgeReady {
 }
 
 class JavaScriptBridge implements JavaScriptBridgeInterface {
-  final Ref ref;
   JavaScriptBridge(this.ref);
+  final Ref ref;
 
   InAppWebViewController get _controller {
     final controller = ref.read(webViewControllerProvider);
@@ -55,7 +57,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   Future<void> _waitForWebViewToBeCreated() async {
-    int attempts = 0;
+    var attempts = 0;
     const maxAttempts = 400; // Increased for IndexedStack tab switching
     const delayMs = 100;
 
@@ -74,7 +76,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         return;
       }
 
-      await Future.delayed(const Duration(milliseconds: delayMs));
+      await Future<void>.delayed(const Duration(milliseconds: delayMs));
       attempts++;
     }
 
@@ -93,13 +95,13 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     await _waitForWebViewToBeCreated();
 
     // Additional wait to ensure WebView is fully initialized
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
     const maxAttempts = 200;
     const delayMs = 100;
     const timeoutSeconds = 20;
 
-    int attempts = 0;
+    var attempts = 0;
     final startTime = DateTime.now();
 
     while (attempts < maxAttempts) {
@@ -131,7 +133,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         return;
       }
 
-      await Future.delayed(const Duration(milliseconds: delayMs));
+      await Future<void>.delayed(const Duration(milliseconds: delayMs));
       attempts++;
     }
 
@@ -157,8 +159,9 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       dynamic isPageLoaded;
       try {
         isPageLoaded = await controller.evaluateJavascript(
-            source: "document.readyState === 'complete'");
-      } catch (e, stackTrace) {
+          source: "document.readyState === 'complete'",
+        );
+      } on Object catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.webViewNotReady,
           location: 'startAutomation',
@@ -188,9 +191,10 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       try {
         // Simple check: verify window.startAutomation is available
         checkResult = await controller.evaluateJavascript(
-            source:
-                "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'");
-      } catch (e, stackTrace) {
+          source:
+              "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'",
+        );
+      } on Object catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.scriptNotInjected,
           location: 'startAutomation',
@@ -220,8 +224,9 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       try {
         // Simple, direct call - functions are guaranteed to be on window
         await controller.evaluateJavascript(
-            source: "window.startAutomation($encodedPrompt);");
-      } catch (e, stackTrace) {
+          source: 'window.startAutomation($encodedPrompt);',
+        );
+      } on Object catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.automationExecutionFailed,
           location: 'startAutomation',
@@ -236,9 +241,10 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           stackTrace: stackTrace,
         );
       }
+      // ignore: avoid_catching_errors, reason: Preserve original AutomationError semantics without wrapping
     } on AutomationError {
       rethrow;
-    } catch (e, stackTrace) {
+    } on Object catch (e, stackTrace) {
       throw AutomationError(
         errorCode: AutomationErrorCode.automationExecutionFailed,
         location: 'startAutomation',
@@ -256,10 +262,11 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
     try {
       final result = await controller.evaluateJavascript(
-          source:
-              "typeof inspectDOMForSelectors !== 'undefined' ? inspectDOMForSelectors() : null");
+        source:
+            "typeof inspectDOMForSelectors !== 'undefined' ? inspectDOMForSelectors() : null",
+      );
       return result as Map<String, dynamic>;
-    } catch (e, stackTrace) {
+    } on Object catch (e, stackTrace) {
       throw AutomationError(
         errorCode: AutomationErrorCode.automationExecutionFailed,
         location: 'inspectDOMForSelectors',
@@ -276,7 +283,8 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     final controller = _controller;
 
     try {
-      await controller.evaluateJavascript(source: '''
+      await controller.evaluateJavascript(
+        source: '''
         (function() {
           const originalLog = console.log;
           const originalWarn = console.warn;
@@ -299,8 +307,9 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
             originalError.apply(console, args);
           };
         })();
-      ''');
-    } catch (e) {
+      ''',
+      );
+    } on Object catch (_) {
       // Ignore errors
     }
   }
@@ -311,11 +320,13 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
     try {
       final logs = await controller.evaluateJavascript(
-          source: "window.__capturedLogs__ || []");
+        source: 'window.__capturedLogs__ || []',
+      );
       await controller.evaluateJavascript(
-          source: "window.__capturedLogs__ = []");
+        source: 'window.__capturedLogs__ = []',
+      );
       return List<Map<String, dynamic>>.from(logs as List);
-    } catch (e) {
+    } on Object catch (_) {
       return [];
     }
   }
@@ -332,7 +343,8 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         // extractFinalResponse est async, utiliser une variable globale pour contourner
         // le problème de sérialisation des Promises par evaluateJavascript
         // Étape 1: Exécuter l'extraction et stocker le résultat
-        await controller.evaluateJavascript(source: '''
+        await controller.evaluateJavascript(
+          source: '''
               (async () => {
                 if (typeof extractFinalResponse !== 'undefined') {
                   window.__lastExtractedResponse__ = await extractFinalResponse();
@@ -340,15 +352,17 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
                   window.__lastExtractedResponse__ = null;
                 }
               })()
-            ''');
+            ''',
+        );
 
         // Étape 2: Attendre un peu pour que la Promise soit résolue
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // Étape 3: Récupérer le résultat stocké
         result = await controller.evaluateJavascript(
-            source: "window.__lastExtractedResponse__ || null");
-      } catch (e, stackTrace) {
+          source: 'window.__lastExtractedResponse__ || null',
+        );
+      } on Object catch (e, stackTrace) {
         throw AutomationError(
           errorCode: AutomationErrorCode.responseExtractionFailed,
           location: 'extractFinalResponse',
@@ -373,9 +387,10 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       }
 
       return result;
+      // ignore: avoid_catching_errors, reason: Preserve original AutomationError semantics without wrapping
     } on AutomationError {
       rethrow;
-    } catch (e, stackTrace) {
+    } on Object catch (e, stackTrace) {
       throw AutomationError(
         errorCode: AutomationErrorCode.responseExtractionFailed,
         location: 'extractFinalResponse',
@@ -387,29 +402,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
-  @override
-  Future<bool> waitForResponseCompletion(
-      {Duration timeout = const Duration(seconds: 60)}) async {
-    try {
-      await _waitForWebViewToBeCreated();
-      final controller = _controller;
-
-      final result = await controller.evaluateJavascript(
-          source:
-              'window.waitForResponseCompletion(${timeout.inMilliseconds})');
-
-      return result == true;
-    } catch (e, stackTrace) {
-      throw AutomationError(
-        errorCode: AutomationErrorCode.responseObservationFailed,
-        location: 'waitForResponseCompletion',
-        message: 'Failed to observe response completion',
-        diagnostics: _getBridgeDiagnostics(),
-        originalError: e,
-        stackTrace: stackTrace,
-      );
-    }
-  }
+  // SUPPRIMÉ : waitForResponseCompletion n'est plus nécessaire
 }
 
 @Riverpod(keepAlive: true)

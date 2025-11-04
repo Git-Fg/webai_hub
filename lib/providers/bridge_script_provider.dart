@@ -5,5 +5,5 @@ part 'bridge_script_provider.g.dart';
 
 @riverpod
 Future<String> bridgeScript(Ref ref) async {
-  return await rootBundle.loadString('assets/js/bridge.js');
+  return rootBundle.loadString('assets/js/bridge.js');
 }

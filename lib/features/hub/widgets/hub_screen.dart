@@ -1,8 +1,10 @@
+import 'dart:async';
+
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 
 class HubScreen extends ConsumerStatefulWidget {
   const HubScreen({super.key});
@@ -27,10 +29,12 @@ class _HubScreenState extends ConsumerState<HubScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+        unawaited(
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          ),
         );
       }
     });
@@ -40,7 +44,9 @@ class _HubScreenState extends ConsumerState<HubScreen> {
     if (_textController.text.trim().isEmpty) return;
 
     final message = _textController.text.trim();
-    ref.read(conversationProvider.notifier).sendPromptToAutomation(message);
+    unawaited(
+      ref.read(conversationProvider.notifier).sendPromptToAutomation(message),
+    );
     _textController.clear();
     _scrollToBottom();
   }
@@ -75,32 +81,35 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             tooltip: 'New Chat',
             onPressed: () {
               // Affiche une boîte de dialogue de confirmation pour éviter les erreurs.
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Start New Chat?'),
-                    content:
-                        const Text('This will clear the current conversation.'),
-                    actions: <Widget>[
-                      TextButton(
-                        child: const Text('Cancel'),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: const Text('Start New Chat?'),
+                      content: const Text(
+                        'This will clear the current conversation.',
                       ),
-                      TextButton(
-                        child: const Text('Confirm'),
-                        onPressed: () {
-                          ref
-                              .read(conversationProvider.notifier)
-                              .clearConversation();
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ],
-                  );
-                },
+                      actions: <Widget>[
+                        TextButton(
+                          child: const Text('Cancel'),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                        TextButton(
+                          child: const Text('Confirm'),
+                          onPressed: () {
+                            ref
+                                .read(conversationProvider.notifier)
+                                .clearConversation();
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -157,7 +166,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               },
             },
             child: Container(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
@@ -171,36 +180,46 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      focusNode: _focusNode,
-                      controller: _textController,
-                      decoration: InputDecoration(
-                        hintText: 'Type your message...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+                    child: Semantics(
+                      label: 'hub_message_input',
+                      textField: true,
+                      child: TextField(
+                        key: const Key('hub_message_input'),
+                        focusNode: _focusNode,
+                        controller: _textController,
+                        decoration: InputDecoration(
+                          hintText: 'Type your message...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
                         ),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
+                        maxLines: null,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
                       ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  FloatingActionButton(
-                    onPressed: _sendMessage,
-                    backgroundColor: Colors.blue.shade600,
-                    mini: true,
-                    elevation: 2,
-                    child: const Icon(
-                      Icons.send,
-                      color: Colors.white,
+                  Semantics(
+                    label: 'hub_send_button',
+                    button: true,
+                    child: FloatingActionButton(
+                      key: const Key('hub_send_button'),
+                      onPressed: _sendMessage,
+                      backgroundColor: Colors.blue.shade600,
+                      mini: true,
+                      elevation: 2,
+                      child: const Icon(
+                        Icons.send,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],

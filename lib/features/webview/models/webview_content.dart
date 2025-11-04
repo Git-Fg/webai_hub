@@ -4,11 +4,11 @@
 abstract class WebViewContent {}
 
 class WebViewContentUrl extends WebViewContent {
-  final String url;
   WebViewContentUrl(this.url);
+  final String url;
 }
 
 class WebViewContentHtmlFile extends WebViewContent {
-  final String assetPath;
   WebViewContentHtmlFile(this.assetPath);
+  final String assetPath;
 }

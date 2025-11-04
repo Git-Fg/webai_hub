@@ -1,24 +1,24 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ai_hybrid_hub/features/hub/models/message.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'dart:async';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
+import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ChatBubble extends ConsumerWidget {
-  final Message message;
-
   const ChatBubble({
-    super.key,
     required this.message,
+    super.key,
   });
+  final Message message;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // On n'autorise l'édition que si c'est un message de l'utilisateur
     // et qu'il n'y a pas d'automatisation en cours.
     final isEditable = message.isFromUser &&
-        ref.watch(automationStateProvider) == AutomationStatus.idle;
+        ref.watch(automationStateProvider) == const AutomationStateData.idle();
 
     return GestureDetector(
       onTap: isEditable
@@ -27,7 +27,7 @@ class ChatBubble extends ConsumerWidget {
             }
           : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Row(
           mainAxisAlignment: message.isFromUser
               ? MainAxisAlignment.end
@@ -48,7 +48,9 @@ class ChatBubble extends ConsumerWidget {
             Flexible(
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 10.0),
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: message.isFromUser
                       ? Colors.blue.shade500
@@ -78,7 +80,7 @@ class ChatBubble extends ConsumerWidget {
                     ),
                     if (message.status == MessageStatus.sending)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -103,7 +105,7 @@ class ChatBubble extends ConsumerWidget {
                       )
                     else if (message.status == MessageStatus.error)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -151,36 +153,40 @@ class ChatBubble extends ConsumerWidget {
 
   void _showEditDialog(BuildContext context, WidgetRef ref, Message message) {
     final textController = TextEditingController(text: message.text);
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Prompt'),
-          content: TextField(
-            controller: textController,
-            autofocus: true,
-            maxLines: null,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Edit Prompt'),
+            content: TextField(
+              controller: textController,
+              autofocus: true,
+              maxLines: null,
             ),
-            TextButton(
-              onPressed: () {
-                final newText = textController.text.trim();
-                if (newText.isNotEmpty && newText != message.text) {
-                  ref
-                      .read(conversationProvider.notifier)
-                      .editAndResendPrompt(message.id, newText);
-                }
-                Navigator.of(context).pop();
-              },
-              child: const Text('Save & Resend'),
-            ),
-          ],
-        );
-      },
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final newText = textController.text.trim();
+                  if (newText.isNotEmpty && newText != message.text) {
+                    unawaited(
+                      ref
+                          .read(conversationProvider.notifier)
+                          .editAndResendPrompt(message.id, newText),
+                    );
+                  }
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Save & Resend'),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

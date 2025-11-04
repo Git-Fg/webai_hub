@@ -2,6 +2,7 @@
 import { Chatbot } from './types/chatbot';
 import { aiStudioChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
+import { EVENT_TYPE_AUTOMATION_FAILED, READY_HANDLER } from './utils/bridge-constants';
 
 // Initialize global counter for tracking processed response footers
 (window as any).__processedFootersCount = 0;
@@ -45,7 +46,7 @@ function getChatbot(): Chatbot | null {
 (window as any).startAutomation = async function(prompt: string): Promise<void> {
   const chatbot = getChatbot();
   if (!chatbot) {
-    notifyDart({ type: 'AUTOMATION_FAILED', errorCode: 'UNSUPPORTED_SITE', payload: 'This site is not supported.' });
+    notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: 'This site is not supported.' });
     return;
   }
 
@@ -58,7 +59,7 @@ function getChatbot(): Chatbot | null {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     notifyDart({
-      type: 'AUTOMATION_FAILED',
+      type: EVENT_TYPE_AUTOMATION_FAILED,
       errorCode: 'AUTOMATION_EXECUTION_FAILED',
       location: 'startAutomation',
       payload: errorMessage,
@@ -73,7 +74,7 @@ function getChatbot(): Chatbot | null {
   const chatbot = getChatbot();
   if (!chatbot) {
     const errorMsg = 'This site is not supported for extraction.';
-    notifyDart({ type: 'AUTOMATION_FAILED', errorCode: 'UNSUPPORTED_SITE', payload: errorMsg });
+    notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: errorMsg });
     throw new Error(errorMsg);
   }
 
@@ -82,7 +83,7 @@ function getChatbot(): Chatbot | null {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     notifyDart({
-      type: 'AUTOMATION_FAILED',
+      type: EVENT_TYPE_AUTOMATION_FAILED,
       errorCode: 'RESPONSE_EXTRACTION_FAILED',
       location: 'extractFinalResponse',
       payload: errorMessage,
@@ -91,21 +92,8 @@ function getChatbot(): Chatbot | null {
   }
 };
 
-// Fonction globale appelée par Dart pour attendre que la réponse soit complètement rendue
-(window as any).waitForResponseCompletion = async function(timeout: number = 60000): Promise<boolean> {
-  const chatbot = getChatbot();
-  if (!chatbot || !chatbot.waitForResponse) {
-    console.warn('[Engine] Current chatbot does not support waitForResponse.');
-    return true; 
-  }
-  try {
-    await chatbot.waitForResponse(timeout);
-    return true;
-  } catch (error) {
-    console.error('[Engine] Error waiting for response:', error);
-    return false;
-  }
-};
+// --- SUPPRIMÉ ---
+// La fonction globale `waitForResponseCompletion` n'est plus appelée par Dart, on la supprime.
 
 // Helper to check for Shadow DOM
 function findInShadowDOM(selector: string, root: Document | ShadowRoot = document): Element | null {
@@ -239,7 +227,7 @@ function signalReady() {
   const windowWithFlutter = window as WindowWithFlutterInAppWebView;
   if (windowWithFlutter.flutter_inappwebview) {
     try {
-      windowWithFlutter.flutter_inappwebview.callHandler('bridgeReady');
+      windowWithFlutter.flutter_inappwebview.callHandler(READY_HANDLER);
       console.log('[Engine] Bridge ready signal sent to Flutter.');
     } catch (e) {
       console.warn('[Engine] Failed to send bridge ready signal:', e);

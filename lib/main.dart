@@ -1,7 +1,7 @@
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
-import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
-import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -65,16 +65,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
   void _onTabChanged() {
     if (!mounted) return;
     final newIndex = _tabController.index;
-      final currentProviderIndex = ref.read(currentTabIndexProvider);
-      if (currentProviderIndex != newIndex) {
-        ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
+    final currentProviderIndex = ref.read(currentTabIndexProvider);
+    if (currentProviderIndex != newIndex) {
+      ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
     }
   }
 
   @override
   void dispose() {
-    _tabController.removeListener(_onTabChanged);
-    _tabController.dispose();
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -94,20 +95,20 @@ class _MainScreenState extends ConsumerState<MainScreen>
         children: [
           // Use IndexedStack - WebView will be built when tab switches to index 1
           IndexedStack(
-          index: currentIndex,
-          sizing: StackFit.expand,
-          children: const [
-            HubScreen(),
-            // Remove const to allow widget to rebuild when tab changes
-            AiWebviewScreen(),
-          ],
+            index: currentIndex,
+            sizing: StackFit.expand,
+            children: const [
+              HubScreen(),
+              // Remove const to allow widget to rebuild when tab changes
+              AiWebviewScreen(),
+            ],
           ),
           Consumer(
             builder: (context, ref, _) {
               final status = ref.watch(automationStateProvider);
               final currentTabIndex = ref.watch(currentTabIndexProvider);
-              final shouldShow =
-                  status != AutomationStatus.idle && currentTabIndex == 1;
+              final shouldShow = status != const AutomationStateData.idle() &&
+                  currentTabIndex == 1;
 
               // Positioned must be a direct child of Stack
               return Positioned(

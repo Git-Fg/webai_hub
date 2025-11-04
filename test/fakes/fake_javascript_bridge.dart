@@ -1,5 +1,5 @@
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 
 enum ErrorType {
   none,
@@ -34,17 +34,17 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   @override
   Future<void> waitForBridgeReady() async {
     // Dans les tests, le bridge est toujours prêt immédiatement
-    await Future.delayed(const Duration(milliseconds: 10));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 
   @override
   Future<void> startAutomation(String prompt) async {
     // Simuler un délai réseau
-    await Future.delayed(const Duration(milliseconds: 50));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
 
     switch (startAutomationErrorType) {
       case ErrorType.genericException:
-        throw Exception("Fake automation error");
+        throw Exception('Fake automation error');
       case ErrorType.automationError:
         throw AutomationError(
           errorCode: AutomationErrorCode.automationExecutionFailed,
@@ -55,18 +55,17 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
       case ErrorType.none:
         // Enregistrer le prompt pour vérification
         lastPromptSent = prompt;
-        break;
     }
   }
 
   @override
   Future<String> extractFinalResponse() async {
     // Simuler un délai réseau
-    await Future.delayed(const Duration(milliseconds: 50));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
 
     switch (extractFinalResponseErrorType) {
       case ErrorType.genericException:
-        throw Exception("Fake extraction error");
+        throw Exception('Fake extraction error');
       case ErrorType.automationError:
         throw AutomationError(
           errorCode: AutomationErrorCode.responseExtractionFailed,
@@ -77,16 +76,11 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
       case ErrorType.none:
         wasExtractCalled = true;
         // Retourner une réponse prédictible
-        return "This is a fake AI response from the test bridge.";
+        return 'This is a fake AI response from the test bridge.';
     }
   }
 
-  @override
-  Future<bool> waitForResponseCompletion({Duration? timeout}) async {
-    // In tests, response is always ready immediately
-    await Future.delayed(const Duration(milliseconds: 10));
-    return true;
-  }
+  // SUPPRIMÉ : waitForResponseCompletion n'est plus nécessaire
 
   // Méthode pour simuler getCapturedLogs (utilisée par conversation_provider)
   Future<List<Map<String, dynamic>>> getCapturedLogs() async {

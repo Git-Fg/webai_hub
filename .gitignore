@@ -60,3 +60,6 @@ yarn-error.log*
 # Fichiers de build génériques
 app.*.symbols
 app.*.map.json
+
+# Playwright persisted auth
+.auth/

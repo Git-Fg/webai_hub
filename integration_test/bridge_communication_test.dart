@@ -1,33 +1,53 @@
 // integration_test/bridge_communication_test.dart
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/models/webview_content.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/webview_content_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' as frp;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-
-import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
-import 'package:ai_hybrid_hub/features/webview/providers/webview_content_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/models/webview_content.dart';
 
 // Helper pour attendre qu'un provider atteigne une certaine valeur
 Future<void> waitUntilProvider<T>(
   WidgetTester tester,
-  ProviderContainer container,
-  dynamic provider,
+  T Function() read,
   T expectedValue, {
   Duration timeout = const Duration(seconds: 10),
 }) async {
-  bool isReady = false;
+  var isReady = false;
   final stopwatch = Stopwatch()..start();
 
   while (stopwatch.elapsed < timeout) {
     await tester.pump(const Duration(milliseconds: 100));
-    isReady = container.read(provider) == expectedValue;
+    isReady = read() == expectedValue;
     if (isReady) return;
   }
 
-  fail('Provider $provider did not reach value $expectedValue within $timeout');
+  fail('Expected value $expectedValue not reached within $timeout');
+}
+
+// Helper pour attendre qu'un AutomationStateData soit de type refining
+Future<void> waitUntilRefining(
+  WidgetTester tester,
+  AutomationStateData Function() read, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final stopwatch = Stopwatch()..start();
+
+  while (stopwatch.elapsed < timeout) {
+    await tester.pump(const Duration(milliseconds: 100));
+    final state = read();
+    // Use pattern matching to check if state is refining
+    final isRefining = state.maybeWhen(
+      refining: (_) => true,
+      orElse: () => false,
+    );
+    if (isRefining) return;
+  }
+
+  fail('State did not reach refining within $timeout');
 }
 
 void main() {
@@ -37,11 +57,11 @@ void main() {
   const sandboxPath = 'assets/sandboxes/aistudio_sandbox.html';
 
   group('AI Studio Bridge Integration Tests', () {
-    late ProviderContainer container;
+    late frp.ProviderContainer container;
 
     // Helper pour initialiser l'app avec le sandbox
     Future<void> pumpSandbox(WidgetTester tester) async {
-      container = ProviderContainer(
+      container = frp.ProviderContainer(
         overrides: [
           initialWebViewContentProvider.overrideWithValue(
             WebViewContentHtmlFile(sandboxPath),
@@ -50,22 +70,21 @@ void main() {
       );
 
       await tester.pumpWidget(
-        UncontrolledProviderScope(
+        frp.UncontrolledProviderScope(
           container: container,
           child: const MaterialApp(home: AiWebviewScreen()),
         ),
       );
 
       // Attendre que le bridge soit prêt
-      print('[TEST] Waiting for WebView and bridge to be ready...');
+      debugPrint('[TEST] Waiting for WebView and bridge to be ready...');
       await waitUntilProvider(
         tester,
-        container,
-        bridgeReadyProvider,
+        () => container.read(bridgeReadyProvider),
         true,
         timeout: const Duration(seconds: 30),
       );
-      print('[TEST] Bridge is ready.');
+      debugPrint('[TEST] Bridge is ready.');
     }
 
     testWidgets(
@@ -81,15 +100,13 @@ void main() {
         );
 
         // ASSERT: Attendre que l'état passe à 'refining'
-        await waitUntilProvider(
+        await waitUntilRefining(
           tester,
-          container,
-          automationStateProvider,
-          AutomationStatus.refining,
+          () => container.read(automationStateProvider),
           timeout: const Duration(seconds: 15),
         );
 
-        print('[TEST] Success! State transitioned to refining.');
+        debugPrint('[TEST] Success! State transitioned to refining.');
       },
     );
 
@@ -172,11 +189,9 @@ void main() {
         );
 
         // Attendre la fin de la génération simulée
-        await waitUntilProvider(
+        await waitUntilRefining(
           tester,
-          container,
-          automationStateProvider,
-          AutomationStatus.refining,
+          () => container.read(automationStateProvider),
           timeout: const Duration(seconds: 15),
         );
 
@@ -189,10 +204,10 @@ void main() {
           extractedText,
           'This is the high-fidelity response to: "$testPrompt"',
           reason:
-              "The extracted text does not match the cleaned sandbox content.",
+              'The extracted text does not match the cleaned sandbox content.',
         );
 
-        print('[TEST] Success! Clean text was extracted correctly.');
+        debugPrint('[TEST] Success! Clean text was extracted correctly.');
       },
     );
   });

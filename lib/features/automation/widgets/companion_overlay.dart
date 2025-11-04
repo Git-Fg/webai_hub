@@ -1,8 +1,10 @@
+import 'dart:async';
+
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 
 class CompanionOverlay extends ConsumerWidget {
   const CompanionOverlay({super.key});
@@ -10,116 +12,197 @@ class CompanionOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
-
-    String message;
-    Widget? actionButton;
-    Color statusColor;
-    IconData statusIcon;
-
-    switch (status) {
-      case AutomationStatus.sending:
-        message = "Phase 1: Sending prompt...";
-        statusColor = Colors.blue;
-        statusIcon = Icons.send;
-        break;
-      case AutomationStatus.observing:
-        message = "Phase 2: Observing for response...";
-        statusColor = Colors.orange;
-        statusIcon = Icons.visibility;
-        break;
-      case AutomationStatus.refining:
-        message = "Phase 3: Ready for refinement.";
-        statusColor = Colors.green;
-        statusIcon = Icons.edit;
-        actionButton = Builder(
-          builder: (context) {
-            final isExtracting = ref.watch(isExtractingProvider);
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.cancel),
-                  label: const Text("Cancel"),
-                  onPressed: isExtracting
-                      ? null
-                      : () {
-                          ref
-                              .read(conversationProvider.notifier)
-                              .cancelAutomation();
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[600],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon: isExtracting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle),
-                  label: const Text("Validate & Extract"),
-                  onPressed: isExtracting
-                      ? null
-                      : () {
-                          ref
-                              .read(conversationProvider.notifier)
-                              .validateAndFinalizeResponse();
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-        break;
-      case AutomationStatus.needsLogin:
-        message = "Please sign in to your Google Account to continue.";
-        statusColor = Colors.amber;
-        statusIcon = Icons.login;
-        actionButton = ElevatedButton.icon(
+    return status.when(
+      idle: () => const SizedBox.shrink(),
+      sending: () => _buildStatusUI(
+        context: context,
+        statusIcon: Icons.send,
+        statusColor: Colors.blue,
+        message: 'Phase 1: Sending prompt...',
+        isLoading: true,
+      ),
+      // --- SUPPRIMÉ ---
+      // Le cas 'observing' n'existe plus.
+      refining: (messageCount, isExtracted) => _buildStatusUI(
+        context: context,
+        statusIcon: Icons.edit,
+        statusColor: Colors.green,
+        message: isExtracted
+            ? 'Response extracted. You can refine it or replace it.'
+            : 'Phase 3: Ready for refinement.',
+        actionButton: _buildRefiningButtons(ref, messageCount, isExtracted),
+      ),
+      needsLogin: () => _buildStatusUI(
+        context: context,
+        statusIcon: Icons.login,
+        statusColor: Colors.amber,
+        message: 'Please sign in to your Google Account to continue.',
+        actionButton: ElevatedButton.icon(
           icon: const Icon(Icons.check_circle),
           label: const Text("OK I'm logged"),
           onPressed: () {
-            // Reprendre l'automatisation après login
-            ref
-                .read(conversationProvider.notifier)
-                .resumeAutomationAfterLogin();
+            unawaited(
+              ref
+                  .read(conversationProvider.notifier)
+                  .resumeAutomationAfterLogin(),
+            );
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.amber,
             foregroundColor: Colors.white,
           ),
-        );
-        break;
-      case AutomationStatus.failed:
-        message = "Automation Failed.";
-        statusColor = Colors.red;
-        statusIcon = Icons.error;
-        actionButton = ElevatedButton.icon(
+        ),
+      ),
+      failed: () => _buildStatusUI(
+        context: context,
+        statusIcon: Icons.error,
+        statusColor: Colors.red,
+        message: 'Automation Failed.',
+        actionButton: ElevatedButton.icon(
           icon: const Icon(Icons.close),
-          label: const Text("Dismiss"),
+          label: const Text('Dismiss'),
           onPressed: () {
             ref
                 .read(automationStateProvider.notifier)
-                .setStatus(AutomationStatus.idle);
+                .setStatus(const AutomationStateData.idle());
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.grey[600],
             foregroundColor: Colors.white,
           ),
-        );
-        break;
-      case AutomationStatus.idle:
-        return const SizedBox.shrink(); // Don't show overlay when idle
-    }
+        ),
+      ),
+    );
+  }
 
+  Widget _buildRefiningButtons(
+    WidgetRef ref,
+    int messageCount,
+    bool isExtracted,
+  ) {
+    final isExtracting = ref.watch(isExtractingProvider);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          label: 'companion_cancel_button',
+          button: true,
+          child: ElevatedButton.icon(
+            key: const Key('companion_cancel_button'),
+            icon: const Icon(Icons.cancel),
+            label: const Text('Cancel'),
+            onPressed: isExtracting
+                ? null
+                : () {
+                    ref.read(conversationProvider.notifier).cancelAutomation();
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey[600],
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (!isExtracted) ...[
+          // Bouton "Validate & Extract" avant extraction
+          Semantics(
+            label: 'companion_validate_button',
+            button: true,
+            child: ElevatedButton.icon(
+              key: Key('companion_validate_button_$messageCount'),
+              icon: isExtracting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check_circle),
+              label: Text('Validate & Extract #$messageCount'),
+              onPressed: isExtracting
+                  ? null
+                  : () {
+                      unawaited(
+                        ref
+                            .read(conversationProvider.notifier)
+                            .validateAndFinalizeResponse(),
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ] else ...[
+          // Boutons "Replace" et "Done" après extraction
+          Semantics(
+            label: 'companion_replace_button',
+            button: true,
+            child: ElevatedButton.icon(
+              key: const Key('companion_replace_button'),
+              icon: isExtracting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              label: const Text('Replace'),
+              onPressed: isExtracting
+                  ? null
+                  : () {
+                      unawaited(
+                        ref
+                            .read(conversationProvider.notifier)
+                            .replaceExtractedResponse(),
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            label: 'companion_done_button',
+            button: true,
+            child: ElevatedButton.icon(
+              key: const Key('companion_done_button'),
+              icon: const Icon(Icons.check_circle),
+              label: const Text('Done'),
+              onPressed: isExtracting
+                  ? null
+                  : () {
+                      ref
+                          .read(conversationProvider.notifier)
+                          .finalizeAutomation();
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatusUI({
+    required BuildContext context,
+    required String message,
+    required Color statusColor,
+    required IconData statusIcon,
+    Widget? actionButton,
+    bool isLoading = false,
+  }) {
     // Positioned is now handled in main.dart - return Material directly
     return Material(
       elevation: 12,
@@ -150,12 +233,8 @@ class CompanionOverlay extends ConsumerWidget {
                     color: statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: status == AutomationStatus.sending ||
-                          status == AutomationStatus.observing
-                      ? const LoadingIndicator(
-                          size: 20,
-                          color: Colors.blue,
-                        )
+                  child: isLoading
+                      ? const LoadingIndicator(size: 20)
                       : Icon(statusIcon, color: statusColor, size: 20),
                 ),
                 const SizedBox(width: 12),
