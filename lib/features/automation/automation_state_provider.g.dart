@@ -59,14 +59,14 @@ abstract class _$AutomationState extends $Notifier<AutomationStateData> {
   }
 }
 
-/// Provider pour l'état d'extraction pendant la phase 3
+/// Provider for extraction state during phase 3
 
 @ProviderFor(IsExtracting)
 const isExtractingProvider = IsExtractingProvider._();
 
-/// Provider pour l'état d'extraction pendant la phase 3
+/// Provider for extraction state during phase 3
 final class IsExtractingProvider extends $NotifierProvider<IsExtracting, bool> {
-  /// Provider pour l'état d'extraction pendant la phase 3
+  /// Provider for extraction state during phase 3
   const IsExtractingProvider._()
       : super(
           from: null,
@@ -96,7 +96,7 @@ final class IsExtractingProvider extends $NotifierProvider<IsExtracting, bool> {
 
 String _$isExtractingHash() => r'504af2c83363ee55c63ca8e079ba22c6e5f16e03';
 
-/// Provider pour l'état d'extraction pendant la phase 3
+/// Provider for extraction state during phase 3
 
 abstract class _$IsExtracting extends $Notifier<bool> {
   bool build();

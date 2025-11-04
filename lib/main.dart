@@ -2,6 +2,7 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
+import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -81,7 +82,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Écoute les changements du provider pour synchroniser le TabController
+    // WHY: Listen to provider changes to synchronize TabController
     ref.listen(currentTabIndexProvider, (previous, next) {
       if (_tabController.index != next) {
         _tabController.animateTo(next);
@@ -117,7 +118,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 right: 20,
                 child: AnimatedOpacity(
                   opacity: shouldShow ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 300),
+                  duration: kShortAnimationDuration,
                   child: IgnorePointer(
                     ignoring: !shouldShow,
                     child: const CompanionOverlay(),

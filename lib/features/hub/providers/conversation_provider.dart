@@ -46,21 +46,16 @@ class Conversation extends _$Conversation {
   }
 
   Future<void> editAndResendPrompt(String messageId, String newText) async {
-    // Trouver l'index du message à éditer.
     final messageIndex = state.indexWhere((msg) => msg.id == messageId);
-    if (messageIndex == -1) return; // Message non trouvé
+    if (messageIndex == -1) return;
 
-    // Tronquer la conversation jusqu'au message édité (inclus).
+    // WHY: Truncate conversation to the edited message (inclusive) to maintain context consistency
     final truncatedConversation = state.sublist(0, messageIndex + 1);
 
-    // Mettre à jour le texte du message édité.
     final editedMessage = truncatedConversation.last.copyWith(text: newText);
     truncatedConversation[messageIndex] = editedMessage;
-    // Mettre à jour l'état avec la conversation tronquée et éditée.
     state = truncatedConversation;
 
-    // Renvoyer le prompt.
-    // On peut réutiliser la logique existante.
     await sendPromptToAutomation(
       newText,
       isResend: true,
@@ -68,15 +63,14 @@ class Conversation extends _$Conversation {
     );
   }
 
-  /// Construit le prompt avec le contexte de conversation
+  /// Constructs the prompt with conversation context
   String _buildPromptWithContext(String newPrompt, {String? excludeMessageId}) {
-    // Si c'est le premier message, retourner juste le prompt
     if (state.isEmpty ||
         state.where((m) => m.status == MessageStatus.success).isEmpty) {
       return newPrompt;
     }
 
-    // Construire le contexte à partir des messages précédents (en excluant les messages d'erreur/envoi)
+    // WHY: Build context from previous messages, excluding error/sending messages
     final previousMessages = state.where((m) {
       if (m.status != MessageStatus.success) return false;
       if (excludeMessageId != null && m.id == excludeMessageId) return false;
@@ -87,7 +81,6 @@ class Conversation extends _$Conversation {
       return newPrompt;
     }
 
-    // Format simple : inclure les échanges précédents
     final contextBuffer = StringBuffer();
     for (final message in previousMessages) {
       if (message.isFromUser) {
@@ -95,10 +88,9 @@ class Conversation extends _$Conversation {
       } else {
         contextBuffer.writeln('Assistant: ${message.text}');
       }
-      contextBuffer.writeln(); // Ligne vide entre les messages
+      contextBuffer.writeln();
     }
 
-    // Construire le prompt final avec contexte
     final fullPrompt = '''
 Context from previous conversation:
 
@@ -115,15 +107,12 @@ User: $newPrompt
     bool isResend = false,
     String? excludeMessageId,
   }) async {
-    // Construire le prompt avec contexte
     final promptWithContext =
         _buildPromptWithContext(prompt, excludeMessageId: excludeMessageId);
 
-    // Stocker le prompt original (sans contexte) pour pouvoir le reprendre après login
+    // WHY: Store original prompt (without context) to resume after login
     ref.read(pendingPromptProvider.notifier).set(prompt);
 
-    // Si ce n'est pas un "resend", on ajoute le message utilisateur.
-    // Si c'est un "resend", le message est déjà dans la liste.
     if (!isResend) {
       addMessage(prompt, true);
     }
@@ -159,7 +148,7 @@ User: $newPrompt
       // This method handles all timing internally (WebView creation + JS bridge ready)
       await bridge.waitForBridgeReady();
 
-      // TIMING: plus de délai fixe; la détection se fait côté JS par notification immédiate
+      // TIMING: No fixed delay; detection happens on JS side via immediate notification
 
       if (!ref.mounted) return;
 
@@ -179,26 +168,18 @@ User: $newPrompt
 
       await bridge.startAutomation(promptWithContext);
 
-      // --- MODIFICATION CRUCIALE ---
       if (ref.mounted) {
-        // Mettre à jour le message placeholder
         _updateLastMessage(
           'Assistant is responding in the WebView...',
           MessageStatus.sending,
         );
 
-        // Passer à l'état "observing"
         ref.read(automationStateProvider.notifier).setStatus(
               const AutomationStateData.observing(),
             );
 
-        // Démarrer l'observateur côté JavaScript
         await bridge.startResponseObserver();
       }
-
-      // --- SUPPRIMÉ ---
-      // Toute la logique d'attente de complétion est retirée.
-      // await bridge.waitForResponseCompletion(...);
     } on Object catch (e) {
       if (ref.mounted) {
         String errorMessage;
@@ -216,26 +197,23 @@ User: $newPrompt
     }
   }
 
-  // Extraire et revenir au Hub sans finaliser l'automatisation
+  // Extract and return to Hub without finalizing automation
   Future<void> extractAndReturnToHub() async {
     final bridge = ref.read(javaScriptBridgeProvider);
-    // On active l'indicateur de chargement
     ref.read(isExtractingProvider.notifier).state = true;
 
     try {
-      // On attend le résultat de l'extraction.
       final responseText = await bridge.extractFinalResponse();
 
-      // Si on arrive ici, l'extraction a réussi, même si des erreurs non critiques
-      // ont été loguées côté JS. Le plus important est que la Promise a retourné une valeur.
+      // WHY: If we reach here, extraction succeeded even if non-critical errors were logged on JS side.
+      // The important thing is that the Promise returned a value.
       if (ref.mounted) {
         _updateLastMessage(responseText, MessageStatus.success);
         ref.read(pendingPromptProvider.notifier).clear();
         ref.read(currentTabIndexProvider.notifier).changeTo(0);
       }
     } on Object catch (e) {
-      // Si on arrive ici, c'est qu'une VRAIE exception a été levée,
-      // empêchant la Promise de retourner une valeur.
+      // WHY: If we reach here, a REAL exception was thrown, preventing the Promise from returning a value
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
@@ -245,21 +223,20 @@ User: $newPrompt
           errorMessage = 'Failed to extract response: $e';
         }
         _updateLastMessage(errorMessage, MessageStatus.error);
-        // On passe à l'état failed SEULEMENT si l'extraction échoue.
+        // WHY: Set failed state ONLY if extraction fails
         ref.read(automationStateProvider.notifier).setStatus(
               const AutomationStateData.failed(),
             );
       }
     } finally {
-      // Ce bloc s'exécute après le try OU le catch, garantissant que
-      // l'indicateur de chargement est toujours désactivé.
+      // WHY: This block executes after try OR catch, ensuring loading indicator is always disabled
       if (ref.mounted) {
         ref.read(isExtractingProvider.notifier).state = false;
       }
     }
   }
 
-  // Finalise l'automatisation et retourne au Hub
+  // Finalize automation and return to Hub
   void finalizeAutomation() {
     ref
         .read(automationStateProvider.notifier)
@@ -286,17 +263,15 @@ User: $newPrompt
   Future<void> resumeAutomationAfterLogin() async {
     final pendingPrompt = ref.read(pendingPromptProvider);
     if (pendingPrompt == null) {
-      // Pas de prompt en attente, on arrête
       ref
           .read(automationStateProvider.notifier)
           .setStatus(const AutomationStateData.idle());
       return;
     }
 
-    // Reconstruire le prompt avec contexte (car la conversation peut avoir changé)
+    // WHY: Rebuild prompt with context (conversation may have changed)
     final promptWithContext = _buildPromptWithContext(pendingPrompt);
 
-    // Mettre à jour le message "Sending..." pour indiquer qu'on reprend
     _updateLastMessage(
       'Resuming automation after login...',
       MessageStatus.sending,
@@ -311,25 +286,20 @@ User: $newPrompt
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
 
-      // Attendre que le bridge soit prêt (au cas où le WebView a été rechargé)
+      // WHY: Wait for bridge to be ready (WebView may have been reloaded)
       await bridge.waitForBridgeReady();
 
       if (!ref.mounted) return;
 
-      // Vérifier que l'utilisateur n'est plus sur la page de login
-      // (on va laisser startAutomation le détecter à nouveau si nécessaire)
-
-      // Reprendre l'automatisation avec le prompt reconstruit avec contexte
+      // WHY: Let startAutomation detect login page again if necessary
       await bridge.startAutomation(promptWithContext);
 
       if (ref.mounted) {
-        // Mettre à jour le message "placeholder" pour inviter l'utilisateur à valider
         _updateLastMessage(
           'Assistant is responding in the WebView...',
           MessageStatus.sending,
         );
 
-        // Passer directement à l'état "refining"
         ref.read(automationStateProvider.notifier).setStatus(
               AutomationStateData.refining(
                 messageCount: state.length,

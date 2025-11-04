@@ -10,16 +10,24 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'javascript_bridge.g.dart';
 
+const int _webViewCreationMaxAttempts = 400;
+const Duration _webViewCreationCheckDelay = Duration(milliseconds: 100);
+const Duration _bridgeInitializationDelay = Duration(milliseconds: 300);
+const int _bridgeReadyMaxAttempts = 200;
+const Duration _bridgeReadyCheckDelay = Duration(milliseconds: 100);
+const int _bridgeReadyTimeoutSeconds = 20;
+const int _promptPreviewLength = 50;
+
 @Riverpod(keepAlive: true)
 class WebViewController extends _$WebViewController {
   @override
   InAppWebViewController? build() {
-    // Nettoyage automatique lors du disposal du provider
+    // WORKAROUND: Clean up global functions to prevent JS memory leaks
     ref.onDispose(() {
       final controller = state;
       if (controller != null) {
         debugPrint('[WebViewController] Disposing controller.');
-        // Nettoyer les fonctions globales pour éviter les fuites de mémoire JS
+        // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
         controller.evaluateJavascript(
           source: '''
           delete window.startAutomation;
@@ -28,7 +36,7 @@ class WebViewController extends _$WebViewController {
           delete window.__AI_HYBRID_HUB_INITIALIZED__;
         ''',
         ).catchError((Object error) {
-          // Ignorer les erreurs si le contrôleur est déjà détruit
+          // WHY: Controller may already be destroyed, errors are non-critical here
           debugPrint('[WebViewController] Error during disposal: $error');
         });
       }
@@ -36,7 +44,6 @@ class WebViewController extends _$WebViewController {
     return null;
   }
 
-  // ignore: use_setters_to_change_properties, reason: Clear intent; method aligns with Riverpod notifier APIs
   void setController(InAppWebViewController? controller) {
     state = controller;
   }
@@ -90,10 +97,8 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
   Future<void> _waitForWebViewToBeCreated() async {
     var attempts = 0;
-    const maxAttempts = 400; // Increased for IndexedStack tab switching
-    const delayMs = 100;
 
-    while (attempts < maxAttempts) {
+    while (attempts < _webViewCreationMaxAttempts) {
       if (!ref.mounted) {
         throw AutomationError(
           errorCode: AutomationErrorCode.webViewNotReady,
@@ -108,7 +113,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         return;
       }
 
-      await Future<void>.delayed(const Duration(milliseconds: delayMs));
+      await Future<void>.delayed(_webViewCreationCheckDelay);
       attempts++;
     }
 
@@ -127,16 +132,12 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     await _waitForWebViewToBeCreated();
 
     // Additional wait to ensure WebView is fully initialized
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-
-    const maxAttempts = 200;
-    const delayMs = 100;
-    const timeoutSeconds = 20;
+    await Future<void>.delayed(_bridgeInitializationDelay);
 
     var attempts = 0;
     final startTime = DateTime.now();
 
-    while (attempts < maxAttempts) {
+    while (attempts < _bridgeReadyMaxAttempts) {
       if (!ref.mounted) {
         throw AutomationError(
           errorCode: AutomationErrorCode.bridgeNotInitialized,
@@ -147,7 +148,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       }
 
       final elapsed = DateTime.now().difference(startTime);
-      if (elapsed.inSeconds >= timeoutSeconds) {
+      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
         ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
               AutomationErrorCode.bridgeTimeout.name,
               'waitForBridgeReady',
@@ -165,7 +166,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         return;
       }
 
-      await Future<void>.delayed(const Duration(milliseconds: delayMs));
+      await Future<void>.delayed(_bridgeReadyCheckDelay);
       attempts++;
     }
 
@@ -221,7 +222,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       dynamic checkResult;
       try {
-        // Simple check: verify window.startAutomation is available
         checkResult = await controller.evaluateJavascript(
           source:
               "typeof window.startAutomation !== 'undefined' && typeof window.extractFinalResponse !== 'undefined'",
@@ -254,7 +254,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       final encodedPrompt = jsonEncode(prompt);
       try {
-        // Simple, direct call - functions are guaranteed to be on window
         await controller.evaluateJavascript(
           source: 'window.startAutomation($encodedPrompt);',
         );
@@ -266,8 +265,9 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           diagnostics: {
             ..._getBridgeDiagnostics(),
             'promptLength': prompt.length,
-            'promptPreview':
-                prompt.length > 50 ? '${prompt.substring(0, 50)}...' : prompt,
+            'promptPreview': prompt.length > _promptPreviewLength
+                ? '${prompt.substring(0, _promptPreviewLength)}...'
+                : prompt,
           },
           originalError: e,
           stackTrace: stackTrace,
@@ -366,23 +366,22 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   @override
   Future<String> extractFinalResponse() async {
     try {
-      // S'assurer que le bridge est prêt avant de continuer.
+      // WHY: Ensure bridge is ready before extraction to avoid race conditions
       await waitForBridgeReady();
 
       final controller = _controller;
 
-      // Utiliser callAsyncJavaScript qui gère nativement les Promises.
-      // C'est plus simple et élimine la race condition.
+      // WHY: callAsyncJavaScript natively handles Promises, eliminating race conditions
       final result = await controller.callAsyncJavaScript(
         functionBody: '''
-          // La fonction passée ici est "await" par le WebView.
-          // On retourne directement le résultat de notre fonction asynchrone.
+          // The function passed here is awaited by the WebView.
+          // We return the result of our async function directly.
           return await window.extractFinalResponse();
         ''',
       );
 
-      // callAsyncJavaScript peut retourner un objet InAppWebViewJavaScriptResult.
-      // On vérifie que la valeur n'est pas nulle.
+      // callAsyncJavaScript can return an InAppWebViewJavaScriptResult object.
+      // We verify the value is not null.
       final value = result?.value;
 
       if (value == null || value is! String) {
@@ -399,8 +398,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       }
       return value;
     } on Object catch (e, stackTrace) {
-      // On englobe tout dans un try/catch pour convertir les erreurs
-      // en AutomationError si nécessaire.
+      // WHY: Wrap all errors in try/catch to convert them to AutomationError if needed
       if (e is AutomationError) rethrow;
 
       throw AutomationError(
@@ -433,8 +431,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       );
     }
   }
-
-  // SUPPRIMÉ : waitForResponseCompletion n'est plus nécessaire
 }
 
 @Riverpod(keepAlive: true)

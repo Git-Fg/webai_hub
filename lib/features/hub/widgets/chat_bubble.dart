@@ -3,6 +3,7 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,8 +16,7 @@ class ChatBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // On n'autorise l'édition que si c'est un message de l'utilisateur
-    // et qu'il n'y a pas d'automatisation en cours.
+    // WHY: Only allow editing for user messages when automation is idle
     final isEditable = message.isFromUser &&
         ref.watch(automationStateProvider) == const AutomationStateData.idle();
 
@@ -27,7 +27,7 @@ class ChatBubble extends ConsumerWidget {
             }
           : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding, vertical: kTinyPadding),
         child: Row(
           mainAxisAlignment: message.isFromUser
               ? MainAxisAlignment.end
@@ -35,35 +35,35 @@ class ChatBubble extends ConsumerWidget {
           children: [
             if (!message.isFromUser) ...[
               CircleAvatar(
-                radius: 16,
+                radius: kMediumIconSize,
                 backgroundColor: Colors.blue.shade100,
                 child: Icon(
                   Icons.smart_toy,
-                  size: 20,
+                  size: kDefaultIconSize,
                   color: Colors.blue.shade700,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: kDefaultSpacing),
             ],
             Flexible(
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
+                  horizontal: kDefaultPadding,
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: message.isFromUser
                       ? Colors.blue.shade500
                       : Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(20).copyWith(
-                    bottomLeft: Radius.circular(message.isFromUser ? 20 : 4),
-                    bottomRight: Radius.circular(message.isFromUser ? 4 : 20),
+                  borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
+                    bottomLeft: Radius.circular(message.isFromUser ? kDefaultBorderRadius : kChatBubbleSmallRadius),
+                    bottomRight: Radius.circular(message.isFromUser ? kChatBubbleSmallRadius : kDefaultBorderRadius),
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      blurRadius: kSmallBlurRadius,
+                      offset: kDefaultShadowOffset,
                     ),
                   ],
                 ),
@@ -75,17 +75,17 @@ class ChatBubble extends ConsumerWidget {
                       style: TextStyle(
                         color:
                             message.isFromUser ? Colors.white : Colors.black87,
-                        fontSize: 16,
+                        fontSize: kDefaultTextFontSize,
                       ),
                     ),
                     if (message.status == MessageStatus.sending)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: kTinyPadding),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             LoadingIndicator(
-                              size: 12,
+                              size: kTinyFontSize,
                               color: message.isFromUser
                                   ? Colors.white70
                                   : Colors.grey.shade600,
@@ -94,7 +94,7 @@ class ChatBubble extends ConsumerWidget {
                             Text(
                               'Sending...',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: kTinyFontSize,
                                 color: message.isFromUser
                                     ? Colors.white70
                                     : Colors.grey.shade600,
@@ -105,22 +105,22 @@ class ChatBubble extends ConsumerWidget {
                       )
                     else if (message.status == MessageStatus.error)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: kTinyPadding),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.error_outline,
-                              size: 12,
+                              size: kTinyFontSize,
                               color: message.isFromUser
                                   ? Colors.red.shade200
                                   : Colors.red.shade600,
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: kTinyPadding),
                             Text(
                               'Error',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: kTinyFontSize,
                                 color: message.isFromUser
                                     ? Colors.red.shade200
                                     : Colors.red.shade600,
@@ -134,13 +134,13 @@ class ChatBubble extends ConsumerWidget {
               ),
             ),
             if (message.isFromUser) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: kDefaultSpacing),
               CircleAvatar(
-                radius: 16,
+                radius: kMediumIconSize,
                 backgroundColor: Colors.green.shade100,
                 child: Icon(
                   Icons.person,
-                  size: 20,
+                  size: kDefaultIconSize,
                   color: Colors.green.shade700,
                 ),
               ),

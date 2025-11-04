@@ -1,182 +1,245 @@
 # AGENTS.md
 
-Guide pour les agents IA travaillant sur ce projet Flutter AI Hybrid Hub.
+Guide for AI agents working on this Flutter AI Hybrid Hub project.
 
-## 🎯 Contexte du Projet
+## 🎯 Project Context
 
-Ce projet est en phase **MVP** avec une architecture 2-tabs (Hub natif + WebView Google AI Studio). L'objectif est de valider le workflow "Assist & Validate" avec un seul provider avant de passer à la version complète.
+This project is in **MVP** phase with a 2-tabs architecture (native Hub + WebView Google AI Studio). The goal is to validate the "Assist & Validate" workflow with a single provider before moving to the full version.
 
-## 🤖 Instructions Spécifiques pour les Agents
+## 🤖 Specific Instructions for Agents
 
-### Outils Recommandés
+### Recommended Tools
 
-Utilisez systématiquement ces outils quand disponible :
+Use these tools systematically when available:
 
-- **mobile-mcp**: Pour tester l'application en conditions réelles
-- **dart-mcp**: Pour les analyses de code Dart
-- **context7**: Pour les recherches de documentation
+- **mobile-mcp**: To test the application in real conditions
+- **dart-mcp**: For Dart code analysis
+- **context7**: For documentation searches
 
-### Commandes Essentielles
+### Essential Commands
 
 ```bash
-# ⚠️ CRITIQUE : Build TypeScript après TOUTE modification dans ts_src/
+# ⚠️ CRITICAL: Build TypeScript after ANY modification in ts_src/
 npm run build
 
-# Génération code après changements Riverpod/Freezed
+# Code generation after Riverpod/Freezed changes
 flutter pub run build_runner build --delete-conflicting-outputs
 
-# Tests unitaires
+# Unit tests
 flutter test
 
-# Lancement app (device spécifique)
+# Launch app (specific device)
 flutter run -d <device_id>
 ```
 
-### ⚠️ Workflow TypeScript - OBLIGATOIRE
+### ⚠️ TypeScript Workflow - MANDATORY
 
-**RÈGLE ABSOLUE** : Après **TOUTE** modification dans `ts_src/`, vous **DEVEZ** exécuter :
+**ABSOLUTE RULE**: After **ANY** modification in `ts_src/`, you **MUST** execute:
 
 ```bash
 npm run build
 ```
 
-**Pourquoi** : Les fichiers TypeScript dans `ts_src/` sont compilés vers `assets/js/bridge.js`. Flutter charge le bundle JavaScript compilé, donc :
+**Why**: TypeScript files in `ts_src/` are compiled to `assets/js/bridge.js`. Flutter loads the compiled JavaScript bundle, so:
 
-- ✅ Modifier `automation_engine.ts` → **OBLIGATOIRE** : `npm run build`
-- ✅ Changer les sélecteurs CSS → **OBLIGATOIRE** : `npm run build`
-- ✅ Ajouter/supprimer fonctions globales → **OBLIGATOIRE** : `npm run build`
-- ✅ Modifier la signature d'une fonction appelée depuis Dart → **OBLIGATOIRE** : `npm run build`
-- ✅ Changer les dépendances TypeScript → **OBLIGATOIRE** : `npm install` puis `npm run build`
+- ✅ Modify `automation_engine.ts` → **MANDATORY**: `npm run build`
+- ✅ Change CSS selectors → **MANDATORY**: `npm run build`
+- ✅ Add/remove global functions → **MANDATORY**: `npm run build`
+- ✅ Modify signature of a function called from Dart → **MANDATORY**: `npm run build`
+- ✅ Change TypeScript dependencies → **MANDATORY**: `npm install` then `npm run build`
 
-**Symptômes si vous oubliez** :
+**Symptoms if you forget**:
 
-- Les modifications TypeScript ne sont pas reflétées dans l'app
-- Erreurs JavaScript dans la console WebView
-- Fonctions non trouvées lors des appels depuis Dart
+- TypeScript modifications are not reflected in the app
+- JavaScript errors in the WebView console
+- Functions not found when called from Dart
 
-### Règles de Travail
+### Work Rules
 
-1. **Toujours vérifier les blueprints** avant toute modification
-2. **Respecter la philosophie MVP** - rester simple et fonctionnel
-3. **Utiliser Tree** pour explorer l'arborescence avant de créer des fichiers
-4. **Lancer `npm run build`** après **TOUTE** modification TypeScript dans `ts_src/`
-5. **Lancer build_runner** après toute modification de code généré Dart (@riverpod, @freezed)
-6. **Utiliser `keepAlive: true`** pour services/états partagés (`webViewControllerProvider`) et `autoDispose` (défaut) pour états d'écran. Voir `BLUEPRINT_MVP.md` section 7.4 pour le guide de décision.
+1. **Always check blueprints** before any modification
+2. **Respect MVP philosophy** - stay simple and functional
+3. **Use Tree** to explore the tree structure before creating files
+4. **Run `npm run build`** after **ANY** TypeScript modification in `ts_src/`
+5. **Run build_runner** after any modification of generated Dart code (@riverpod, @freezed)
+6. **Use `keepAlive: true`** for shared services/states (`webViewControllerProvider`) and `autoDispose` (default) for screen states. See `BLUEPRINT_MVP.md` section 7.4 for the decision guide.
 
-### 🚫 Anti-Patterns Critiques
+### 📜 Code Quality & Commenting Philosophy
 
-#### Anti-Pattern 1 : Utiliser `TabController` Flutter pour la logique métier
+**Our guiding principle: The code is the single source of truth.** Your code should be so clear that it requires minimal comments. Comments are a necessary utility, not a replacement for readable code.
 
-- ❌ **JAMAIS** : `final tabController = ref.read(tabControllerProvider); tabController?.animateTo(1);`
-- ✅ **TOUJOURS** : `ref.read(currentTabIndexProvider.notifier).changeTo(index)`
-- **Pourquoi** : `TabController` est lourd à synchroniser et ne peut pas être partagé entre widgets et providers. Voir `BLUEPRINT_MVP.md` section 7.1 pour détails.
+#### 1. The Golden Rule of Commenting: Explain "Why", not "What"
 
-#### Principe de Gestion du Timing : Les Délais en Dernier Recours
+A comment must explain *why* a decision was made, or provide context that is impossible to infer from the code itself. It must **never** state *what* the code is doing.
 
-Les délais (`Future.delayed`, `setTimeout`) sont des outils puissants pour gérer l'asynchronisme, mais leur utilisation abusive masque les problèmes de fond et crée une application fragile. Ils traitent les **symptômes** (une action échoue car un élément n'est pas prêt) et non la **cause** (pourquoi l'élément n'était-il pas prêt ?).
+**Dart Examples:**
 
-- ❌ **L'Approche Symptomatique (à proscrire)** : Ajouter ou augmenter un `Future.delayed(Duration(seconds: 2))` dès qu'un problème de timing apparaît, sans investigation.
-
-- ✅ **L'Approche Fondamentale (Priorité Absolue)** : **TOUJOURS** commencer par chercher la cause racine :
-  - Y a-t-il un événement ou un callback que l'on peut écouter ? (ex: `onLoadStop`, un signal du bridge JS)
-  - L'état d'un provider Riverpod est-il mal synchronisé ?
-  - S'agit-il d'une race condition dans le cycle de vie des widgets/WebView ?
-  - Le sélecteur CSS cible-t-il un élément qui apparaît après une animation ? Peut-on attendre la fin de l'animation avec une `MutationObserver` plus précise ?
-
-#### Quand un délai est-il acceptable ?
-
-Un délai est considéré comme un **dernier recours légitime** uniquement dans les cas suivants :
-
-1. **Interaction avec un système externe opaque** : Lorsque vous attendez la fin d'une animation CSS ou d'un script tiers dans la `WebView` qui ne fournit **aucun événement de complétion** observable.
-
-2. **Coussin de sécurité minimal** : Un délai très court (ex: 100-300ms) peut être utilisé pour s'assurer que le thread UI a eu le temps de finaliser un rendu complexe après un changement d'état, bien que des solutions comme `WidgetsBinding.instance.addPostFrameCallback` soient souvent préférables.
-
-**Règle d'or** : Si un délai est ajouté, il doit être **court**, **borné**, et accompagné d'un commentaire expliquant **pourquoi** une solution événementielle n'était pas possible.
+❌ **BAD ("What" comment - useless):**
 
 ```dart
-// TIMING: Attente de 300ms pour permettre à l'animation de fermeture du panneau de se terminer.
-// Aucune callback JS n'est disponible pour cet événement.
+// Get the last message
+final lastMessage = state.last;
+```
+
+✅ **GOOD ("Why" comment - essential context):**
+
+```dart
+// WHY: Truncate the conversation to the edited message to maintain
+// context consistency for the AI on the next prompt submission.
+final truncatedConversation = state.sublist(0, messageIndex + 1);
+```
+
+✅ **GOOD ("TIMING" comment - critical justification):**
+
+```dart
+// TIMING: Wait 300ms to allow the panel closing animation to complete.
+// No JS callback is available for this event.
 await Future.delayed(const Duration(milliseconds: 300));
 ```
 
-#### Règle pour l'ajustement des délais existants
+**TypeScript Examples:**
 
-Il est parfois nécessaire d'augmenter un délai existant car le comportement de la page web a changé. **Ne jamais augmenter un délai à l'aveugle.**
+❌ **BAD ("What" comment - useless):**
 
-**Workflow obligatoire pour modifier un délai :**
+```typescript
+// Click the button
+sendButton.click();
+```
 
-1. **Diagnostiquer** : Comprendre *précisément pourquoi* le délai initial n'est plus suffisant. (Ex: "Le spinner de chargement de l'IA dure maintenant en moyenne 500ms de plus").
+✅ **GOOD ("Why" comment - essential strategy):**
 
-2. **Documenter** : Ajouter ou mettre à jour le commentaire pour justifier l'augmentation.
+```typescript
+// WHY: Start from the "Edit" button and traverse up the DOM. This is a more
+// stable anchor than relying on the container's auto-generated class name.
+const lastEditButton = allEditButtons[allEditButtons.length - 1] as HTMLElement;
+const parentTurn = lastEditButton.closest('ms-chat-turn');
+```
+
+#### 2. Zero-Tolerance Policy for Debugging Artifacts
+
+Committing debugging artifacts is strictly forbidden. They pollute the codebase, create noise in logs, and are a sign of incomplete work.
+
+**The following must be removed before any commit:**
+
+-   `print()` or `debugPrint()` statements.
+
+-   `console.log()`, `console.warn()`, `console.error()`.
+
+-   **Commented-out code blocks.** Your Git history is the only archive. Old code left in comments becomes technical debt and quickly goes stale.
+
+### 🚫 Critical Anti-Patterns
+
+#### Anti-Pattern 1: Using Flutter `TabController` for Business Logic
+
+- ❌ **NEVER**: `final tabController = ref.read(tabControllerProvider); tabController?.animateTo(1);`
+- ✅ **ALWAYS**: `ref.read(currentTabIndexProvider.notifier).changeTo(index)`
+- **Why**: `TabController` is heavy to synchronize and cannot be shared between widgets and providers. See `BLUEPRINT_MVP.md` section 7.1 for details.
+
+#### Timing Management Principle: Delays as Last Resort
+
+Delays (`Future.delayed`, `setTimeout`) are powerful tools for managing asynchrony, but their abusive use masks underlying problems and creates a fragile application. They treat **symptoms** (an action fails because an element is not ready) and not the **cause** (why wasn't the element ready?).
+
+- ❌ **Symptomatic Approach (to avoid)**: Add or increase a `Future.delayed(Duration(seconds: 2))` as soon as a timing problem appears, without investigation.
+
+- ✅ **Fundamental Approach (Absolute Priority)**: **ALWAYS** start by looking for the root cause:
+  - Is there an event or callback we can listen to? (ex: `onLoadStop`, a signal from the JS bridge)
+  - Is a Riverpod provider state poorly synchronized?
+  - Is it a race condition in the widget/WebView lifecycle?
+  - Does the CSS selector target an element that appears after an animation? Can we wait for the end of the animation with a more precise `MutationObserver`?
+
+#### When is a delay acceptable?
+
+A delay is considered a **legitimate last resort** only in the following cases:
+
+1. **Interaction with an opaque external system**: When waiting for the end of a CSS animation or a third-party script in the `WebView` that provides **no observable completion event**.
+
+2. **Minimal safety cushion**: A very short delay (ex: 100-300ms) can be used to ensure the UI thread has had time to finalize a complex render after a state change, although solutions like `WidgetsBinding.instance.addPostFrameCallback` are often preferable.
+
+**Golden rule**: If a delay is added, it must be **short**, **bounded**, and accompanied by a comment explaining **why** an event-based solution was not possible.
+
+```dart
+// TIMING: Wait 300ms to allow the panel closing animation to complete.
+// No JS callback is available for this event.
+await Future.delayed(const Duration(milliseconds: 300));
+```
+
+#### Rule for adjusting existing delays
+
+It is sometimes necessary to increase an existing delay because the web page behavior has changed. **Never increase a delay blindly.**
+
+**Mandatory workflow for modifying a delay:**
+
+1. **Diagnose**: Understand *precisely why* the initial delay is no longer sufficient. (Ex: "The AI loading spinner now lasts on average 500ms longer").
+
+2. **Document**: Add or update the comment to justify the increase.
    ```dart
-   // TIMING (MAJ 03/11/2025): Augmenté de 300ms à 800ms car la nouvelle interface
-   // de l'IA ajoute une animation de fondu qui retarde l'apparition du bouton.
+   // TIMING (UPDATED 03/11/2025): Increased from 300ms to 800ms because the new AI interface
+   // adds a fade animation that delays the button appearance.
    await Future.delayed(const Duration(milliseconds: 800));
    ```
 
-3. **Ajuster au minimum** : N'augmentez le délai que de la durée strictement nécessaire, avec une petite marge de sécurité. Ne doublez pas la valeur "juste au cas où".
+3. **Adjust minimally**: Only increase the delay by the strictly necessary duration, with a small safety margin. Don't double the value "just in case".
 
-4. **Considérer l'alternative** : Chaque fois que vous touchez à un délai, demandez-vous si une nouvelle méthode de détection (un nouvel attribut sur un élément, un événement) n'est pas devenue disponible.
+4. **Consider the alternative**: Every time you touch a delay, ask yourself if a new detection method (a new attribute on an element, an event) hasn't become available.
 
-**Conclusion : Chaque délai est une dette technique. Justifiez-le.**
+**Conclusion: Every delay is technical debt. Justify it.**
 
-### Erreurs Courantes à Éviter
+### Common Errors to Avoid
 
-- ❌ **OUBLIER `npm run build` après modification TypeScript** - **ERREUR CRITIQUE**
-  - Les modifications dans `ts_src/` ne sont pas reflétées sans build
-  - L'app utilise toujours l'ancien `assets/js/bridge.js`
-  - Les fonctions JavaScript appelées depuis Dart ne seront pas trouvées
-- ❌ Oublier `build_runner` après ajout `@riverpod` ou `@freezed`
-- ❌ Modifier TypeScript sans vérifier que `npm run build` s'exécute sans erreurs
-- ❌ Committer des modifications TypeScript sans avoir lancé `npm run build` au préalable
-- ❌ Ajouter des commentaires inutiles (code auto-documenté)
-- ❌ Laisser des `print` ou `console.log` dans le code committé
+- ❌ **FORGETTING `npm run build` after TypeScript modification** - **CRITICAL ERROR**
+  - Modifications in `ts_src/` are not reflected without build
+  - The app still uses the old `assets/js/bridge.js`
+  - JavaScript functions called from Dart will not be found
+- ❌ Forgetting `build_runner` after adding `@riverpod` or `@freezed`
+- ❌ Modifying TypeScript without verifying that `npm run build` executes without errors
+- ❌ Committing TypeScript modifications without having run `npm run build` beforehand
+- ❌ Writing "What" comments instead of "Why" comments. See the "Code Quality Philosophy" section.
+- ❌ Committing any debugging artifacts (`print`, `console.log`, commented-out code).
 
-### Test Application Réelle
+### Real Application Testing
 
-Quand vous utilisez mobile-mcp :
+When using mobile-mcp:
 
-- Ne jamais désinstaller/réinstaller l'app (déconnexion)
-- Attendre ~20s après redémarrage pour stabilisation
-- Utiliser `flutter run -d <device_id>` pour cibler un device
+- Never uninstall/reinstall the app (disconnection)
+- Wait ~20s after restart for stabilization
+- Use `flutter run -d <device_id>` to target a device
 
-### Workflow Debug
+### Debug Workflow
 
-#### Principe de Débogage
+#### Debugging Principle
 
-Face à une erreur, privilégier une approche systématique : **1. Observer** (comportement via `mobile-mcp`, screenshots), **2. Diagnostiquer** (logs JS via `onConsoleMessage`, état Riverpod, sélecteurs CSS), **3. Corriger la cause racine** (non le symptôme), **4. Vérifier** (re-tester workflow complet).
+When facing an error, prioritize a systematic approach: **1. Observe** (behavior via `mobile-mcp`, screenshots), **2. Diagnose** (JS logs via `onConsoleMessage`, Riverpod state, CSS selectors), **3. Fix the root cause** (not the symptom), **4. Verify** (re-test complete workflow).
 
-#### Guides de Débogage
+#### Debugging Guides
 
-1. **Problème WebView**:
-   - Vérifier que `npm run build` a été exécuté après modifications TypeScript
-   - Vérifier le bridge JS dans `assets/js/bridge.js` (ce fichier est généré, ne pas modifier directement)
-   - Vérifier les logs JavaScript dans la console WebView
-2. **Problème State**: Vérifier les providers Riverpod et les generated files
-3. **Problème Build**:
-   - Pour TypeScript : Vérifier que `npm run build` s'exécute sans erreurs
-   - Pour Dart : Vérifier que les dépendances sont synchronisées (`flutter pub get`)
-   - Vérifier que `build_runner` a été lancé après modifications @riverpod/@freezed
+1. **WebView Problem**:
+   - Verify that `npm run build` was executed after TypeScript modifications
+   - Verify the JS bridge in `assets/js/bridge.js` (this file is generated, do not modify directly)
+   - Verify JavaScript logs in the WebView console
+2. **State Problem**: Verify Riverpod providers and generated files
+3. **Build Problem**:
+   - For TypeScript: Verify that `npm run build` executes without errors
+   - For Dart: Verify that dependencies are synchronized (`flutter pub get`)
+   - Verify that `build_runner` was launched after @riverpod/@freezed modifications
 
-## 📁 Structure Critique
+## 📁 Critical Structure
 
 ```text
 lib/features/
-├── hub/          # UI native chat
-├── webview/      # WebView + bridge JS
+├── hub/          # Native chat UI
+├── webview/      # WebView + JS bridge
 └── automation/   # Workflow + overlay
 
 ts_src/
-└── automation_engine.ts  # Moteur JS (hardcoded selectors MVP)
+└── automation_engine.ts  # JS engine (hardcoded selectors MVP)
 ```
 
-## 🔍 Points d'Attention
+## 🔍 Points of Attention
 
-- Les sélecteurs CSS sont **hardcodés** dans le TypeScript (approche MVP)
-- La persistence est **in-memory** uniquement (pas de Drift dans MVP)
-- L'architecture est **2-tabs** et non 5-tabs comme la version complète
-- Les tests utilisent des **fakes** plutôt que des mocks complexes
+- CSS selectors are **hardcoded** in TypeScript (MVP approach)
+- Persistence is **in-memory** only (no Drift in MVP)
+- Architecture is **2-tabs** and not 5-tabs like the full version
+- Tests use **fakes** rather than complex mocks
 
-## 🏗️ Règles Architecturales Critiques
+## 🏗️ Critical Architectural Rules
 
-⚠️ **Règle Critique** : Ne JAMAIS utiliser `TabController` Flutter pour la logique métier. Utiliser `ref.read(currentTabIndexProvider.notifier).changeTo(index)`. Voir `BLUEPRINT_MVP.md` section 7.1 pour l'explication complète.
+⚠️ **Critical Rule**: NEVER use Flutter `TabController` for business logic. Use `ref.read(currentTabIndexProvider.notifier).changeTo(index)`. See `BLUEPRINT_MVP.md` section 7.1 for the complete explanation.

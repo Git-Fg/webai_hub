@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -94,8 +95,8 @@ class CompanionOverlay extends ConsumerWidget {
             key: Key('companion_extract_and_view_hub_button_$messageCount'),
             icon: isExtracting
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: kDefaultIconSize,
+                    height: kDefaultIconSize,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: Colors.white,
@@ -118,7 +119,7 @@ class CompanionOverlay extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: kDefaultSpacing),
         // Secondary: Done
         Semantics(
           label: 'companion_done_button',
@@ -154,20 +155,20 @@ class CompanionOverlay extends ConsumerWidget {
   }) {
     // Positioned is now handled in main.dart - return Material directly
     return Material(
-      elevation: 12,
-      borderRadius: BorderRadius.circular(16),
+      elevation: kDefaultElevation,
+      borderRadius: BorderRadius.circular(kMediumBorderRadius),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kDefaultPadding),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(kMediumBorderRadius),
           border:
               Border.all(color: statusColor.withValues(alpha: 0.3), width: 2),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+              blurRadius: kDefaultBlurRadius,
+              offset: kMediumShadowOffset,
             ),
           ],
         ),
@@ -177,22 +178,22 @@ class CompanionOverlay extends ConsumerWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(kSmallPadding),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(kSmallBorderRadius),
                   ),
                   child: isLoading
-                      ? const LoadingIndicator(size: 20)
-                      : Icon(statusIcon, color: statusColor, size: 20),
+                      ? const LoadingIndicator(size: kDefaultIconSize)
+                      : Icon(statusIcon, color: statusColor, size: kDefaultIconSize),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: kMediumSpacing),
                 Expanded(
                   child: Text(
                     message,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                      fontSize: kSmallFontSize,
                       color: Colors.grey[800],
                     ),
                   ),
@@ -200,7 +201,7 @@ class CompanionOverlay extends ConsumerWidget {
               ],
             ),
             if (actionButton != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: kMediumSpacing),
               actionButton,
             ],
           ],

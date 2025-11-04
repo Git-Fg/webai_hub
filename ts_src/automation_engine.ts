@@ -4,7 +4,13 @@ import { aiStudioChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
 import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
 
-// --- Interface et fonctions helper partagées ---
+const BRIDGE_READY_RETRY_ATTEMPTS = 100;
+const BRIDGE_READY_RETRY_DELAY_MS = 300;
+const UI_STATE_DEBOUNCE_DELAY_MS = 250;
+const MIN_EDIT_BUTTONS_FOR_NOTIFICATION = 2;
+const INITIAL_PROCESSED_FOOTERS_COUNT = 0;
+const BUTTON_TEXT_PREVIEW_LENGTH = 100;
+
 interface WindowWithFlutterInAppWebView extends Window {
   flutter_inappwebview?: {
     callHandler(handlerName: string, ...args: unknown[]): void;
@@ -25,7 +31,7 @@ function signalReady() {
   }
 }
 
-function trySignalReady(retries = 100, delay = 300) {
+function trySignalReady(retries = BRIDGE_READY_RETRY_ATTEMPTS, delay = BRIDGE_READY_RETRY_DELAY_MS) {
   if (retries <= 0) {
     console.warn('[Engine] Max retries reached for bridge ready signal.');
     return;
@@ -39,12 +45,10 @@ function trySignalReady(retries = 100, delay = 300) {
   }
 }
 
-// --- RENDRE L'INJECTION IDEMPOTENTE ---
-// Vérifier si le script a déjà été initialisé pour éviter de redéfinir les fonctions
+// WHY: Make injection idempotent - check if script already initialized to avoid redefining functions
 if ((window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   console.log('[Engine] Bridge script already initialized. Checking if functions exist...');
   
-  // Vérifier que les fonctions existent vraiment
   const functionsExist = 
     typeof (window as any).startAutomation !== 'undefined' &&
     typeof (window as any).extractFinalResponse !== 'undefined' &&
@@ -55,9 +59,7 @@ if ((window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     trySignalReady();
   } else {
     console.warn('[Engine] Flag set but functions missing! Force re-initialization.');
-    // Supprimer le flag pour forcer la ré-initialisation
     delete (window as any).__AI_HYBRID_HUB_INITIALIZED__;
-    // Le code ci-dessous va s'exécuter pour réinitialiser
   }
 }
 
@@ -65,33 +67,19 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   (window as any).__AI_HYBRID_HUB_INITIALIZED__ = true;
 
   // Initialize global counter for tracking processed response footers
-  (window as any).__processedFootersCount = 0;
+  (window as any).__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
 
-  // --- Définition des sites supportés ---
   const SUPPORTED_SITES = {
     'https://aistudio.google.com/prompts/new_chat': aiStudioChatbot,
-    // À l'avenir, vous ajouterez d'autres sites ici :
+    // Future: Add other sites here
     // 'https://chatgpt.com/': chatGptChatbot,
     // 'https://claude.ai/': claudeChatbot,
   };
 
-  // --- Fonctions globales exposées à Flutter ---
-
-  // Trouve le module de chatbot correspondant à l'URL actuelle
+  // Finds the chatbot module corresponding to the current URL
   function getChatbot(): Chatbot | null {
     const currentUrl = window.location.href;
     
-    // Détecter le sandbox local (pour les tests) - vérifier si on est sur file:// ou si on trouve les éléments du sandbox
-    const isLocalSandbox = currentUrl.startsWith('file://') || 
-                           document.querySelector('ms-chunk-input textarea') !== null ||
-                           document.querySelector('h1')?.textContent?.includes('High-Fidelity Sandbox');
-    
-    if (isLocalSandbox) {
-      console.log('[Engine] Local sandbox detected. Using AI Studio chatbot module for testing.');
-      return aiStudioChatbot;
-    }
-    
-    // Détecter les vrais sites
     for (const [baseUrl, chatbot] of Object.entries(SUPPORTED_SITES)) {
       if (currentUrl.startsWith(baseUrl)) {
         console.log(`[Engine] Matched site: ${baseUrl}. Using corresponding chatbot module.`);
@@ -102,7 +90,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     return null;
   }
 
-  // Fonction globale appelée par Dart pour démarrer l'automatisation
+  // Global function called by Dart to start automation
   (window as any).startAutomation = async function(prompt: string): Promise<void> {
     const chatbot = getChatbot();
     if (!chatbot) {
@@ -124,12 +112,12 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
         location: 'startAutomation',
         payload: errorMessage,
       });
-      // Il est important de re-throw l'erreur pour que le Future en Dart échoue aussi.
+      // WHY: Re-throw error so the Future in Dart also fails
       throw error;
     }
   };
 
-  // Fonction globale appelée par Dart pour extraire la réponse
+  // Global function called by Dart to extract the response
   (window as any).extractFinalResponse = async function(): Promise<string> {
     const chatbot = getChatbot();
     if (!chatbot) {
@@ -152,9 +140,6 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     }
   };
 
-  // --- SUPPRIMÉ ---
-  // La fonction globale `waitForResponseCompletion` n'est plus appelée par Dart, on la supprime.
-
   // Helper to check for Shadow DOM
   function findInShadowDOM(selector: string, root: Document | ShadowRoot = document): Element | null {
     try {
@@ -174,8 +159,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     return null;
   }
 
-  // Déclarer inspectDOMForSelectors DIRECTEMENT sur window
-  // Cette fonction est utilisée par Dart pour diagnostiquer le DOM
+  // WHY: Declare inspectDOMForSelectors directly on window for Dart to diagnose the DOM
   (window as any).inspectDOMForSelectors = function(): Record<string, unknown> {
     const result: Record<string, unknown> = {
       inputs: [],
@@ -193,7 +177,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
       }
     }
     
-    // Test common selectors (version générique car les sélecteurs spécifiques sont maintenant dans les chatbots)
+    // Test common selectors (generic version since specific selectors are now in chatbots)
     const commonInputSelectors = [
       "textarea[placeholder*='prompt']",
       "input[placeholder*='prompt']",
@@ -261,7 +245,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
       return {
         tag: el.tagName.toLowerCase(),
         ariaLabel: htmlEl.getAttribute('aria-label') || '',
-        text: (htmlEl.innerText || '').substring(0, 100),
+        text: (htmlEl.innerText || '').substring(0, BUTTON_TEXT_PREVIEW_LENGTH),
         id: el.id || '',
         className: el.className || '',
         type: htmlEl.getAttribute('type') || '',
@@ -273,52 +257,43 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     return result;
   };
 
-  // --- NOUVEAU BLOC : OBSERVATEUR D'ÉTAT DE L'UI ---
-
   let responseObserver: MutationObserver | null = null;
   let debounceTimer: number | null = null;
 
-  // Fonction qui vérifie l'état actuel de la page
+  // WHY: Function that checks current page state with debouncing
   function checkUIState() {
-    // Si un timer est déjà en cours, on l'annule pour "déboncer"
     if (debounceTimer) {
       clearTimeout(debounceTimer);
     }
 
-    // On lance un nouveau timer. Si aucune nouvelle mutation n'arrive pendant 250ms, on exécute la vérification.
+    // WHY: Launch new timer. If no new mutation arrives for 250ms, execute the check.
     debounceTimer = window.setTimeout(() => {
       const editButtons = document.querySelectorAll('button[aria-label="Edit"]');
       
-      // On notifie Dart uniquement si on a au moins 2 tours de conversation (le premier + la nouvelle réponse)
-      // et qu'il y a donc au moins 2 boutons "Edit" (un pour chaque réponse précédente).
-      // On peut ajuster ce nombre si nécessaire.
-      if (editButtons.length >= 2) {
+      // WHY: Notify Dart only if we have at least 2 conversation turns (first + new response)
+      // meaning at least 2 "Edit" buttons (one for each previous response).
+      if (editButtons.length >= MIN_EDIT_BUTTONS_FOR_NOTIFICATION) {
         console.log(`[Observer] Detected ${editButtons.length} 'Edit' buttons. Notifying Dart that UI is ready for refinement.`);
         notifyDart({ type: EVENT_TYPE_NEW_RESPONSE });
-        stopObserving(); // On a trouvé ce qu'on voulait, on arrête d'observer.
+        stopObserving();
       }
-    }, 250); // Délai de debounce de 250ms
+    }, UI_STATE_DEBOUNCE_DELAY_MS);
   }
 
-  // Démarre l'observation du DOM
+  // WHY: Start DOM observation, ensuring no multiple observers at the same time
   function startObserving() {
-    // S'assurer de ne pas avoir plusieurs observateurs en même temps
     if (responseObserver) {
       stopObserving();
     }
     
-    // On cible le conteneur principal du chat s'il existe, sinon le body.
     const targetNode = document.querySelector('ms-chat-session') || document.body;
 
     responseObserver = new MutationObserver(checkUIState);
-    
-    // On observe les changements dans les enfants de la cible
     responseObserver.observe(targetNode, { childList: true, subtree: true });
 
     console.log('[Observer] Started observing DOM for new responses.');
   }
 
-  // Arrête l'observation
   function stopObserving() {
     if (responseObserver) {
       responseObserver.disconnect();
@@ -331,17 +306,10 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
     }
   }
 
-  // Exposer une fonction globale pour que Dart puisse démarrer l'observation
+  // WHY: Expose global function for Dart to start observation
   (window as any).startResponseObserver = startObserving;
 
-  // --- Initialisation du Bridge ---
   console.log('[Engine] Bridge script injected. Waiting for flutter_inappwebview...');
-  // Logs de débogage de bas niveau commentés pour réduire la verbosité
-  // console.log('[Engine] startAutomation available:', typeof (window as any).startAutomation);
-  // console.log('[Engine] extractFinalResponse available:', typeof (window as any).extractFinalResponse);
-  // console.log('[Engine] window.flutter_inappwebview available:', typeof (window as WindowWithFlutterInAppWebView).flutter_inappwebview);
-  // console.log('[Engine] Document ready state:', document.readyState);
-  // console.log('[Engine] Document body exists:', !!document.body);
 
   trySignalReady();
 }

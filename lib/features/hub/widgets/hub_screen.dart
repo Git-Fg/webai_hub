@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
+import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,7 +33,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         unawaited(
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
+            duration: kShortAnimationDuration,
             curve: Curves.easeOut,
           ),
         );
@@ -80,7 +81,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             color: Colors.white,
             tooltip: 'New Chat',
             onPressed: () {
-              // Affiche une boîte de dialogue de confirmation pour éviter les erreurs.
               unawaited(
                 showDialog<void>(
                   context: context,
@@ -125,23 +125,23 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                       children: [
                         Icon(
                           Icons.chat_bubble_outline,
-                          size: 64,
+                          size: kLargeIconSize,
                           color: Colors.grey.shade400,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: kLargeSpacing),
                         Text(
                           'Welcome to AI Hybrid Hub!',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: kMediumFontSize,
                             fontWeight: FontWeight.w500,
                             color: Colors.grey.shade600,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: kDefaultSpacing),
                         Text(
                           'Send your first message to start',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: kSmallFontSize,
                             color: Colors.grey.shade500,
                           ),
                         ),
@@ -150,7 +150,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: kDefaultPadding),
                     itemCount: conversation.length,
                     itemBuilder: (context, index) {
                       return ChatBubble(message: conversation[index]);
@@ -166,14 +166,14 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               },
             },
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(kDefaultPadding),
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
+                    blurRadius: kDefaultBlurRadius,
+                    offset: kTopShadowOffset,
                   ),
                 ],
               ),
@@ -190,14 +190,14 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         decoration: InputDecoration(
                           hintText: 'Type your message...',
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(kInputBorderRadius),
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
                           fillColor: Colors.grey.shade100,
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
+                            horizontal: kDefaultPadding + kTinyPadding,
+                            vertical: kMediumVerticalPadding,
                           ),
                         ),
                         maxLines: null,
@@ -206,7 +206,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kDefaultSpacing),
                   Semantics(
                     label: 'hub_send_button',
                     button: true,

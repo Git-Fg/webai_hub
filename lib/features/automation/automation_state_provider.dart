@@ -8,7 +8,7 @@ part 'automation_state_provider.g.dart';
 sealed class AutomationStateData with _$AutomationStateData {
   const factory AutomationStateData.idle() = _Idle;
   const factory AutomationStateData.sending() = _Sending;
-  // L'IA est en train de répondre, l'utilisateur observe.
+  // AI is responding, user is observing
   const factory AutomationStateData.observing() = _Observing;
   const factory AutomationStateData.refining({
     required int messageCount,
@@ -28,7 +28,7 @@ class AutomationState extends _$AutomationState {
   }
 }
 
-/// Provider pour l'état d'extraction pendant la phase 3
+/// Provider for extraction state during phase 3
 @riverpod
 class IsExtracting extends _$IsExtracting {
   @override

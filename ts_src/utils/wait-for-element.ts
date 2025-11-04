@@ -1,5 +1,8 @@
 // ts_src/utils/wait-for-element.ts
 
+const DEFAULT_TIMEOUT_MS = 10000;
+const DEFAULT_INTERVAL_MS = 300;
+
 // Helper to find elements by text content (for :contains() emulation)
 function findElementByText(selector: string, textMatch: string, caseSensitive = false): Element | null {
   try {
@@ -22,9 +25,9 @@ function findElementByText(selector: string, textMatch: string, caseSensitive = 
   return null;
 }
 
-export function waitForElement(selectors: string[], timeout = 10000): Promise<Element> {
+export function waitForElement(selectors: string[], timeout = DEFAULT_TIMEOUT_MS): Promise<Element> {
   return new Promise((resolve, reject) => {
-    const intervalTime = 300;
+    const intervalTime = DEFAULT_INTERVAL_MS;
     let elapsedTime = 0;
 
     const interval = setInterval(() => {
@@ -72,10 +75,10 @@ export function waitForElement(selectors: string[], timeout = 10000): Promise<El
 export function waitForElementWithin(
   root: ParentNode,
   selectors: string[],
-  timeout = 10000,
+  timeout = DEFAULT_TIMEOUT_MS,
 ): Promise<Element> {
   return new Promise((resolve, reject) => {
-    const intervalTime = 300;
+    const intervalTime = DEFAULT_INTERVAL_MS;
     let elapsedTime = 0;
 
     const interval = setInterval(() => {

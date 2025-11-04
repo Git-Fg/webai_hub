@@ -20,7 +20,7 @@ analyzer:
 
 linter:
   rules:
-    # === RÈGLES CRITIQUES À GARDER ===
+    # === CRITICAL RULES TO KEEP ===
     - avoid_returning_null_for_void
     - prefer_void_to_null
     - avoid_init_to_null
@@ -35,7 +35,7 @@ linter:
     - avoid_unnecessary_containers
     - sized_box_for_whitespace
 
-    # === RÈGLES À DÉSACTIVER ===
+    # === RULES TO DISABLE ===
     - public_member_api_docs: false
     - prefer_single_quotes: false
     - lines_longer_than_80_chars: false

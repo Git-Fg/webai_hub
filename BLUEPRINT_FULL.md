@@ -120,3 +120,103 @@ The workflow is implemented with a refined 3-phase approach, driven by the Compa
 | **`MutationObserver`**| Simple (absence of indicator)   | ✅ **Optimized (two-step)**                            |
 | **Advanced Cases**  | Ignored (e.g., Shadow DOM)      | ✅ **Handled**                                         |
 | **Code Quality**    | `flutter_lints` (standard)      | ✅ **`very_good_analysis` (strict)**                   |
+
+
+### Annexe de Blueprint : Guide d'Intégration d'un Nouveau Provider Web
+
+Ce guide récapitule la méthodologie et les leçons apprises lors de l'intégration de Google AI Studio. Suivre ces étapes permettra d'intégrer de nouveaux providers (ChatGPT, Claude, etc.) de manière rapide, robuste et maintenable.
+
+#### Principes Fondamentaux
+
+1.  **Simplicité avant tout :** Toujours commencer par les sélecteurs CSS et les opérations JavaScript les plus simples et les plus standards possible.
+2.  **Partir du Fiable pour Trouver l'Incertain :** Si un conteneur est difficile à cibler, trouver un élément simple à l'intérieur (comme un bouton) et remonter à son parent (`.closest()`).
+3.  **Asynchronisme Explicite :** Ne jamais se fier à des délais fixes (`setTimeout`, `Future.delayed`). Utiliser des mécanismes d'attente active (`waitForElement`) et des retours de communication explicites (`callAsyncJavaScript`).
+4.  **Tolérance aux Fautes :** L'automatisation doit être "blindée". Elle doit pouvoir réussir sa mission principale (ex: extraire du texte) même si des erreurs non critiques se produisent sur la page web.
+5.  **Injection Universelle :** Le script du bridge doit être présent sur toutes les pages pour survivre aux navigations et aux crashs de rendu. La logique de décision ("Dois-je agir ?") appartient au script lui-même, pas au code d'injection.
+
+---
+
+### Processus d'Intégration Étape par Étape
+
+#### Phase 1 : Analyse Manuelle (Navigateur de Bureau)
+
+L'objectif est d'identifier les "points d'ancrage" fiables pour chaque action.
+
+1.  **Identifier les Actions Clés :** Pour un nouveau provider, déterminez les 3 actions fondamentales :
+    *   **Entrer du texte :** Quel est l'élément `<textarea>` ou `<input>` ?
+    *   **Envoyer le prompt :** Quel est le bouton `<button>` de soumission ?
+    *   **Extraire la réponse :** Quelle est la méthode la plus stable ? (Voir point 3)
+
+2.  **Trouver les Sélecteurs les plus Simples :**
+    *   Ouvrez le site du provider dans les outils de développement de Chrome/Firefox.
+    *   Identifiez les sélecteurs les plus uniques et les moins susceptibles de changer. Privilégiez les `[aria-label]`, les ID, ou les attributs `data-*` par rapport aux classes CSS génériques (`.div-a23bc`).
+    *   Créez un script de validation (similaire à `validation/aistudio_selector_validator.js`) pour tester vos sélecteurs directement dans la console.
+
+3.  **Valider la Stratégie d'Extraction :**
+    *   **Scénario A (Idéal) :** Utilisez la **Phase 1 du Guide d'Investigation** pour chercher si le contenu de la conversation est dans un objet JavaScript global (`window.appState`, etc.). Si oui, c'est la méthode à privilégier.
+    *   **Scénario B (Le plus courant) :** Si les données ne sont pas dans un objet global, adoptez la stratégie **"Partir du Fiable"** :
+        1.  Trouvez un bouton unique et stable sur la réponse finalisée (ex: "Copier", "Modifier", "Régénérer").
+        2.  Utilisez ce bouton comme point d'ancrage.
+        3.  À partir de ce bouton, utilisez `.closest()` pour remonter au conteneur principal du message.
+        4.  Une fois le conteneur trouvé, utilisez `.querySelector()` pour trouver l'élément contenant le texte de la réponse.
+        5.  Validez cette séquence dans votre script de validation.
+
+#### Phase 2 : Implémentation de la Logique (TypeScript)
+
+1.  **Créer le Fichier du Chatbot :** Créez un nouveau fichier dans `ts_src/chatbots/`, par exemple `chatgpt.ts`.
+2.  **Implémenter l'Interface `Chatbot` :** Remplissez les trois fonctions requises en utilisant les sélecteurs et la stratégie validés à l'étape précédente.
+    *   `waitForReady()`: Attend un élément qui n'apparaît qu'une fois la page entièrement chargée.
+    *   `sendPrompt(prompt)`: Implémente la séquence : trouver le champ, le remplir, trouver le bouton, cliquer.
+    *   `extractResponse()`: Implémente la stratégie d'extraction validée. **Utilisez la logique de "blindage"** pour séparer l'extraction de valeur des actions de nettoyage (comme fermer un mode édition) avec des `try...catch` permissifs.
+
+3.  **Ajouter des Délais Stratégiques :** Incorporez des délais très courts (50-100ms) après des actions qui modifient le DOM (comme un clic qui fait apparaître un `textarea`) pour laisser le temps au framework de la page de se stabiliser.
+
+4.  **Mettre à jour `automation_engine.ts` :** Ajoutez le nouveau provider à la liste `SUPPORTED_SITES`.
+
+#### Phase 3 : Orchestration et Communication (Dart)
+
+1.  **Utiliser `callAsyncJavaScript` pour la Stabilité :** C'est la leçon finale et la plus importante. Pour appeler une fonction `async` de votre script JS et attendre son résultat, **n'utilisez pas `evaluateJavascript` avec des `Promise`s manuelles et des délais.** Utilisez `callAsyncJavaScript`.
+
+    **Fichier : `lib/features/webview/bridge/javascript_bridge.dart`**
+    ```dart
+    // Ancienne méthode fragile
+    // await controller.evaluateJavascript(source: '(async () => { window.res = await func() })()');
+    // await Future.delayed(Duration(milliseconds: 100));
+    // result = await controller.evaluateJavascript(source: 'window.res');
+
+    // Nouvelle méthode robuste
+    final result = await controller.callAsyncJavaScript(
+      functionBody: 'return await window.extractFinalResponse();',
+    );
+    // La valeur est directement dans result.value
+    final String responseText = result.value;
+    ```
+    *Note : Cette correction cruciale a été faite manuellement par vous et doit être la norme pour toutes les futures intégrations.*
+
+2.  **Gestion d'Erreur Tolérante :** Lors de l'implémentation de `extractAndReturnToHub` pour le nouveau provider, adoptez la structure qui priorise le résultat :
+    ```dart
+    String? responseText;
+    Object? error;
+
+    try {
+      // Utilise callAsyncJavaScript
+      responseText = await bridge.extractFinalResponse(); 
+    } on Object catch (e) {
+      error = e;
+    }
+
+    if (responseText != null && responseText.isNotEmpty) {
+      // Succès ! On ignore 'error' ou on le logue.
+    } else {
+      // Échec, on traite 'error'.
+    }
+    ```
+
+3.  **Intégrer le Déclenchement de l'Observateur :** Si le nouveau provider nécessite une attente après l'envoi du prompt, réutilisez le système d'observateur :
+    *   Dans `conversation_provider.dart`, après `bridge.startAutomation()`, passez à l'état `.observing()` et appelez `bridge.startResponseObserver()`.
+    *   Dans le script JS (`automation_engine.ts`), adaptez la logique de `checkUIState` pour détecter l'indicateur de fin de réponse du nouveau provider (par exemple, l'apparition d'un bouton "Copier").
+
+#### Phase 4 : Débogage Final
+
+1.  **Utiliser les Logs JS :** Gardez les logs JS (`console.log`) sur les étapes clés pendant le développement. Le log `console.log('Target element:', element.outerHTML)` est particulièrement puissant.
+2.  **Utiliser l'Inspecteur de DOM :** Si une extraction échoue, utilisez le bouton "Inspect DOM" pour obtenir une "photographie" de l'état de la page au moment de l'échec et comprendre pourquoi les sélecteurs ne correspondent pas.
