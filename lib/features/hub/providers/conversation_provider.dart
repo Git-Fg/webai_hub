@@ -180,20 +180,20 @@ User: $newPrompt
       await bridge.startAutomation(promptWithContext);
 
       // --- MODIFICATION CRUCIALE ---
-      // On ne tente plus d'observer. On passe DIRECTEMENT à la phase de raffinement.
       if (ref.mounted) {
-        // Mettre à jour le message "placeholder" pour inviter l'utilisateur à valider
+        // Mettre à jour le message placeholder
         _updateLastMessage(
           'Assistant is responding in the WebView...',
           MessageStatus.sending,
         );
 
-        // Passer directement à l'état "refining"
+        // Passer à l'état "observing"
         ref.read(automationStateProvider.notifier).setStatus(
-              AutomationStateData.refining(
-                messageCount: state.length,
-              ),
+              const AutomationStateData.observing(),
             );
+
+        // Démarrer l'observateur côté JavaScript
+        await bridge.startResponseObserver();
       }
 
       // --- SUPPRIMÉ ---
@@ -216,29 +216,26 @@ User: $newPrompt
     }
   }
 
-  // Cette méthode extrait la réponse mais ne finalise pas le cycle
-  Future<void> validateAndFinalizeResponse() async {
+  // Extraire et revenir au Hub sans finaliser l'automatisation
+  Future<void> extractAndReturnToHub() async {
     final bridge = ref.read(javaScriptBridgeProvider);
+    // On active l'indicateur de chargement
     ref.read(isExtractingProvider.notifier).state = true;
 
     try {
+      // On attend le résultat de l'extraction.
       final responseText = await bridge.extractFinalResponse();
+
+      // Si on arrive ici, l'extraction a réussi, même si des erreurs non critiques
+      // ont été loguées côté JS. Le plus important est que la Promise a retourné une valeur.
       if (ref.mounted) {
         _updateLastMessage(responseText, MessageStatus.success);
         ref.read(pendingPromptProvider.notifier).clear();
-
-        // --- MODIFICATION CRUCIALE ---
-        // On garde l'état refining avec isExtracted: true pour permettre
-        // à l'utilisateur de raffiner et de remplacer la réponse
-        ref.read(automationStateProvider.notifier).setStatus(
-              AutomationStateData.refining(
-                messageCount: state.length,
-                isExtracted: true,
-              ),
-            );
-        // On ne change PAS d'onglet pour laisser l'utilisateur voir la réponse dans WebView
+        ref.read(currentTabIndexProvider.notifier).changeTo(0);
       }
     } on Object catch (e) {
+      // Si on arrive ici, c'est qu'une VRAIE exception a été levée,
+      // empêchant la Promise de retourner une valeur.
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
@@ -248,49 +245,14 @@ User: $newPrompt
           errorMessage = 'Failed to extract response: $e';
         }
         _updateLastMessage(errorMessage, MessageStatus.error);
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(const AutomationStateData.failed());
-      }
-    } finally {
-      if (ref.mounted) {
-        ref.read(isExtractingProvider.notifier).state = false;
-      }
-    }
-  }
-
-  // Ré-extraire la réponse depuis WebView et remplacer le message
-  Future<void> replaceExtractedResponse() async {
-    final bridge = ref.read(javaScriptBridgeProvider);
-    ref.read(isExtractingProvider.notifier).state = true;
-
-    try {
-      final responseText = await bridge.extractFinalResponse();
-      if (ref.mounted) {
-        _updateLastMessage(responseText, MessageStatus.success);
-        // On reste en refining(isExtracted: true) pour permettre d'autres remplacements
+        // On passe à l'état failed SEULEMENT si l'extraction échoue.
         ref.read(automationStateProvider.notifier).setStatus(
-              AutomationStateData.refining(
-                messageCount: state.length,
-                isExtracted: true,
-              ),
+              const AutomationStateData.failed(),
             );
       }
-    } on Object catch (e) {
-      if (ref.mounted) {
-        String errorMessage;
-        if (e is AutomationError) {
-          errorMessage =
-              'Extraction Error: ${e.message} (Code: ${e.errorCode.name})';
-        } else {
-          errorMessage = 'Failed to replace response: $e';
-        }
-        _updateLastMessage(errorMessage, MessageStatus.error);
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(const AutomationStateData.failed());
-      }
     } finally {
+      // Ce bloc s'exécute après le try OU le catch, garantissant que
+      // l'indicateur de chargement est toujours désactivé.
       if (ref.mounted) {
         ref.read(isExtractingProvider.notifier).state = false;
       }

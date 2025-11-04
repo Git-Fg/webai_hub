@@ -53,6 +53,7 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult maybeMap<TResult extends Object?>({
     TResult Function(_Idle value)? idle,
     TResult Function(_Sending value)? sending,
+    TResult Function(_Observing value)? observing,
     TResult Function(_Refining value)? refining,
     TResult Function(_Failed value)? failed,
     TResult Function(_NeedsLogin value)? needsLogin,
@@ -64,6 +65,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle(_that);
       case _Sending() when sending != null:
         return sending(_that);
+      case _Observing() when observing != null:
+        return observing(_that);
       case _Refining() when refining != null:
         return refining(_that);
       case _Failed() when failed != null:
@@ -92,6 +95,7 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult map<TResult extends Object?>({
     required TResult Function(_Idle value) idle,
     required TResult Function(_Sending value) sending,
+    required TResult Function(_Observing value) observing,
     required TResult Function(_Refining value) refining,
     required TResult Function(_Failed value) failed,
     required TResult Function(_NeedsLogin value) needsLogin,
@@ -102,6 +106,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle(_that);
       case _Sending():
         return sending(_that);
+      case _Observing():
+        return observing(_that);
       case _Refining():
         return refining(_that);
       case _Failed():
@@ -127,6 +133,7 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult? mapOrNull<TResult extends Object?>({
     TResult? Function(_Idle value)? idle,
     TResult? Function(_Sending value)? sending,
+    TResult? Function(_Observing value)? observing,
     TResult? Function(_Refining value)? refining,
     TResult? Function(_Failed value)? failed,
     TResult? Function(_NeedsLogin value)? needsLogin,
@@ -137,6 +144,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle(_that);
       case _Sending() when sending != null:
         return sending(_that);
+      case _Observing() when observing != null:
+        return observing(_that);
       case _Refining() when refining != null:
         return refining(_that);
       case _Failed() when failed != null:
@@ -164,7 +173,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult maybeWhen<TResult extends Object?>({
     TResult Function()? idle,
     TResult Function()? sending,
-    TResult Function(int messageCount, bool isExtracted)? refining,
+    TResult Function()? observing,
+    TResult Function(int messageCount)? refining,
     TResult Function()? failed,
     TResult Function()? needsLogin,
     required TResult orElse(),
@@ -175,8 +185,10 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle();
       case _Sending() when sending != null:
         return sending();
+      case _Observing() when observing != null:
+        return observing();
       case _Refining() when refining != null:
-        return refining(_that.messageCount, _that.isExtracted);
+        return refining(_that.messageCount);
       case _Failed() when failed != null:
         return failed();
       case _NeedsLogin() when needsLogin != null:
@@ -203,7 +215,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult when<TResult extends Object?>({
     required TResult Function() idle,
     required TResult Function() sending,
-    required TResult Function(int messageCount, bool isExtracted) refining,
+    required TResult Function() observing,
+    required TResult Function(int messageCount) refining,
     required TResult Function() failed,
     required TResult Function() needsLogin,
   }) {
@@ -213,8 +226,10 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle();
       case _Sending():
         return sending();
+      case _Observing():
+        return observing();
       case _Refining():
-        return refining(_that.messageCount, _that.isExtracted);
+        return refining(_that.messageCount);
       case _Failed():
         return failed();
       case _NeedsLogin():
@@ -238,7 +253,8 @@ extension AutomationStateDataPatterns on AutomationStateData {
   TResult? whenOrNull<TResult extends Object?>({
     TResult? Function()? idle,
     TResult? Function()? sending,
-    TResult? Function(int messageCount, bool isExtracted)? refining,
+    TResult? Function()? observing,
+    TResult? Function(int messageCount)? refining,
     TResult? Function()? failed,
     TResult? Function()? needsLogin,
   }) {
@@ -248,8 +264,10 @@ extension AutomationStateDataPatterns on AutomationStateData {
         return idle();
       case _Sending() when sending != null:
         return sending();
+      case _Observing() when observing != null:
+        return observing();
       case _Refining() when refining != null:
-        return refining(_that.messageCount, _that.isExtracted);
+        return refining(_that.messageCount);
       case _Failed() when failed != null:
         return failed();
       case _NeedsLogin() when needsLogin != null:
@@ -302,12 +320,30 @@ class _Sending implements AutomationStateData {
 
 /// @nodoc
 
+class _Observing implements AutomationStateData {
+  const _Observing();
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is _Observing);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  String toString() {
+    return 'AutomationStateData.observing()';
+  }
+}
+
+/// @nodoc
+
 class _Refining implements AutomationStateData {
-  const _Refining({required this.messageCount, this.isExtracted = false});
+  const _Refining({required this.messageCount});
 
   final int messageCount;
-  @JsonKey()
-  final bool isExtracted;
 
   /// Create a copy of AutomationStateData
   /// with the given fields replaced by the non-null parameter values.
@@ -322,17 +358,15 @@ class _Refining implements AutomationStateData {
         (other.runtimeType == runtimeType &&
             other is _Refining &&
             (identical(other.messageCount, messageCount) ||
-                other.messageCount == messageCount) &&
-            (identical(other.isExtracted, isExtracted) ||
-                other.isExtracted == isExtracted));
+                other.messageCount == messageCount));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, messageCount, isExtracted);
+  int get hashCode => Object.hash(runtimeType, messageCount);
 
   @override
   String toString() {
-    return 'AutomationStateData.refining(messageCount: $messageCount, isExtracted: $isExtracted)';
+    return 'AutomationStateData.refining(messageCount: $messageCount)';
   }
 }
 
@@ -342,7 +376,7 @@ abstract mixin class _$RefiningCopyWith<$Res>
   factory _$RefiningCopyWith(_Refining value, $Res Function(_Refining) _then) =
       __$RefiningCopyWithImpl;
   @useResult
-  $Res call({int messageCount, bool isExtracted});
+  $Res call({int messageCount});
 }
 
 /// @nodoc
@@ -357,17 +391,12 @@ class __$RefiningCopyWithImpl<$Res> implements _$RefiningCopyWith<$Res> {
   @pragma('vm:prefer-inline')
   $Res call({
     Object? messageCount = null,
-    Object? isExtracted = null,
   }) {
     return _then(_Refining(
       messageCount: null == messageCount
           ? _self.messageCount
           : messageCount // ignore: cast_nullable_to_non_nullable
               as int,
-      isExtracted: null == isExtracted
-          ? _self.isExtracted
-          : isExtracted // ignore: cast_nullable_to_non_nullable
-              as bool,
     ));
   }
 }

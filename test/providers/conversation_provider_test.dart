@@ -10,6 +10,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../fakes/fake_javascript_bridge.dart';
 
+// Mock Notifier pour les tests qui retourne toujours true
+class AlwaysReadyBridge extends BridgeReady {
+  @override
+  bool build() => true;
+}
+
 void main() {
   group('ConversationProvider Tests', () {
     late ProviderContainer container;
@@ -20,10 +26,11 @@ void main() {
       container = ProviderContainer(
         overrides: [
           javaScriptBridgeProvider.overrideWithValue(fakeBridge),
+          // Forcer le bridge à être toujours prêt dans cet environnement de test unitaire.
+          // Cela isole le test de la logique de cycle de vie de la WebView.
+          bridgeReadyProvider.overrideWith(AlwaysReadyBridge.new),
         ],
       );
-      // Mark bridge as ready immediately for tests
-      container.read(bridgeReadyProvider.notifier).markReady();
     });
 
     tearDown(() {
@@ -75,9 +82,10 @@ void main() {
       expect(conversation[1].status, MessageStatus.sending);
 
       expect(fakeBridge.lastPromptSent, 'Hello');
+      // Après sendPromptToAutomation, on passe à l'état observing
       expect(
         container.read(automationStateProvider),
-        const AutomationStateData.refining(messageCount: 2),
+        const AutomationStateData.observing(),
       );
 
       // VERIFY: S'assurer que le provider de navigation a été mis à jour
@@ -88,7 +96,7 @@ void main() {
     });
 
     test(
-        'validateAndFinalizeResponse updates message, clears pending prompt, sets state to idle and returns to hub tab',
+        'extractAndReturnToHub updates message, clears pending prompt, stays in refining and returns to Hub',
         () async {
       // Keep providers alive by listening to them
       final conversationSub =
@@ -100,12 +108,14 @@ void main() {
 
       await notifier.sendPromptToAutomation('Hello');
 
-      // Set status to refining to simulate ongoing automation
+      // sendPromptToAutomation sets state to observing, then we need to simulate
+      // the NEW_RESPONSE_DETECTED event to transition to refining
+      // For this test, we'll manually set to refining to simulate the observer detecting the response
       container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 1),
+            const AutomationStateData.refining(messageCount: 2),
           );
 
-      await notifier.validateAndFinalizeResponse();
+      await notifier.extractAndReturnToHub();
 
       final conversation = container.read(conversationProvider);
       expect(conversation.isNotEmpty, isTrue);
@@ -120,19 +130,78 @@ void main() {
 
       expect(fakeBridge.wasExtractCalled, isTrue);
 
-      // VERIFY: L'état d'automatisation passe à idle
+      // VERIFY: L'état d'automatisation reste en refining
       expect(
         container.read(automationStateProvider),
-        const AutomationStateData.idle(),
+        const AutomationStateData.refining(messageCount: 2),
       );
 
-      // VERIFY: L'onglet revient à 0 (Hub)
+      // VERIFY: L'onglet retourne au Hub (0)
       expect(container.read(currentTabIndexProvider), 0);
 
       // VERIFY: Le pending prompt est effacé
       expect(container.read(pendingPromptProvider), isNull);
 
       conversationSub.close();
+      tabIndexSub.close();
+    });
+
+    test('extractAndReturnToHub updates last AI message and stays in refining',
+        () async {
+      // Keep providers alive by listening to them
+      final conversationSub =
+          container.listen(conversationProvider, (previous, next) {});
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      final notifier = container.read(conversationProvider.notifier);
+
+      await notifier.sendPromptToAutomation('Hello');
+      // Simuler l'extraction initiale réussie
+      container.read(automationStateProvider.notifier).setStatus(
+            const AutomationStateData.refining(messageCount: 2),
+          );
+
+      await notifier.extractAndReturnToHub();
+
+      final conversation = container.read(conversationProvider);
+      final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
+      expect(lastAiMessage.status, MessageStatus.success);
+      expect(
+        lastAiMessage.text,
+        'This is a fake AI response from the test bridge.',
+      );
+
+      expect(
+        container.read(automationStateProvider),
+        const AutomationStateData.refining(messageCount: 2),
+      );
+
+      // Onglet retourne au Hub
+      expect(container.read(currentTabIndexProvider), 0);
+
+      conversationSub.close();
+      tabIndexSub.close();
+    });
+
+    test('finalizeAutomation sets idle and returns to Hub tab', () async {
+      final tabIndexSub =
+          container.listen(currentTabIndexProvider, (previous, next) {});
+
+      final notifier = container.read(conversationProvider.notifier);
+      // Simuler un état de raffinement
+      container.read(automationStateProvider.notifier).setStatus(
+            const AutomationStateData.refining(messageCount: 2),
+          );
+
+      notifier.finalizeAutomation();
+
+      expect(
+        container.read(automationStateProvider),
+        const AutomationStateData.idle(),
+      );
+      expect(container.read(currentTabIndexProvider), 0);
+
       tabIndexSub.close();
     });
 
@@ -258,7 +327,7 @@ void main() {
     });
 
     test(
-        'validateAndFinalizeResponse handles extraction errors gracefully and sets state to failed',
+        'extractAndReturnToHub handles extraction errors gracefully and sets state to failed',
         () async {
       final conversationSub =
           container.listen(conversationProvider, (previous, next) {});
@@ -276,7 +345,7 @@ void main() {
             const AutomationStateData.refining(messageCount: 1),
           );
 
-      await notifier.validateAndFinalizeResponse();
+      await notifier.extractAndReturnToHub();
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
@@ -298,7 +367,7 @@ void main() {
       expect(
         lastAiMessage.text,
         contains('Failed to extract response'),
-        reason: 'Le message devrait contenir le texte d\'erreur',
+        reason: "Le message devrait contenir le texte d'erreur",
       );
 
       conversationSub.close();
@@ -306,7 +375,7 @@ void main() {
     });
 
     test(
-        'validateAndFinalizeResponse handles AutomationError during extraction and sets state to failed',
+        'extractAndReturnToHub handles AutomationError during extraction and sets state to failed',
         () async {
       final conversationSub =
           container.listen(conversationProvider, (previous, next) {});
@@ -324,7 +393,7 @@ void main() {
             const AutomationStateData.refining(messageCount: 1),
           );
 
-      await notifier.validateAndFinalizeResponse();
+      await notifier.extractAndReturnToHub();
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
@@ -346,7 +415,7 @@ void main() {
       expect(
         lastAiMessage.text,
         contains('Extraction Error'),
-        reason: 'Le message devrait contenir le texte d\'erreur avec le code',
+        reason: "Le message devrait contenir le texte d'erreur avec le code",
       );
 
       conversationSub.close();

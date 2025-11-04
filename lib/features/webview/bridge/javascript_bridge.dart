@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -12,7 +13,28 @@ part 'javascript_bridge.g.dart';
 @Riverpod(keepAlive: true)
 class WebViewController extends _$WebViewController {
   @override
-  InAppWebViewController? build() => null;
+  InAppWebViewController? build() {
+    // Nettoyage automatique lors du disposal du provider
+    ref.onDispose(() {
+      final controller = state;
+      if (controller != null) {
+        debugPrint('[WebViewController] Disposing controller.');
+        // Nettoyer les fonctions globales pour éviter les fuites de mémoire JS
+        controller.evaluateJavascript(
+          source: '''
+          delete window.startAutomation;
+          delete window.extractFinalResponse;
+          delete window.inspectDOMForSelectors;
+          delete window.__AI_HYBRID_HUB_INITIALIZED__;
+        ''',
+        ).catchError((Object error) {
+          // Ignorer les erreurs si le contrôleur est déjà détruit
+          debugPrint('[WebViewController] Error during disposal: $error');
+        });
+      }
+    });
+    return null;
+  }
 
   // ignore: use_setters_to_change_properties, reason: Clear intent; method aligns with Riverpod notifier APIs
   void setController(InAppWebViewController? controller) {
@@ -31,6 +53,16 @@ class BridgeReady extends _$BridgeReady {
 
   void reset() {
     state = false;
+  }
+}
+
+@riverpod
+class CurrentWebViewUrl extends _$CurrentWebViewUrl {
+  @override
+  String build() => '';
+
+  void updateUrl(String url) {
+    state = url;
   }
 }
 
@@ -334,67 +366,67 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   @override
   Future<String> extractFinalResponse() async {
     try {
+      // S'assurer que le bridge est prêt avant de continuer.
       await waitForBridgeReady();
 
       final controller = _controller;
 
-      dynamic result;
-      try {
-        // extractFinalResponse est async, utiliser une variable globale pour contourner
-        // le problème de sérialisation des Promises par evaluateJavascript
-        // Étape 1: Exécuter l'extraction et stocker le résultat
-        await controller.evaluateJavascript(
-          source: '''
-              (async () => {
-                if (typeof extractFinalResponse !== 'undefined') {
-                  window.__lastExtractedResponse__ = await extractFinalResponse();
-                } else {
-                  window.__lastExtractedResponse__ = null;
-                }
-              })()
-            ''',
-        );
+      // Utiliser callAsyncJavaScript qui gère nativement les Promises.
+      // C'est plus simple et élimine la race condition.
+      final result = await controller.callAsyncJavaScript(
+        functionBody: '''
+          // La fonction passée ici est "await" par le WebView.
+          // On retourne directement le résultat de notre fonction asynchrone.
+          return await window.extractFinalResponse();
+        ''',
+      );
 
-        // Étape 2: Attendre un peu pour que la Promise soit résolue
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+      // callAsyncJavaScript peut retourner un objet InAppWebViewJavaScriptResult.
+      // On vérifie que la valeur n'est pas nulle.
+      final value = result?.value;
 
-        // Étape 3: Récupérer le résultat stocké
-        result = await controller.evaluateJavascript(
-          source: 'window.__lastExtractedResponse__ || null',
-        );
-      } on Object catch (e, stackTrace) {
+      if (value == null || value is! String) {
         throw AutomationError(
           errorCode: AutomationErrorCode.responseExtractionFailed,
           location: 'extractFinalResponse',
-          message: 'Failed to execute extraction script',
-          diagnostics: _getBridgeDiagnostics(),
-          originalError: e,
-          stackTrace: stackTrace,
-        );
-      }
-
-      if (result == null || result is! String) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.responseExtractionFailed,
-          location: 'extractFinalResponse',
-          message: 'No response available or extraction failed',
+          message: 'Extraction returned null or an invalid type.',
           diagnostics: {
             ..._getBridgeDiagnostics(),
-            'resultType': result.runtimeType.toString(),
-            'resultIsNull': result == null,
+            'resultType': value.runtimeType.toString(),
+            'resultValue': value?.toString(),
           },
         );
       }
-
-      return result;
-      // ignore: avoid_catching_errors, reason: Preserve original AutomationError semantics without wrapping
-    } on AutomationError {
-      rethrow;
+      return value;
     } on Object catch (e, stackTrace) {
+      // On englobe tout dans un try/catch pour convertir les erreurs
+      // en AutomationError si nécessaire.
+      if (e is AutomationError) rethrow;
+
       throw AutomationError(
         errorCode: AutomationErrorCode.responseExtractionFailed,
         location: 'extractFinalResponse',
-        message: 'Unexpected error during response extraction',
+        message: 'Unexpected error during response extraction.',
+        diagnostics: _getBridgeDiagnostics(),
+        originalError: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  @override
+  Future<void> startResponseObserver() async {
+    try {
+      await _waitForWebViewToBeCreated();
+      final controller = _controller;
+      await controller.evaluateJavascript(
+        source: 'window.startResponseObserver();',
+      );
+    } on Object catch (e, stackTrace) {
+      throw AutomationError(
+        errorCode: AutomationErrorCode.automationExecutionFailed,
+        location: 'startResponseObserver',
+        message: 'Failed to start response observer script',
         diagnostics: _getBridgeDiagnostics(),
         originalError: e,
         stackTrace: stackTrace,

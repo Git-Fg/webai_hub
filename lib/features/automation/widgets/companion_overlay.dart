@@ -21,16 +21,19 @@ class CompanionOverlay extends ConsumerWidget {
         message: 'Phase 1: Sending prompt...',
         isLoading: true,
       ),
-      // --- SUPPRIMÉ ---
-      // Le cas 'observing' n'existe plus.
-      refining: (messageCount, isExtracted) => _buildStatusUI(
+      observing: () => _buildStatusUI(
+        context: context,
+        statusIcon: Icons.visibility,
+        statusColor: Colors.orange,
+        message: 'Phase 2: Assistant is responding...',
+        isLoading: true, // Affiche un indicateur de chargement
+      ),
+      refining: (messageCount) => _buildStatusUI(
         context: context,
         statusIcon: Icons.edit,
         statusColor: Colors.green,
-        message: isExtracted
-            ? 'Response extracted. You can refine it or replace it.'
-            : 'Phase 3: Ready for refinement.',
-        actionButton: _buildRefiningButtons(ref, messageCount, isExtracted),
+        message: 'Phase 3: Ready for refinement.',
+        actionButton: _buildRefiningButtons(ref, messageCount),
       ),
       needsLogin: () => _buildStatusUI(
         context: context,
@@ -78,119 +81,65 @@ class CompanionOverlay extends ConsumerWidget {
   Widget _buildRefiningButtons(
     WidgetRef ref,
     int messageCount,
-    bool isExtracted,
   ) {
     final isExtracting = ref.watch(isExtractingProvider);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Primary: Extract & View Hub
         Semantics(
-          label: 'companion_cancel_button',
+          label: 'companion_extract_and_view_hub_button',
           button: true,
           child: ElevatedButton.icon(
-            key: const Key('companion_cancel_button'),
-            icon: const Icon(Icons.cancel),
-            label: const Text('Cancel'),
+            key: Key('companion_extract_and_view_hub_button_$messageCount'),
+            icon: isExtracting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.check_circle),
+            label: const Text('Extract & View Hub'),
             onPressed: isExtracting
                 ? null
                 : () {
-                    ref.read(conversationProvider.notifier).cancelAutomation();
+                    unawaited(
+                      ref
+                          .read(conversationProvider.notifier)
+                          .extractAndReturnToHub(),
+                    );
                   },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey[600],
+              backgroundColor: Colors.green,
               foregroundColor: Colors.white,
             ),
           ),
         ),
         const SizedBox(width: 8),
-        if (!isExtracted) ...[
-          // Bouton "Validate & Extract" avant extraction
-          Semantics(
-            label: 'companion_validate_button',
-            button: true,
-            child: ElevatedButton.icon(
-              key: Key('companion_validate_button_$messageCount'),
-              icon: isExtracting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.check_circle),
-              label: Text('Validate & Extract #$messageCount'),
-              onPressed: isExtracting
-                  ? null
-                  : () {
-                      unawaited(
-                        ref
-                            .read(conversationProvider.notifier)
-                            .validateAndFinalizeResponse(),
-                      );
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
+        // Secondary: Done
+        Semantics(
+          label: 'companion_done_button',
+          button: true,
+          child: ElevatedButton.icon(
+            key: const Key('companion_done_button'),
+            icon: const Icon(Icons.check_circle),
+            label: const Text('Done'),
+            onPressed: isExtracting
+                ? null
+                : () {
+                    ref
+                        .read(conversationProvider.notifier)
+                        .finalizeAutomation();
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueGrey,
+              foregroundColor: Colors.white,
             ),
           ),
-        ] else ...[
-          // Boutons "Replace" et "Done" après extraction
-          Semantics(
-            label: 'companion_replace_button',
-            button: true,
-            child: ElevatedButton.icon(
-              key: const Key('companion_replace_button'),
-              icon: isExtracting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.refresh),
-              label: const Text('Replace'),
-              onPressed: isExtracting
-                  ? null
-                  : () {
-                      unawaited(
-                        ref
-                            .read(conversationProvider.notifier)
-                            .replaceExtractedResponse(),
-                      );
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Semantics(
-            label: 'companion_done_button',
-            button: true,
-            child: ElevatedButton.icon(
-              key: const Key('companion_done_button'),
-              icon: const Icon(Icons.check_circle),
-              label: const Text('Done'),
-              onPressed: isExtracting
-                  ? null
-                  : () {
-                      ref
-                          .read(conversationProvider.notifier)
-                          .finalizeAutomation();
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-        ],
+        ),
       ],
     );
   }

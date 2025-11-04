@@ -8,7 +8,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'main.g.dart';
 
-@riverpod
+@Riverpod(keepAlive: true)
 class CurrentTabIndex extends _$CurrentTabIndex {
   @override
   int build() => 0;

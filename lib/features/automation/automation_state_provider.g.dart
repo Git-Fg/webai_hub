@@ -20,7 +20,7 @@ final class AutomationStateProvider
           argument: null,
           retry: null,
           name: r'automationStateProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -41,7 +41,7 @@ final class AutomationStateProvider
   }
 }
 
-String _$automationStateHash() => r'6cb8a698a310a92991a618d129b26640cc916f8a';
+String _$automationStateHash() => r'71713d6dd13fc24c0686da24088d63f5b644163a';
 
 abstract class _$AutomationState extends $Notifier<AutomationStateData> {
   AutomationStateData build();

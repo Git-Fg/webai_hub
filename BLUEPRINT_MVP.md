@@ -18,7 +18,7 @@ To implement and validate the complete 4-phase "Assist & Validate" workflow for 
 -   **Minimal Hub UI:** A text input field, a send button, and a list of chat bubbles to display the current conversation.
 -   **Functional JavaScript Bridge:** Bi-directional communication (Dart <-> TypeScript) to drive the automation.
 -   **Simplified Automation:** Prompt injection, send button click, and final response extraction.
--   **Basic Companion Overlay:** A simple banner displaying the automation state ("Sending...", "Observing...", "Ready for validation") and "Validate" / "Cancel" buttons.
+-   **Basic Companion Overlay:** A simple banner displaying the automation state ("Sending...", "Ready for refinement") and "Extract & View Hub" / "Cancel" buttons.
 
 ### 1.3. What's Explicitly Out of Scope
 
@@ -97,10 +97,9 @@ This is where the main MVP simplifications are made. The focus is on function, n
 
 ## 5. MVP "Assist & Validate" Workflow
 
-1.  **Phase 1 (Sending):** User sends a prompt. Dart calls `startAutomation(prompt)` on the TS bridge. The script finds the input, types the prompt, finds the send button, and clicks it.
-2.  **Phase 2 (Observing):** The simplified `MutationObserver` activates and waits for generation to complete via debouncing, then notifies Dart.
-3.  **Phase 3 (Refining):** The app displays "Ready for validation" in the overlay. The user is free to interact with the `WebView`.
-4.  **Phase 4 (Validation):** User clicks the native "Validate" button. Dart calls `extractFinalResponse()`. The script finds the last response element, extracts its text, and returns it to Dart. Dart updates the conversation UI.
+1.  **Phase 1 (Sending):** L'utilisateur envoie un prompt. Dart appelle `startAutomation(prompt)`. Le script TypeScript trouve le champ de saisie, tape le prompt et clique sur le bouton d'envoi. L'application passe **instantanément** à l'état suivant.
+2.  **Phase 2 (Refining):** L'overlay affiche "Ready for refinement". L'utilisateur regarde la réponse se générer directement dans la `WebView` et peut interagir avec la page.
+3.  **Phase 3 (Validation):** L'utilisateur clique sur le bouton "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le texte de la dernière réponse et le retourne à Dart, qui met à jour l'interface de conversation. Cette action peut être répétée.
 
 ## 6. MVP Validation Checklist
 
@@ -355,3 +354,80 @@ Before creating a provider, ask:
 4. **Is this provider screen-specific and should refresh on each visit?**
    - Yes → `autoDispose` (default)
    - No → `keepAlive: true`
+
+### 7.5. Stratégie de Survie du Bridge : L'Injection Idempotente Systématique
+
+#### Problème Identifié : La Disparition Silencieuse du Script
+
+Lors des tests, une erreur de `timeout` survenait systématiquement lors de l'extraction de la réponse, même avec des sélecteurs corrects. L'analyse des logs a révélé la cause racine :
+
+```
+E/chromium: [ERROR:aw_browser_terminator.cc(165)] Renderer process crash detected.
+```
+
+Ce crash silencieux du processus de rendu de la `WebView` (ou une navigation pleine page initiée par le site web lui-même) entraînait la perte complète du contexte JavaScript injecté. L'approche initiale, qui utilisait un flag Dart (`_isBridgeInjected`) pour n'injecter le script qu'une seule fois, était donc fondamentalement fragile. Une fois le script perdu, il n'était jamais réinjecté, rendant toute communication ultérieure impossible.
+
+#### Solution : L'Approche de Ré-injection Robuste
+
+Pour garantir que le bridge de communication est toujours disponible, une stratégie d'injection systématique et idempotente a été mise en place.
+
+1.  **Côté Dart (`ai_webview_screen.dart`) : Injection Systématique à chaque `onLoadStop`**
+
+    Le principe est de considérer que chaque chargement de page peut potentiellement avoir un contexte vierge. On injecte donc notre script à chaque fois, sans condition.
+
+    **Ancienne logique (FRAGILE) :**
+
+    ```dart
+    // Flag pour contrôler l'injection unique
+    bool _isBridgeInjected = false;
+    
+    onLoadStop: (controller, url) async {
+      if (!_isBridgeInjected) {
+        await controller.evaluateJavascript(source: bridgeScript);
+        _isBridgeInjected = true; // Empêche la ré-injection future
+      }
+    }
+    ```
+
+    **Nouvelle logique (ROBUSTE) :**
+
+    ```dart
+    onLoadStop: (controller, url) async {
+      // Pas de flag. On injecte TOUJOURS si on est sur le bon domaine.
+      final currentUrl = url?.toString() ?? '';
+      if (currentUrl.contains('aistudio.google.com') || currentUrl.startsWith('file://')) {
+        await controller.evaluateJavascript(source: bridgeScript);
+        debugPrint('[AiWebviewScreen] Bridge script (re-)injected.');
+      }
+      // On réinitialise l'état "ready" pour attendre un nouveau signal du script fraîchement injecté.
+      ref.read(bridgeReadyProvider.notifier).reset();
+    }
+    ```
+
+2.  **Côté TypeScript (`automation_engine.ts`) : Assurer l'Idempotence**
+
+    Injecter le même script plusieurs fois sur une page qui n'a pas été rechargée pourrait causer des problèmes (ex: redéfinir des fonctions). Pour rendre cette opération sûre, le script JS lui-même vérifie s'il a déjà été initialisé.
+
+    **Nouvelle logique (SÉCURISÉE) :**
+
+    ```typescript
+    // Vérifier un flag global pour s'assurer que le script ne s'exécute qu'une fois par contexte.
+    if ((window as any).__AI_HYBRID_HUB_INITIALIZED__) {
+      // Si déjà là, on se contente de re-signaler que le bridge est prêt.
+      trySignalReady();
+    } else {
+      (window as any).__AI_HYBRID_HUB_INITIALIZED__ = true;
+      // ... Tout le code d'initialisation du bridge, des fonctions globales, etc. ...
+      trySignalReady();
+    }
+    ```
+
+#### Bénéfices de cette architecture
+
+- ✅ **Résilience aux crashs :** L'application se remet automatiquement d'un crash du processus de rendu de la `WebView`.
+
+- ✅ **Gestion transparente de la navigation :** Le bridge reste fonctionnel même si le site web navigue vers une URL complètement différente.
+
+- ✅ **Fiabilité accrue :** Élimine une classe entière d'erreurs de timing et de "race conditions" difficiles à déboguer.
+
+- ✅ **Simplification du code Dart :** La suppression du flag `_isBridgeInjected` simplifie la gestion de l'état dans le widget `AiWebviewScreen`.

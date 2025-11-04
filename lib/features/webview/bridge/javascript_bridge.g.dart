@@ -41,7 +41,7 @@ final class WebViewControllerProvider
   }
 }
 
-String _$webViewControllerHash() => r'87aa407ef46f6d31fd3df1401e023f7535373732';
+String _$webViewControllerHash() => r'78c66bf788fdb621012dfe541dbe395d9669e919';
 
 abstract class _$WebViewController extends $Notifier<InAppWebViewController?> {
   InAppWebViewController? build();
@@ -102,6 +102,53 @@ abstract class _$BridgeReady extends $Notifier<bool> {
     final ref = this.ref as $Ref<bool, bool>;
     final element = ref.element as $ClassProviderElement<
         AnyNotifier<bool, bool>, bool, Object?, Object?>;
+    element.handleValue(ref, created);
+  }
+}
+
+@ProviderFor(CurrentWebViewUrl)
+const currentWebViewUrlProvider = CurrentWebViewUrlProvider._();
+
+final class CurrentWebViewUrlProvider
+    extends $NotifierProvider<CurrentWebViewUrl, String> {
+  const CurrentWebViewUrlProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'currentWebViewUrlProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$currentWebViewUrlHash();
+
+  @$internal
+  @override
+  CurrentWebViewUrl create() => CurrentWebViewUrl();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(String value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<String>(value),
+    );
+  }
+}
+
+String _$currentWebViewUrlHash() => r'dc925192d49cb48956a00205d5c16941dbcbb2cf';
+
+abstract class _$CurrentWebViewUrl extends $Notifier<String> {
+  String build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref = this.ref as $Ref<String, String>;
+    final element = ref.element as $ClassProviderElement<
+        AnyNotifier<String, String>, String, Object?, Object?>;
     element.handleValue(ref, created);
   }
 }

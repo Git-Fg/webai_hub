@@ -20,7 +20,7 @@ final class CurrentTabIndexProvider
           argument: null,
           retry: null,
           name: r'currentTabIndexProvider',
-          isAutoDispose: true,
+          isAutoDispose: false,
           dependencies: null,
           $allTransitiveDependencies: null,
         );
@@ -41,7 +41,7 @@ final class CurrentTabIndexProvider
   }
 }
 
-String _$currentTabIndexHash() => r'3595f2cf8be80610b36a7c5c62af3946fa19b0a8';
+String _$currentTabIndexHash() => r'9dc0c6ca8da906a155b2338ea38ecd1796e99174';
 
 abstract class _$CurrentTabIndex extends $Notifier<int> {
   int build();

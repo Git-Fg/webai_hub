@@ -25,8 +25,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   InAppWebViewController? webViewController;
   double _progress = 0;
   String? _htmlContent;
-  // Flag pour contrôler l'injection unique du script bridge
-  bool _isBridgeInjected = false;
 
   @override
   void initState() {
@@ -163,6 +161,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
       initialSettings: InAppWebViewSettings(
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
+        useShouldOverrideUrlLoading: true, // Nécessaire pour le tracking d'URL
       ),
       onWebViewCreated: (controller) {
         // Debug: Log WebView creation (remove in production)
@@ -187,15 +186,14 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
 
               switch (eventType) {
                 case BridgeConstants.eventTypeNewResponse:
-                  final diags = event['diagnostics'] as Map<String, dynamic>?;
-                  final messageCount = diags?['messageCount'] as int? ?? 0;
-                  if (messageCount > 0) {
-                    automationNotifier.setStatus(
-                      AutomationStateData.refining(
-                        messageCount: messageCount,
-                      ),
-                    );
-                  }
+                  // L'observateur a détecté que la réponse est prête.
+                  // On peut passer à l'état de raffinement.
+                  automationNotifier.setStatus(
+                    AutomationStateData.refining(
+                      // On peut lire le nombre de messages actuel
+                      messageCount: ref.read(conversationProvider).length,
+                    ),
+                  );
                 case BridgeConstants.eventTypeLoginRequired:
                   // Mettre le statut à needsLogin pour afficher l'overlay de login
                   automationNotifier.setStatus(
@@ -254,37 +252,39 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         setState(() {
           _progress = 0;
         });
-        // --- MODIFICATION : Ne réinitialiser le bridge que si on quitte le domaine AI Studio ---
-        // On ne reset que si on quitte complètement le domaine pour y revenir
-        // Cela évite de réinitialiser lors des navigations internes (changement d'URL après envoi)
-        final currentUrl = await controller.getUrl();
-        if (currentUrl != null &&
-            currentUrl.host != 'aistudio.google.com' &&
-            url?.host == 'aistudio.google.com') {
-          // On revient sur AI studio après être parti ailleurs
-          _isBridgeInjected = false;
-          ref.read(bridgeReadyProvider.notifier).reset();
-        }
+        // Le bridge sera ré-injecté systématiquement dans onLoadStop
+        // On réinitialise le statut "ready" pour forcer la ré-injection
+        ref.read(bridgeReadyProvider.notifier).reset();
       },
       onLoadStop: (controller, url) async {
         setState(() {
           _progress = 1.0;
         });
 
-        // --- NOUVELLE LOGIQUE D'INJECTION ---
-        // Injecter le script manuellement seulement s'il ne l'a pas déjà été
-        // Cela évite les ré-injections lors des navigations internes (changement d'URL après envoi)
-        if (!_isBridgeInjected &&
-            (url?.toString().contains('aistudio.google.com') ?? true)) {
-          // 'true' pour le sandbox HTML
-          await controller.evaluateJavascript(source: bridgeScript);
-          _isBridgeInjected = true;
-          debugPrint('[AiWebviewScreen] Bridge script manually injected.');
-        }
+        // --- INJECTION GLOBALE ET SYSTÉMATIQUE ---
+        // On injecte le script à la fin de CHAQUE chargement de page.
+        // La logique interne du script (getChatbot()) se chargera de déterminer
+        // s'il peut agir sur la page actuelle. C'est plus robuste que de gérer
+        // des listes d'URL côté Dart.
+        // Le script JS est conçu pour être idempotent (il vérifie si les fonctions existent déjà).
+        // Cela garantit que notre bridge est présent même après un crash du renderer ou une navigation.
+        await controller.evaluateJavascript(source: bridgeScript);
+        debugPrint(
+          '[AiWebviewScreen] Bridge script universally (re-)injected on $url.',
+        );
 
-        // Capture console logs
+        // La capture des logs peut aussi être globale.
         final bridge = ref.read(javaScriptBridgeProvider);
-        await (bridge as JavaScriptBridge).captureConsoleLogs();
+        if (bridge is JavaScriptBridge) {
+          await bridge.captureConsoleLogs();
+        }
+      },
+      onUpdateVisitedHistory: (controller, url, androidIsReload) {
+        final newUrl = url?.toString() ?? '';
+        // Log très verbeux commenté pour réduire la verbosité (se déclenche à chaque micro-changement d'URL)
+        // debugPrint('[WebView] URL history updated to: $newUrl');
+        // Mettre à jour le provider pour que le reste de l'app soit au courant
+        ref.read(currentWebViewUrlProvider.notifier).updateUrl(newUrl);
       },
       onConsoleMessage: (controller, consoleMessage) {
         // Capture console messages for debugging

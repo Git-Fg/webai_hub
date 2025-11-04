@@ -8,17 +8,16 @@ part 'automation_state_provider.g.dart';
 sealed class AutomationStateData with _$AutomationStateData {
   const factory AutomationStateData.idle() = _Idle;
   const factory AutomationStateData.sending() = _Sending;
-  // --- SUPPRIMÉ ---
-  // const factory AutomationStateData.observing() = _Observing;
+  // L'IA est en train de répondre, l'utilisateur observe.
+  const factory AutomationStateData.observing() = _Observing;
   const factory AutomationStateData.refining({
     required int messageCount,
-    @Default(false) bool isExtracted,
   }) = _Refining;
   const factory AutomationStateData.failed() = _Failed;
   const factory AutomationStateData.needsLogin() = _NeedsLogin;
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class AutomationState extends _$AutomationState {
   @override
   AutomationStateData build() => const AutomationStateData.idle();

@@ -41,7 +41,7 @@ Future<void> waitUntilRefining(
     final state = read();
     // Use pattern matching to check if state is refining
     final isRefining = state.maybeWhen(
-      refining: (_) => true,
+      refining: (messageCount) => true,
       orElse: () => false,
     );
     if (isRefining) return;

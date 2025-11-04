@@ -16,13 +16,13 @@ This stack is prescriptive and optimized for static type-safety and performance.
 
 | Component      | Chosen Technology                 | Target Version | Role                                                  |
 | :------------- | :-------------------------------- | :------------- | :---------------------------------------------------- |
-| **Framework**    | Flutter / Dart                    | `Flutter >= 3.19.0`, `Dart >= 3.3.0` | Application foundation.                             |
-| **State Management** | `flutter_riverpod` + `riverpod_generator` | `^2.5.1`       | Reactive, type-safe, decoupled state management.      |
-| **Modeling**     | `freezed`                         | `^2.5.2`       | Immutability for models and states, Union Types.      |
+| **Framework**    | Flutter / Dart                    | `Flutter >= 3.3.0`, `Dart >= 3.3.0` | Application foundation.                             |
+| **State Management** | `flutter_riverpod` + `riverpod_generator` | `^3.0.1`       | Reactive, type-safe, decoupled state management.      |
+| **Modeling**     | `freezed`                         | `^3.0.0`       | Immutability for models and states, Union Types.      |
 | **Database**     | **`drift`**                       | `^2.18.0`      | **Type-safe SQLite persistence** for conversations.     |
 | **WebView**    | `flutter_inappwebview`            | `^6.0.0`       | Critical component for automation and session handling. |
-| **Code Quality** | **`very_good_analysis`**          | `^7.0.0`       | **Strict linting rules** for production quality.        |
-| **Web Tooling**  | TypeScript + Vite/esbuild         | `vite ^5.0.0`  | Robustness and maintainability of the JS bridge.      |
+| **Code Quality** | **`very_good_analysis`**          | `^10.0.0`      | **Strict linting rules** for production quality.        |
+| **Web Tooling**  | TypeScript + Vite/esbuild         | `vite ^7.1.12` | Robustness and maintainability of the JS bridge.      |
 | **Build Optimization** | Custom `build.yaml` file      | N/A            | Optimize build times for code generators.             |
 
 ### Target File Structure
@@ -58,12 +58,11 @@ ts_src/
 
 ### 3.2. "Assist & Validate" Workflow (Full)
 
-The workflow is implemented with its 4 complete phases, driven by the Companion Overlay.
+The workflow is implemented with a refined 3-phase approach, driven by the Companion Overlay.
 
-1.  **Phase 1 (Sending):** Dart calls `startAutomation(prompt, providerConfig)` on the TS bridge.
-2.  **Phase 2 (Observing):** The TS engine uses the "Two-Step Ephemeral Observer" strategy to detect the end of generation and notifies Dart.
-3.  **Phase 3 (Refining):** The native overlay displays "Ready for validation." The user has full control of the `WebView`.
-4.  **Phase 4 (Validation):** User clicks "Validate." Dart calls `extractFinalResponse()`. The response is extracted and persisted in the Drift database.
+1.  **Phase 1 (Sending):** Dart calls `startAutomation(prompt, providerConfig)` on the TS bridge. Le script injecte le prompt et lance la génération. L'application passe **immédiatement** à l'état de raffinement.
+2.  **Phase 2 (Refining & Live Observing):** L'overlay natif affiche "Ready for refinement". L'utilisateur observe la réponse de l'IA se générer en temps réel dans la `WebView` et peut interagir avec la page (scroller, éditer le texte en cours) sans attendre.
+3.  **Phase 3 (Validation & Extraction):** L'utilisateur clique sur "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le contenu **actuel** du dernier message. L'utilisateur peut répéter cette étape plusieurs fois s'il modifie manuellement la réponse dans la `WebView` avant de finaliser.
 
 ## 4. Detailed Technical Specifications
 

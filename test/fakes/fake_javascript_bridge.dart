@@ -38,6 +38,12 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
+  Future<void> startResponseObserver() async {
+    // Dans les tests, on simule simplement que l'observateur démarre
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+
+  @override
   Future<void> startAutomation(String prompt) async {
     // Simuler un délai réseau
     await Future<void>.delayed(const Duration(milliseconds: 50));

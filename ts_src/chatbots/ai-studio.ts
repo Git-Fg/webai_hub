@@ -4,7 +4,7 @@
 
 import { Chatbot } from '../types/chatbot';
 import { notifyDart } from '../utils/notify-dart';
-import { waitForElement } from '../utils/wait-for-element';
+import { waitForElement, waitForElementWithin } from '../utils/wait-for-element';
 import { 
   EVENT_TYPE_AUTOMATION_FAILED,
   EVENT_TYPE_LOGIN_REQUIRED,
@@ -97,7 +97,7 @@ export const aiStudioChatbot: Chatbot = {
     
     // 1. Trouver et remplir la zone de texte
     const inputArea = await waitForElement(PROMPT_INPUT_SELECTORS);
-    console.log('[AI Studio] Found input area:', (inputArea as HTMLElement).tagName);
+    // console.log('[AI Studio] Found input area:', (inputArea as HTMLElement).tagName);
     if (inputArea instanceof HTMLTextAreaElement || inputArea instanceof HTMLInputElement) {
       inputArea.value = prompt;
       inputArea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -124,7 +124,7 @@ export const aiStudioChatbot: Chatbot = {
         const text = tokenCountElement?.textContent?.trim();
         // On attend que le texte existe et ne soit pas "0"
         if (text && !text.startsWith('0')) {
-          console.log('[AI Studio] Token count updated:', text);
+          // console.log('[AI Studio] Token count updated:', text);
           resolve();
         } else {
           setTimeout(checkTokenCount, 100);
@@ -134,265 +134,125 @@ export const aiStudioChatbot: Chatbot = {
     });
     // 3. Trouver et cliquer sur le bouton d'envoi
     const sendButton = await waitForElement(SEND_BUTTON_SELECTORS) as HTMLElement;
-    console.log('[AI Studio] Found send button, clicking it.');
+    // console.log('[AI Studio] Found send button, clicking it.');
     sendButton.click();
   },
-  // --- NOUVEAU : Extraction par simulation de clics (menu kebab → Copier en Markdown) ---
-  // Avec fallback DOM direct si le clipboard échoue
+  // --- NOUVEAU : Extraction alignée sur le flux validé (clic "Edit" → textarea.value) ---
   extractResponse: async (): Promise<string> => {
-    console.log('[AI Studio] Starting extraction...');
+    console.log('[AI Studio] Starting extraction process...');
+    
+    // Fonction d'attente améliorée avec des logs de débogage
+    // Nouvelle stratégie : partir du bouton "Edit" pour remonter au conteneur parent
+    // Cela évite les problèmes avec querySelectorAll sur ms-chat-turn[data-turn-role="Model"]
+    const waitForFinalizedTurn = (timeout = 15000): Promise<HTMLElement> => {
+      return new Promise((resolve, reject) => {
+        const intervalTime = 1000; // Augmenter l'intervalle pour être moins agressif
+        let elapsedTime = 0;
+        let checks = 0;
 
-    // 1. Trouver le dernier message de l'IA
-    // Stratégie améliorée : chercher tous les turns et prendre le dernier
-    const findLastModelTurn = (): HTMLElement | null => {
-      console.log('[AI Studio] Searching for last model turn...');
-      
-      // Stratégie 1: Chercher avec data-turn-role="Model" (case-sensitive)
-      let turnsWithDataRole = document.querySelectorAll('ms-chat-turn[data-turn-role="Model"]');
-      if (turnsWithDataRole.length > 0) {
-        console.log(`[AI Studio] Found ${turnsWithDataRole.length} turns with data-turn-role="Model"`);
-        return turnsWithDataRole[turnsWithDataRole.length - 1] as HTMLElement;
-      }
-      
-      // Stratégie 2: Chercher avec data-turn-role="model" (lowercase)
-      turnsWithDataRole = document.querySelectorAll('ms-chat-turn[data-turn-role="model"]');
-      if (turnsWithDataRole.length > 0) {
-        console.log(`[AI Studio] Found ${turnsWithDataRole.length} turns with data-turn-role="model"`);
-        return turnsWithDataRole[turnsWithDataRole.length - 1] as HTMLElement;
-      }
-      
-      // Stratégie 3: Chercher avec role="model"
-      const turnsWithRole = document.querySelectorAll('ms-chat-turn[role="model"]');
-      if (turnsWithRole.length > 0) {
-        console.log(`[AI Studio] Found ${turnsWithRole.length} turns with role="model"`);
-        return turnsWithRole[turnsWithRole.length - 1] as HTMLElement;
-      }
-      
-      // Stratégie 4: Chercher tous les ms-chat-turn et vérifier les attributs
-      const allTurns = document.querySelectorAll('ms-chat-turn');
-      console.log(`[AI Studio] Found ${allTurns.length} total ms-chat-turn elements`);
-      
-      for (let i = allTurns.length - 1; i >= 0; i--) {
-        const turn = allTurns[i] as HTMLElement;
-        const dataRole = turn.getAttribute('data-turn-role');
-        const role = turn.getAttribute('role');
-        
-        // Log pour debugging
-        if (i === allTurns.length - 1) {
-          console.log(`[AI Studio] Last turn attributes - data-turn-role: "${dataRole}", role: "${role}"`);
-        }
-        
-        if (dataRole === 'Model' || dataRole === 'model' || role === 'model' || role === 'Model') {
-          console.log(`[AI Studio] Found model turn at index ${i}`);
-          return turn;
-        }
-      }
-      
-      // Stratégie 5: Si aucun turn avec role n'est trouvé, chercher par contenu (texte "Model" ou "Assistant")
-      for (let i = allTurns.length - 1; i >= 0; i--) {
-        const turn = allTurns[i] as HTMLElement;
-        const text = turn.textContent || '';
-        const innerText = turn.innerText || '';
-        
-        // Vérifier si c'est un message du modèle (pas de l'utilisateur)
-        // Les messages du modèle ne contiennent généralement pas "User:" en début
-        // et peuvent contenir beaucoup de texte
-        if (text.length > 50 && !text.toLowerCase().includes('user:')) {
-          // Vérifier aussi si ce n'est pas un message utilisateur
-          const hasUserLabel = turn.querySelector('[class*="user"]') || 
-                               turn.querySelector('[class*="User"]') ||
-                               turn.querySelector('div[class*="author"]')?.textContent?.toLowerCase().includes('user');
+        const interval = setInterval(() => {
+          checks++;
           
-          if (!hasUserLabel) {
-            console.log(`[AI Studio] Found potential model turn at index ${i} by content analysis`);
-            return turn;
+          // --- NOUVELLE STRATÉGIE : PARTIR DU BOUTON "EDIT" ---
+          // 1. Trouver tous les boutons "Edit" sur la page. C'est un sélecteur simple et fiable.
+          const allEditButtons = document.querySelectorAll('button[aria-label="Edit"]');
+          
+          // console.log(`[AI Studio] Check #${checks}: Found ${allEditButtons.length} 'Edit' button(s).`);
+
+          if (allEditButtons.length > 0) {
+            // 2. Prendre le dernier bouton "Edit" trouvé.
+            const lastEditButton = allEditButtons[allEditButtons.length - 1] as HTMLElement;
+            
+            // 3. Remonter au conteneur `ms-chat-turn` parent.
+            const parentTurn = lastEditButton.closest('ms-chat-turn');
+            
+            if (parentTurn) {
+              const lastElement = parentTurn as HTMLElement;
+              // Vérifier si l'élément est visible et non déjà en mode édition
+              const isVisible = lastElement.offsetParent !== null;
+              const isNotEditing = !lastElement.querySelector('textarea');
+
+              if (isVisible && isNotEditing) {
+                console.log(`[AI Studio] Success: Found a finalized model turn by traversing up from an 'Edit' button.`);
+                clearInterval(interval);
+                resolve(lastElement);
+                return;
+              } else {
+                console.log(`[AI Studio] Found a candidate turn, but it's not ready (Visible: ${isVisible}, Not Editing: ${isNotEditing}).`);
+              }
+            } else {
+              console.warn(`[AI Studio] Found an 'Edit' button but could not find parent ms-chat-turn element.`);
+            }
           }
-        }
-      }
-      
-      console.warn('[AI Studio] Could not find any model turn');
-      return null;
+
+          elapsedTime += intervalTime;
+          if (elapsedTime >= timeout) {
+            clearInterval(interval);
+            // Lancer l'inspection DOM automatique en cas d'échec pour aider au débogage
+            console.error('[AI Studio] Timeout reached. Automatically running DOM inspection...');
+            try {
+              (window as any).inspectDOMForSelectors(); // Assurez-vous que cette fonction est globale
+            } catch(e) {
+              console.error('[AI Studio] Failed to run inspectDOMForSelectors.', e);
+            }
+            reject(new Error(`Extraction timed out: No 'Edit' button found on any model response within ${timeout}ms.`));
+          }
+        }, intervalTime);
+      });
     };
 
-    // Attendre que l'élément soit disponible avec un timeout
-    const lastTurn = await new Promise<HTMLElement>((resolve, reject) => {
-      const timeout = 10000;
-      const startTime = Date.now();
-      const checkInterval = 300;
-      
-      const checkForElement = () => {
-        const turn = findLastModelTurn();
-        if (turn) {
-          console.log('[AI Studio] Found last model response turn.');
-          resolve(turn);
-          return;
-        }
-        
-        const elapsed = Date.now() - startTime;
-        if (elapsed >= timeout) {
-          reject(new Error('Could not find the last model response turn within timeout.'));
-          return;
-        }
-        
-        setTimeout(checkForElement, checkInterval);
-      };
-      
-      checkForElement();
-    });
-
-    if (!lastTurn) {
-      throw new Error('Could not find the last model response turn.');
-    }
-
-    // Essayer d'abord l'extraction DOM directe (plus fiable)
-    // Stratégie 1: Chercher ms-cmark-node
-    let extractedText = '';
-    const cmark = lastTurn.querySelector('ms-cmark-node') as HTMLElement | null;
-    if (cmark && (cmark.innerText || cmark.textContent)) {
-      extractedText = (cmark.innerText || cmark.textContent || '').trim();
-    }
+    const lastTurn = await waitForFinalizedTurn();
     
-    // Stratégie 2: Si ms-cmark-node est vide, chercher tous les éléments de texte dans le turn
-    if (!extractedText || extractedText.length < 10) {
-      // Nettoyer le turn en enlevant les éléments UI
-      const clone = lastTurn.cloneNode(true) as HTMLElement;
-      clone.querySelector('.turn-footer')?.remove();
-      clone.querySelector('.author-label')?.remove();
-      clone.querySelector('ms-thought-chunk')?.remove();
-      clone.querySelectorAll('button, nav, [role="button"]').forEach(el => el.remove());
-      
-      extractedText = (clone.innerText || clone.textContent || '').trim();
-      extractedText = extractedText.replace(/\n{3,}/g, '\n\n');
-    }
+    // --- AJOUTER CE LOG POUR LE DÉBOGAGE ---
+    console.log('[AI Studio] Target turn element for extraction (outerHTML):', lastTurn.outerHTML);
+    // -----------------------------------------
     
-    if (extractedText && extractedText.length > 0) {
-      console.log(`[AI Studio] Direct DOM extraction successful: ${extractedText.length} chars`);
-      return extractedText;
+    // Le reste de la logique est correct
+    const editButton = await waitForElementWithin(lastTurn, ['button[aria-label="Edit"]'], 2000) as HTMLElement;
+    if (!editButton) {
+      throw new Error("Could not find the 'Edit' button within the last assistant turn.");
     }
+    editButton.click();
+    console.log('[AI Studio] Clicked "Edit" button.');
 
-    // Si l'extraction DOM directe échoue, essayer le clipboard avec simulation de clics
-    console.log('[AI Studio] Direct DOM extraction failed, trying clipboard method...');
+    const textarea = await waitForElementWithin(lastTurn, ['textarea'], 5000) as HTMLTextAreaElement;
     
-    // Trouver le conteneur parent depuis le turn
-    const lastTurnContainer = lastTurn.querySelector('.chat-turn-container') as HTMLElement;
-    
-    if (!lastTurnContainer) {
-      // Dernier fallback: extraire depuis le turn entier
-      const fallbackText = (lastTurn.innerText || lastTurn.textContent || '').trim();
-      if (fallbackText && fallbackText.length > 0) {
-        console.log(`[AI Studio] Final fallback extraction successful: ${fallbackText.length} chars`);
-        return fallbackText;
-      }
-      throw new Error('Could not find the last model response container and all fallbacks failed.');
-    }
-    console.log('[AI Studio] Found last model response container.');
-
-    // 2. Trouver et cliquer sur le bouton d'options (menu kebab)
-    const optionsButton = lastTurnContainer.querySelector(
-      'ms-chat-turn-options > div > button'
-    ) as HTMLElement;
-    
-    if (!optionsButton) {
-      throw new Error('Could not find the options button in the chat turn.');
-    }
-    console.log('[AI Studio] Found options button, clicking it.');
-    optionsButton.click();
-
-    // TIMING: Attendre que le menu apparaisse après le clic sur le bouton d'options
-    // Le menu est ajouté au DOM de manière asynchrone
+    // --- AJOUT D'UN DÉLAI N°1 ---
+    // TIMING: Laisse le temps au framework de stabiliser l'UI après l'apparition du textarea.
+    // Ce délai permet au framework d'achever les micro-tâches (écouteurs d'événements, remplissage de la valeur).
     await new Promise(resolve => setTimeout(resolve, 300));
-
-    // 3. Attendre que le menu apparaisse et cliquer sur le bouton "Copier en Markdown"
-    // Le menu est ajouté au body, donc on le cherche globalement.
-    let copyButton: HTMLElement | null = null;
     
-    // Stratégie 1: Chercher parmi tous les boutons de menu Material
-    const menuButtons = Array.from(document.querySelectorAll('button.mat-mdc-menu-item'));
-    copyButton = menuButtons.find((button) => {
-      const text = button.textContent?.toLowerCase() || '';
-      const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
-      return text.includes('copy') || text.includes('markdown') || 
-             ariaLabel.includes('copy') || ariaLabel.includes('markdown');
-    }) as HTMLElement | null;
+    // --- MODIFICATION CLÉ : CAPTURER LA VALEUR IMMÉDIATEMENT ---
+    const extractedContent = (textarea.value || '').trim();
+    // On passe le contenu en tant que second argument pour éviter la troncature.
+    console.log(`[AI Studio] Extracted ${extractedContent.length} chars successfully:`, extractedContent);
 
-    // Stratégie 2: Chercher par l'icône Material avec data-mat-icon-name
-    if (!copyButton) {
-      try {
-        const iconButtons = Array.from(document.querySelectorAll('mat-icon[data-mat-icon-name]'));
-        const markdownIcon = iconButtons.find(icon => 
-          icon.getAttribute('data-mat-icon-name')?.includes('markdown') ||
-          icon.getAttribute('data-mat-icon-name')?.includes('copy')
-        );
-        if (markdownIcon) {
-          copyButton = markdownIcon.closest('button') as HTMLElement | null;
-        }
-      } catch (e) {
-        console.log('[AI Studio] Icon-based search failed:', e);
-      }
+    // Si le contenu est vide à ce stade, c'est une vraie erreur.
+    if (!extractedContent) {
+        throw new Error('Textarea was found but it was empty.');
     }
 
-    // Stratégie 3: Chercher parmi tous les boutons celui qui contient 'markdown_copy' dans son texte
-    if (!copyButton) {
-      const allButtons = Array.from(document.querySelectorAll('button'));
-      copyButton = allButtons.find((button) => {
-        const text = button.textContent || '';
-        const ariaLabel = button.getAttribute('aria-label') || '';
-        return text.includes('markdown_copy') || ariaLabel.includes('markdown_copy');
-      }) as HTMLElement | null;
-    }
-
-    if (!copyButton) {
-      // Fallback: essayer d'extraire directement depuis le DOM
-      console.warn('[AI Studio] Could not find copy button, falling back to DOM extraction');
-      const cmark = lastTurnContainer.querySelector('ms-cmark-node') as HTMLElement | null;
-      if (cmark && (cmark.innerText || cmark.textContent)) {
-        const text = (cmark.innerText || cmark.textContent || '').trim();
-        if (text && text.length > 0) {
-          console.log(`[AI Studio] Fallback extraction successful: ${text.length} chars`);
-          return text;
-        }
-      }
-      throw new Error('Could not find the "Copy as Markdown" button in the menu and fallback extraction failed.');
-    }
-    console.log('[AI Studio] Found copy button, clicking it.');
-    copyButton.click();
-
-    // 4. Attendre que le clipboard se mette à jour
-    // TIMING: Attente de 500ms pour permettre au clipboard de se mettre à jour après le clic.
-    // Aucune callback JS n'est disponible pour cet événement.
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // 5. Lire le contenu du presse-papiers et le retourner
-    // C'est la méthode moderne et sécurisée pour lire le clipboard en JS
+    // --- BLINDAGE DES OPÉRATIONS DE NETTOYAGE ---
+    // Les étapes suivantes sont pour l'UX, mais ne doivent pas faire échouer l'extraction.
     try {
-      const clipboardText = await navigator.clipboard.readText();
-      if (!clipboardText || clipboardText.trim().length === 0) {
-        throw new Error('Clipboard content is empty.');
+      const stopEditingButton = await waitForElementWithin(lastTurn, ['button[aria-label="Stop editing"]'], 2000) as HTMLElement;
+      if (stopEditingButton) {
+        // --- AJOUT D'UN DÉLAI N°2 ---
+        // TIMING: Laisse du temps avant de quitter le mode édition.
+        // Ce délai permet aux appels de télémétrie de Google de se terminer sans être interrompus
+        // par notre clic sur "Stop editing", évitant ainsi les erreurs TextDecoder.
+        await new Promise(resolve => setTimeout(resolve, 300)); // 100ms
+        
+        stopEditingButton.click();
+        console.log('[AI Studio] Exited edit mode.');
       }
-      console.log(`[AI Studio] Successfully extracted ${clipboardText.length} chars from clipboard.`);
-      return clipboardText.trim();
-    } catch (err) {
-      console.warn('[AI Studio] Failed to read from clipboard, falling back to DOM extraction:', err);
-      
-      // Fallback: extraction DOM directe
-      const cmark = lastTurnContainer.querySelector('ms-cmark-node') as HTMLElement | null;
-      if (cmark && (cmark.innerText || cmark.textContent)) {
-        const text = (cmark.innerText || cmark.textContent || '').trim();
-        if (text && text.length > 0) {
-          console.log(`[AI Studio] Fallback DOM extraction successful: ${text.length} chars`);
-          return text;
-        }
-      }
-      
-      // Dernier essai: extraire depuis le turn entier
-      const fallbackText = (lastTurn.innerText || lastTurn.textContent || '').trim();
-      if (fallbackText && fallbackText.length > 0) {
-        console.log(`[AI Studio] Final fallback extraction successful: ${fallbackText.length} chars`);
-        return fallbackText;
-      }
-      
-      throw new Error(`Could not read from clipboard: ${err instanceof Error ? err.message : String(err)} and all fallbacks failed.`);
+    } catch (e) {
+      // On ignore volontairement cette erreur. L'important est d'avoir le texte.
+      console.warn('[AI Studio] Could not exit edit mode, but extraction was successful. This is non-critical.');
     }
+    
+    // On retourne la valeur capturée quoi qu'il arrive.
+    return extractedContent;
   },
   // --- SUPPRIMÉ ---
   // Toute l'implémentation de `waitForResponse` avec le MutationObserver est supprimée.

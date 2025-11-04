@@ -69,3 +69,62 @@ export function waitForElement(selectors: string[], timeout = 10000): Promise<El
   });
 }
 
+export function waitForElementWithin(
+  root: ParentNode,
+  selectors: string[],
+  timeout = 10000,
+): Promise<Element> {
+  return new Promise((resolve, reject) => {
+    const intervalTime = 300;
+    let elapsedTime = 0;
+
+    const interval = setInterval(() => {
+      for (const selector of selectors) {
+        let element: Element | null = null;
+
+        if (selector.includes(':contains(')) {
+          const match = selector.match(/^(.+):contains\(['"](.+)['"]\)$/);
+          if (match && match[1] && match[2]) {
+            try {
+              const baseSelector = match[1];
+              const nodes = (root as Element | Document).querySelectorAll(baseSelector || '*');
+              for (const el of nodes) {
+                const text = el.textContent || '';
+                if (text.toLowerCase().includes(match[2].toLowerCase())) {
+                  element = el;
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore invalid selector inside root scope
+            }
+          }
+        } else {
+          try {
+            element = (root as Element | Document).querySelector(selector);
+            if (!element && elapsedTime === 0) {
+              console.log(`[waitForElementWithin] Selector "${selector}" not found on first attempt`);
+            }
+          } catch (e) {
+            console.warn(`[waitForElementWithin] Invalid selector "${selector}":`, e);
+            continue;
+          }
+        }
+
+        if (element) {
+          console.log(`[waitForElementWithin] Found element with selector "${selector}"`);
+          clearInterval(interval);
+          resolve(element);
+          return;
+        }
+      }
+
+      elapsedTime += intervalTime;
+      if (elapsedTime >= timeout) {
+        clearInterval(interval);
+        reject(new Error(`None of the selectors [${selectors.join(', ')}] found within ${timeout}ms`));
+      }
+    }, intervalTime);
+  });
+}
+
