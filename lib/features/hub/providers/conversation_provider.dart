@@ -1,6 +1,12 @@
+import 'dart:developer';
+
+import 'package:ai_hybrid_hub/core/providers/provider_config_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
@@ -8,6 +14,7 @@ import 'package:ai_hybrid_hub/main.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:xml/xml.dart';
 
 part 'conversation_provider.g.dart';
 
@@ -66,20 +73,18 @@ class Conversation extends _$Conversation {
     );
   }
 
-  /// Constructs the prompt with conversation context
-  String _buildPromptWithContext(String newPrompt, {String? excludeMessageId}) {
+  // Preserve the current text-based prompt as the simple fallback
+  String _buildSimplePrompt(String newPrompt, {String? excludeMessageId}) {
     final settings = ref.read(conversationSettingsProvider);
     final systemPrompt = settings.systemPrompt;
 
     if (state.isEmpty ||
         state.where((m) => m.status == MessageStatus.success).isEmpty) {
-      // If there's a system prompt, prepend it even to the first message.
       return systemPrompt.isNotEmpty
           ? '$systemPrompt\n\nUser: $newPrompt'
           : newPrompt;
     }
 
-    // WHY: Build context from previous messages, excluding error/sending messages
     final previousMessages = state.where((m) {
       if (m.status != MessageStatus.success) return false;
       if (excludeMessageId != null && m.id == excludeMessageId) return false;
@@ -115,6 +120,100 @@ User: $newPrompt
 ''';
 
     return fullPrompt.trim();
+  }
+
+  String _buildXmlPrompt(String newPrompt, {String? excludeMessageId}) {
+    try {
+      final settings = ref.read(conversationSettingsProvider);
+      final systemPrompt = settings.systemPrompt;
+      final providerConfig = ref.read(currentProviderConfigurationProvider);
+
+      final history = state
+          .where(
+            (m) =>
+                m.id != excludeMessageId && m.status == MessageStatus.success,
+          )
+          .toList();
+
+      final builder = XmlBuilder();
+      builder.element(
+        'prompt',
+        nest: () {
+          if (systemPrompt.isNotEmpty &&
+              !providerConfig.supportsNativeSystemPrompt) {
+            builder.element(
+              'system',
+              nest: () {
+                builder.cdata(systemPrompt);
+              },
+            );
+          }
+
+          if (history.isNotEmpty) {
+            builder.element(
+              'history',
+              nest: () {
+                for (var i = 0; i < history.length;) {
+                  if (history[i].isFromUser) {
+                    final userMessage = history[i];
+                    final assistantMessage =
+                        (i + 1 < history.length && !history[i + 1].isFromUser)
+                            ? history[i + 1]
+                            : null;
+
+                    builder.element(
+                      'turn',
+                      nest: () {
+                        builder.element(
+                          'user',
+                          nest: () => builder.cdata(userMessage.text),
+                        );
+                        if (assistantMessage != null) {
+                          builder.element(
+                            'assistant',
+                            nest: () => builder.cdata(assistantMessage.text),
+                          );
+                        }
+                      },
+                    );
+
+                    i += (assistantMessage != null) ? 2 : 1;
+                  } else {
+                    i++;
+                  }
+                }
+              },
+            );
+          }
+
+          builder.element('user_input', nest: () => builder.cdata(newPrompt));
+        },
+      );
+
+      return builder.buildDocument().toXmlString(pretty: true);
+    } on XmlException catch (e) {
+      log(
+        'XML build error: ${e.message}. Falling back to simple prompt.',
+        error: e,
+      );
+      return _buildSimplePrompt(newPrompt, excludeMessageId: excludeMessageId);
+    }
+  }
+
+  /// Constructs the prompt with conversation context via selected strategy
+  String _buildPromptWithContext(String newPrompt, {String? excludeMessageId}) {
+    final settingsAsync = ref.read(generalSettingsProvider);
+    final useAdvanced = settingsAsync.maybeWhen(
+      data: (s) => s.useAdvancedPrompting,
+      // WHY: Default to simple prompting until settings are loaded to avoid
+      // impacting tests and first-frame behavior.
+      orElse: () => false,
+    );
+    if (useAdvanced) {
+      return _buildXmlPrompt(newPrompt, excludeMessageId: excludeMessageId);
+    } else {
+      return _buildSimplePrompt(newPrompt, excludeMessageId: excludeMessageId);
+    }
   }
 
   Future<void> _orchestrateAutomation(
@@ -235,6 +334,8 @@ User: $newPrompt
   Future<void> extractAndReturnToHub() async {
     final bridge = ref.read(javaScriptBridgeProvider);
     ref.read(isExtractingProvider.notifier).state = true;
+    // WHY: Clear any previous error message when a new extraction attempt starts.
+    ref.read(ephemeralMessageProvider.notifier).clearMessage();
 
     try {
       final responseText = await bridge.extractFinalResponse();
@@ -245,6 +346,8 @@ User: $newPrompt
         _updateLastMessage(responseText, MessageStatus.success);
         ref.read(pendingPromptProvider.notifier).clear();
         ref.read(currentTabIndexProvider.notifier).changeTo(0);
+        // Signal UI to scroll to bottom after successful extraction
+        ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
       }
     } on Object catch (e) {
       // WHY: If we reach here, a REAL exception was thrown, preventing the Promise from returning a value
@@ -256,9 +359,8 @@ User: $newPrompt
         } else {
           errorMessage = 'Failed to extract response: $e';
         }
-        _updateLastMessage(errorMessage, MessageStatus.error);
-        // WHY: Set failed state ONLY if extraction fails
-        ref.read(automationStateProvider.notifier).moveToFailed();
+        // Post to ephemeral provider instead of updating last message or failing automation
+        ref.read(ephemeralMessageProvider.notifier).setMessage(errorMessage);
       }
     } finally {
       // WHY: This block executes after try OR catch, ensuring loading indicator is always disabled
@@ -270,6 +372,7 @@ User: $newPrompt
 
   // Finalize automation and return to Hub
   void finalizeAutomation() {
+    ref.read(ephemeralMessageProvider.notifier).clearMessage();
     ref.read(automationStateProvider.notifier).returnToIdle();
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }

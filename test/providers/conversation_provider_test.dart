@@ -4,6 +4,7 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart'; // Pour importer currentTabIndexProvider
@@ -298,7 +299,7 @@ void main() {
     });
 
     test(
-        'extractAndReturnToHub handles extraction errors gracefully and sets state to failed',
+        'extractAndReturnToHub handles extraction errors gracefully via ephemeral message and stays refining',
         () async {
       fakeBridge.extractFinalResponseErrorType = ErrorType.genericException;
 
@@ -315,30 +316,30 @@ void main() {
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
+      final ephemeral = container.read(ephemeralMessageProvider);
 
-      // VERIFY: L'état d'automatisation passe à failed
+      // VERIFY: L'état d'automatisation reste en refining pour permettre un nouvel essai
       expect(
         finalState,
-        const AutomationStateData.failed(),
-        reason: "L'état d'automatisation devrait passer à 'failed'",
+        const AutomationStateData.refining(messageCount: 1),
+        reason: "L'état d'automatisation doit rester 'refining'",
       );
 
-      // VERIFY: Le message est mis à jour avec l'erreur
-      final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
+      // VERIFY: Un message éphémère d'erreur est présent
+      expect(ephemeral, isNotNull);
+      expect(ephemeral!.status, MessageStatus.error);
       expect(
-        lastAiMessage.status,
-        MessageStatus.error,
-        reason: 'Le message devrait être en état error',
-      );
-      expect(
-        lastAiMessage.text,
+        ephemeral.text,
         contains('Failed to extract response'),
-        reason: "Le message devrait contenir le texte d'erreur",
       );
+
+      // VERIFY: Le dernier message de l'assistant n'est pas écrasé
+      final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
+      expect(lastAiMessage.status, MessageStatus.sending);
     });
 
     test(
-        'extractAndReturnToHub handles AutomationError during extraction and sets state to failed',
+        'extractAndReturnToHub handles AutomationError during extraction via ephemeral message and stays refining',
         () async {
       fakeBridge.extractFinalResponseErrorType = ErrorType.automationError;
 
@@ -355,26 +356,23 @@ void main() {
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
+      final ephemeral = container.read(ephemeralMessageProvider);
 
-      // VERIFY: L'état d'automatisation passe à failed
+      // VERIFY: L'état d'automatisation reste en refining
       expect(
         finalState,
-        const AutomationStateData.failed(),
-        reason: "L'état d'automatisation devrait passer à 'failed'",
+        const AutomationStateData.refining(messageCount: 1),
+        reason: "L'état d'automatisation doit rester 'refining'",
       );
 
-      // VERIFY: Le message est mis à jour avec l'erreur
+      // VERIFY: Un message éphémère d'erreur est présent avec le code
+      expect(ephemeral, isNotNull);
+      expect(ephemeral!.status, MessageStatus.error);
+      expect(ephemeral.text, contains('Extraction Error'));
+
+      // VERIFY: Le dernier message de l'assistant n'est pas écrasé
       final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
-      expect(
-        lastAiMessage.status,
-        MessageStatus.error,
-        reason: 'Le message devrait être en état error',
-      );
-      expect(
-        lastAiMessage.text,
-        contains('Extraction Error'),
-        reason: "Le message devrait contenir le texte d'erreur avec le code",
-      );
+      expect(lastAiMessage.status, MessageStatus.sending);
     });
 
     test(

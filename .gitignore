@@ -16,7 +16,7 @@
 .idea/
 
 # VS Code
-.vscode/
+#.vscode/
 
 # Flutter/Dart
 .dart_tool/

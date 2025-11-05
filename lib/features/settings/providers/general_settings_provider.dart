@@ -1,37 +1,66 @@
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/services/settings_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'general_settings_provider.g.dart';
 
+const _settingsKey = 'general_settings';
+
 @Riverpod(keepAlive: true)
 class GeneralSettings extends _$GeneralSettings {
+  // WHY: Helper to get the service, avoiding repeated SharedPreferences instantiation.
   Future<SettingsService> _getService() async {
-    return ref.read(settingsServiceProvider.future);
+    final prefs = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(
+        allowList: <String>{_settingsKey},
+      ),
+    );
+    return SettingsService(prefs);
   }
 
   @override
-  GeneralSettingsData build() {
-    final serviceAsync = ref.watch(settingsServiceProvider);
-    return serviceAsync.when(
-      data: (service) => service.loadSettings(),
-      loading: () => const GeneralSettingsData(), // Provide default during load
-      error: (_, __) => const GeneralSettingsData(), // Provide default on error
-    );
+  Future<GeneralSettingsData> build() async {
+    // WHY: The build method handles the initial async loading.
+    final service = await _getService();
+    return service.loadSettings();
+  }
+
+  // WHY: Centralized update logic that handles loading state and error handling
+  // via AsyncValue.guard, ensuring consistent behavior across all update methods.
+  Future<void> _updateSettings(
+    GeneralSettingsData Function(GeneralSettingsData) updater,
+  ) async {
+    final service = await _getService();
+    final previousState = state.requireValue;
+    final newState = updater(previousState);
+
+    // Set loading state, then use guard for the async save operation.
+    state = const AsyncLoading<GeneralSettingsData>();
+    state = await AsyncValue.guard(() async {
+      await service.saveSettings(newState);
+      return newState;
+    });
   }
 
   Future<void> toggleProvider(String providerId) async {
-    final service = await _getService();
-    final currentProviders = List<String>.from(state.enabledProviders);
+    await _updateSettings((currentSettings) {
+      final currentProviders =
+          List<String>.from(currentSettings.enabledProviders);
+      if (currentProviders.contains(providerId)) {
+        currentProviders.remove(providerId);
+      } else {
+        currentProviders.add(providerId);
+      }
+      return currentSettings.copyWith(enabledProviders: currentProviders);
+    });
+  }
 
-    if (currentProviders.contains(providerId)) {
-      currentProviders.remove(providerId);
-    } else {
-      currentProviders.add(providerId);
-    }
-
-    final newState = state.copyWith(enabledProviders: currentProviders);
-    state = newState;
-    await service.saveSettings(newState);
+  Future<void> toggleAdvancedPrompting() async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(
+        useAdvancedPrompting: !currentSettings.useAdvancedPrompting,
+      );
+    });
   }
 }

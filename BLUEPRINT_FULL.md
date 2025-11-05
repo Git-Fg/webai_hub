@@ -210,6 +210,42 @@ Exception – Providers with native system prompt fields:
 
 ## 5. Data & Persistence
 
+### 4.7. Advanced UI/UX Patterns
+
+To create a fluid and non-obstructive user experience, the application adopts several advanced UI patterns managed by dedicated Riverpod state providers.
+
+#### 4.7.1. Draggable & Minimizable Companion Overlay
+
+The automation overlay is not a static banner. It is a fully interactive floating panel designed to maximize visibility of the underlying WebView.
+
+- **Implementation:**
+  - A `GestureDetector` with an `onPanUpdate` callback tracks drag movements. This is preferred over the `Draggable` widget for real-time positional control.
+  - A dedicated `OverlayStateNotifier` provider (`@Riverpod(keepAlive: true)`) manages the overlay's state, including its `Offset` (position) and a boolean `isMinimized`. `keepAlive` is essential to preserve the panel's position when switching between tabs.
+  - The panel's position is clamped to the screen's boundaries. This is achieved in the UI layer (`main.dart`) by measuring the overlay's `RenderBox` size via a `GlobalKey` and the screen's `MediaQuery` size, then passing these constraints to a clamping method in the notifier.
+  - An `AnimatedSwitcher` handles the smooth visual transition between the full-sized panel and its minimized `FloatingActionButton` state.
+
+#### 4.7.2. Decoupled Error & Status Messaging
+
+To provide non-destructive user feedback (e.g., an extraction error) without polluting the permanent conversation history, the application uses a dedicated provider for ephemeral messages.
+
+- **Problem:** An extraction failure should not overwrite the "Assistant is responding..." message, as this would prevent the user from retrying the extraction.
+- **Solution:**
+  - An `EphemeralMessageProvider` (`@riverpod`) holds a single, nullable `Message` object.
+  - When an error occurs (e.g., in `ConversationProvider.extractAndReturnToHub`), it posts the error message to this provider instead of altering its own state list.
+  - The `HubScreen` UI listens to `EphemeralMessageProvider`. If the state is not null, it renders the message as a temporary `ChatBubble` at the end of the `ListView`.
+  - The ephemeral message is cleared automatically on the next user action (like starting a new extraction or finalizing the automation).
+
+#### 4.7.3. Signal-Based UI Actions (Auto-Scrolling)
+
+To maintain a clean separation between business logic and UI implementation, actions like scrolling are triggered via a signal-based provider rather than direct calls.
+
+- **Problem:** `ConversationProvider` should not hold a dependency on a `ScrollController` from the `HubScreen`.
+- **Solution:**
+  - A simple `ScrollToBottomRequestProvider` (`@riverpod`) is created. Its state is a simple integer that acts as a trigger.
+  - When `ConversationProvider` completes an action that should result in a scroll (e.g., successful extraction), it calls a `requestScroll()` method on the notifier, which simply increments the state.
+  - The `HubScreen` uses `ref.listen` to watch for changes to this provider's state. When a change is detected, it calls its local `_scrollToBottom()` method, which has access to the `ScrollController`.
+  - This pattern effectively decouples the "intent" (scroll needed) from the "implementation" (how to scroll).
+
 ### 5.1. Native Conversation Persistence
 
 - **Technology:** **Drift** is used to create a local SQLite database.

@@ -173,6 +173,8 @@ class CurrentTabIndex extends _$CurrentTabIndex {
 - ✅ Global accessibility: `currentTabIndexProvider` is accessible from all Riverpod providers
 - ✅ No race conditions: The provider manages state deterministically
 
+> See also: `AGENTS.md` → "🚫 Critical Anti-Patterns" → "Anti-Pattern 2: Outdated Riverpod and Async Patterns" for mandatory Riverpod 3.0 async safety rules (`ref.mounted`, `ProviderException`, concurrent awaits, `unawaited`).
+
 ### 7.2. Fiabilisation du Timing : Mécanisme `waitForBridgeReady`
 
 #### Problème des Délais Arbitraires
@@ -224,6 +226,8 @@ Future<void> waitForBridgeReady() async {
 
 ### 7.3. Stratégie Anti-Délais Arbitraires
 
+> See also: `AGENTS.md` → "Timing Management: A Pragmatic Approach to Delays" for the authoritative, up-to-date guidance on when and how to use delays. This section captures the MVP rationale; follow `AGENTS.md` for day-to-day practice.
+
 #### Pourquoi les Délais Sont des Anti-Patterns
 
 Adding `Future.delayed` or `setTimeout` as a first response to timing issues masks the underlying problem and creates technical debt:
@@ -263,7 +267,7 @@ Only as a **last resort** when:
 - A short, bounded delay is the only way to ensure readiness
 - The delay is explicitly documented with rationale
 
-**Rule:** If a delay fixes a symptom but not the root cause, **remove the delay immediately**. Investigate further and fix the underlying issue.
+**Rule:** If a delay fixes a symptom but not the root cause, **remove the delay immediately**. Investigate further and fix the underlying issue. When a short, well-justified delay is necessary, document it per `AGENTS.md` → "Timing Management: A Pragmatic Approach to Delays" (use a `// TIMING:` comment with justification and date).
 
 ### 7.4. Stratégie d'État Riverpod : autoDispose vs. keepAlive
 
@@ -453,7 +457,14 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
 
 - ✅ **Simplification du code Dart :** La suppression du flag `_isBridgeInjected` simplifie la gestion de l'état dans le widget `AiWebviewScreen`.
 
-### 7.6. Evolution Towards v2.0: From Linear Flow to Conversation Building
+### 7.6. Known transient provider issue (permission/icon warning)
+
+- Context: In rare cases, Google AI Studio returns a transient "Failed to generate content: permission denied" followed by an internal error, sometimes with a warning icon near the prompt.
+- Impact: The first send after page load may fail; a subsequent send typically succeeds.
+- Current MVP behavior: We surface the state in the overlay and allow the user to retry manually.
+- Future improvement (Should-Do Soon): Add JS-side detection of the warning/icon state and trigger a bounded auto-reload (single retry) before resubmitting the prompt. Prefer DOM signals over added delays; document any delay with a `// TIMING:` comment and rationale.
+
+### 7.7. Evolution Towards v2.0: From Linear Flow to Conversation Building
 
 The MVP successfully validated the core automation loop but highlighted its primary limitation: a strictly **linear, single-turn** workflow where each new prompt simply continued the existing web session.
 

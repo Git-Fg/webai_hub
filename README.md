@@ -17,6 +17,7 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 - ✅ **Native Chat Experience** — A modern, intuitive chat UI for sending prompts and viewing conversations with features like message editing and copying.
 - ✅ **Multi-Provider Integration** — Connects seamlessly to multiple providers like Google AI Studio, with a modular architecture ready for ChatGPT, Claude, and more.
 - ✅ **Contextual "Assist & Validate" Workflow** — A unique process where you build a "meta-conversation" in the native UI. The entire chat history is used as context for the AI, enabling complex, multi-turn dialogues, while you visually validate each step in a fresh, clean WebView session.
+- ✅ **Dynamic & Interactive UI** — Features a draggable and minimizable automation panel, giving you an unobstructed view of the web provider. Error messages are displayed as non-destructive, ephemeral bubbles, allowing you to retry actions without losing context.
 - ✅ **JavaScript Automation Engine** — A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
 - ❤️ **Free and Open-Source** — Released under the GNU license.
 

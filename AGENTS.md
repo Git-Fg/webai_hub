@@ -25,7 +25,8 @@ Current Phase: MVP-1.0. Focus on validating the core "Assist & Validate" workflo
 
 1. Consult blueprints: @blueprint_mvp and @blueprint_full.
 2. Explore the codebase (see Critical Structure below).
-3. Use recommended tools: dart-mcp, context7; mobile-mcp for device runs.
+3. **ALWAYS verify documentation** using context7 when working with external libraries or frameworks. Don't guess—use the latest official documentation.
+4. Use recommended tools: dart-mcp, context7, web_search; mobile-mcp for device runs.
 
 ### Phase 2 — Modify
 
@@ -74,14 +75,6 @@ This project is in **MVP** phase with a 2-tabs architecture (native Hub + WebVie
 
 ## 🤖 Specific Instructions for Agents
 
-### Recommended Tools
-
-Use these tools systematically when available:
-
-- **mobile-mcp**: To test the application in real conditions
-- **dart-mcp**: For Dart code analysis
-- **context7**: For documentation searches
-
 ### Essential Commands
 
 ```bash
@@ -96,7 +89,48 @@ flutter test
 
 # Launch app (specific device)
 flutter run -d <device_id>
+
+# after running it, always wait at least 30 sec the time the app runs
 ```
+
+### 🔍 Documentation & Verification Tools
+
+**ALWAYS use documentation tools when in doubt or when verifying the latest best practices.**
+
+When you need to verify documentation, check API usage, or ensure you're using the most modern approach, you **MUST** use these tools:
+
+- **context7** (`mcp_context7_get-library-docs`): **ALWAYS prefer this first** for up-to-date library documentation. It provides the latest, most accurate documentation for popular libraries and frameworks. Use it whenever you have any doubt about:
+  - API usage or function signatures
+  - Best practices and patterns
+  - Latest features and updates
+  - Type definitions and interfaces
+  - Migration guides and breaking changes
+
+- **web_search**: Use alongside context7 for:
+  - Libraries not available in context7
+  - Recent announcements or blog posts
+  - Community discussions and GitHub issues
+  - Stack Overflow answers for specific edge cases
+
+**Golden Rule**: When modifying code that uses external libraries or frameworks, **ALWAYS** verify the latest documentation using context7 first. Don't rely on memory or outdated knowledge. The simplest and most modern approach is usually the correct one, and context7 helps you find it.
+
+**Libraries used in this project (with context7 IDs):**
+
+- **Flutter Riverpod** (state management): `/rrousselgit/riverpod`
+- **Flutter InAppWebView** (WebView integration): `/pichillilorenzo/inappwebview.dev`
+- **Freezed** (code generation): `/rrousselgit/freezed`
+- **Vite** (TypeScript build tool): `/vitejs/vite`
+- **TypeScript**: `/microsoft/typescript`
+
+**Other commonly available libraries in context7 include** (among many others):
+
+- React: `reactjs/react.dev`
+- Flutter/Dart: Use `mcp_dart_*` tools for Dart-specific documentation
+- Shadcn: `shadcn-ui/ui`
+- Vercel AI SDK: `vercel/ai`
+- Radix UI: `radix-ui/website`
+
+Use `mcp_context7_resolve-library-id` to find the correct library ID before fetching documentation.
 
 ### ⚠️ TypeScript Workflow - MANDATORY
 
@@ -200,55 +234,154 @@ Committing debugging artifacts is strictly forbidden. They pollute the codebase,
 - ✅ **ALWAYS**: `ref.read(currentTabIndexProvider.notifier).changeTo(index)`
 - **Why**: `TabController` is heavy to synchronize and cannot be shared between widgets and providers. See `BLUEPRINT_MVP.md` section 7.1 for details.
 
-#### Timing Management Principle: Delays as Last Resort
+#### Timing Management: A Pragmatic Approach to Delays
 
-Delays (`Future.delayed`, `setTimeout`) are powerful tools for managing asynchrony, but their abusive use masks underlying problems and creates a fragile application. They treat **symptoms** (an action fails because an element is not ready) and not the **cause** (why wasn't the element ready?).
+In a hybrid application interacting with a third-party WebView, timing is complex. Delays (`Future.delayed`, `setTimeout`) are a **necessary and pragmatic tool** for handling asynchrony, especially when waiting for DOM updates, animations, or framework lifecycle events that don't offer callbacks.
 
-- ❌ **Symptomatic Approach (to avoid)**: Add or increase a `Future.delayed(Duration(seconds: 2))` as soon as a timing problem appears, without investigation.
+Our principle is not to forbid delays, but to use them **judiciously and with clear justification**. An unexamined delay is technical debt; a well-documented delay is a solution.
 
-- ✅ **Fundamental Approach (Absolute Priority)**: **ALWAYS** start by looking for the root cause:
-  - Is there an event or callback we can listen to? (ex: `onLoadStop`, a signal from the JS bridge)
-  - Is a Riverpod provider state poorly synchronized?
-  - Is it a race condition in the widget/WebView lifecycle?
-  - Does the CSS selector target an element that appears after an animation? Can we wait for the end of the animation with a more precise `MutationObserver`?
+#### The "Diagnose-First" Principle
 
-#### When is a delay acceptable?
+Before adding a new delay or increasing an existing one, your **first step** is always to investigate the root cause. A quick check can often reveal a more robust, event-driven solution. Ask yourself:
 
-A delay is considered a **legitimate last resort** only in the following cases:
+- **Is there an event or callback we can listen to?** (e.g., `onLoadStop`, a signal from the JS bridge, a JS `Promise` we can await).
+- **Can we observe the change?** Can a `MutationObserver` reliably detect the element we are waiting for?
+- **Is this a state synchronization issue?** Could a Riverpod provider be updated more predictably?
+- **Can we poll for a specific condition?** Instead of a blind wait, can we check for an element's attribute or visibility in a loop (like the `waitForElement` utility)?
 
-1. **Interaction with an opaque external system**: When waiting for the end of a CSS animation or a third-party script in the `WebView` that provides **no observable completion event**.
+#### Legitimate Use Cases for Delays
 
-2. **Minimal safety cushion**: A very short delay (ex: 100-300ms) can be used to ensure the UI thread has had time to finalize a complex render after a state change, although solutions like `WidgetsBinding.instance.addPostFrameCallback` are often preferable.
+A delay is a perfectly acceptable tool in several common scenarios in this project:
 
-**Golden rule**: If a delay is added, it must be **short**, **bounded**, and accompanied by a comment explaining **why** an event-based solution was not possible.
+1. **Post-Action Stabilization:** After a programmatic action (like `.click()`) that triggers a UI update or animation in the WebView, a short, fixed delay (e.g., 50-300ms) can be the most reliable way to wait for the web framework's event loop to settle.
+2. **Opaque External Systems:** When waiting for something that provides no observable completion event, such as a CSS animation fading in a button.
+3. **Throttling/Debouncing:** Intentionally slowing down operations to prevent rate-limiting or to wait for user input to cease.
 
-```dart
-// TIMING: Wait 300ms to allow the panel closing animation to complete.
-// No JS callback is available for this event.
-await Future.delayed(const Duration(milliseconds: 300));
-```
+#### The Protocol for Modifying Delays
 
-#### Rule for adjusting existing delays
+It is sometimes necessary to adjust an existing delay because the web page's behavior has changed. **Never increase a delay blindly.** You must follow this workflow:
 
-It is sometimes necessary to increase an existing delay because the web page behavior has changed. **Never increase a delay blindly.**
-
-**Mandatory workflow for modifying a delay:**
-
-1. **Diagnose**: Understand *precisely why* the initial delay is no longer sufficient. (Ex: "The AI loading spinner now lasts on average 500ms longer").
-
-2. **Document**: Add or update the comment to justify the increase.
+1. **Diagnose:** Understand *precisely why* the initial delay is no longer sufficient. (e.g., "The AI loading spinner now has a 200ms fade-out animation that wasn't there before.").
+2. **Document:** Add or update the `// TIMING:` comment to justify the change and record the date. This history is invaluable.
 
    ```dart
-   // TIMING (UPDATED 03/11/2025): Increased from 300ms to 800ms because the new AI interface
-   // adds a fade animation that delays the button appearance.
-   await Future.delayed(const Duration(milliseconds: 800));
+   // TIMING (UPDATED 11/2025): Increased from 300ms to 500ms to account for the new 
+   // fade-out animation on the response container. No JS callback is available.
+   await Future.delayed(const Duration(milliseconds: 500));
    ```
 
-3. **Adjust minimally**: Only increase the delay by the strictly necessary duration, with a small safety margin. Don't double the value "just in case".
+3. **Adjust Minimally:** Only increase the delay by the amount required to restore reliability, plus a small safety margin. Do not double the value "just in case."
+4. **Re-evaluate Alternatives:** Every time you touch a delay, ask: "Has a new, more reliable method (like a new element ID or attribute) become available since this was last touched?"
 
-4. **Consider the alternative**: Every time you touch a delay, ask yourself if a new detection method (a new attribute on an element, an event) hasn't become available.
+**Golden Rule:** Every delay is a form of technical debt. Justify its existence and cost with a clear comment.
 
-**Conclusion: Every delay is technical debt. Justify it.**
+#### Anti-Pattern 2: Outdated Riverpod and Async Patterns
+
+The project uses Riverpod 3.0+. Adhere to its modern patterns to ensure safety, performance, and maintainability.
+
+**1. Use Modern Notifiers, Not Legacy `StateNotifier`**
+
+- ❌ **NEVER**: Use `StateNotifierProvider`, `StateNotifier`, or `ChangeNotifierProvider`. They are considered legacy and are not used in this project.
+- ✅ **ALWAYS**: Use the modern, code-generated `@riverpod` annotation to create `Notifier` or `AsyncNotifier` classes.
+
+**The choice between `Notifier` and `AsyncNotifier` is simple and depends on how the state is initialized:**
+
+- **Use `Notifier` for SYNCHRONOUS state:** The `build()` method returns a value directly. This is for state that you create and manage within the app, like the current conversation list.
+- **Use `AsyncNotifier` for ASYNCHRONOUS state:** The `build()` method returns a `Future` or is marked `async`. This is for state that must be fetched from an external source (database, network) during initialization. Riverpod will automatically manage the `AsyncLoading`, `AsyncData`, and `AsyncError` states for you.
+
+**`Notifier` (Synchronous) Example - Correct for `ConversationProvider`**
+
+```dart
+// WHY: The conversation starts as an empty list. It is built and modified
+// synchronously by user actions. This is the perfect use case for Notifier.
+@riverpod
+class Conversation extends _$Conversation {
+  @override
+  List<Message> build() => []; // State is initialized synchronously
+
+  void addMessage(String text, bool isFromUser) {
+    // Methods modify the synchronous state directly.
+    state = [...state, Message(...)];
+  }
+}
+```
+
+**`AsyncNotifier` (Asynchronous) Example - Correct for `GeneralSettingsProvider`**
+
+```dart
+// WHY: The settings must be loaded asynchronously from SharedPreferences
+// when the provider is first initialized. This is the perfect use case for AsyncNotifier.
+@riverpod
+class GeneralSettings extends _$GeneralSettings {
+  @override
+  Future<GeneralSettingsData> build() async {
+    // The build method is async and returns a Future.
+    // Riverpod handles the initial loading state for us.
+    final service = await _getSettingsService();
+    return service.loadSettings();
+  }
+
+  Future<void> updateSettings(GeneralSettingsData newSettings) async {
+    // Async methods use AsyncValue.guard to handle loading/error states.
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final service = await _getSettingsService();
+      await service.saveSettings(newSettings);
+      return newSettings;
+    });
+  }
+}
+```
+
+**2. Always Check `ref.mounted` After `await`**
+
+- ✅ **ALWAYS**: `if (!ref.mounted) return;`
+- **Why**: Prevents "use after dispose" errors. If a provider is disposed while an async operation is in flight, accessing its state or `ref` will cause a crash. This check ensures safety.
+
+```dart
+final user = await ref.read(userRepositoryProvider).fetchUser();
+if (!ref.mounted) return; // CRITICAL check after await
+state = state.copyWith(user: user);
+```
+
+**3. Handle Provider Errors Correctly with `ProviderException`**
+
+- ✅ **DO**: Catch `ProviderException` and unwrap the original error from `e.exception`.
+- **Why**: Riverpod 3.0 wraps errors. This pattern allows you to distinguish between a provider that failed itself versus a provider that failed because one of its dependencies failed.
+
+```dart
+try {
+  ref.watch(myFailingProvider);
+} on ProviderException catch (e) {
+  // Unwrap the original, specific error
+  final originalError = e.exception;
+  // Now handle the originalError
+}
+```
+
+**4. Await Futures Concurrently**
+
+- ❌ **NEVER**: `await futureA; await futureB;` if they are independent.
+- ✅ **ALWAYS**: `final (resultA, resultB) = await (futureA, futureB).wait;`
+- **Why**: Awaiting independent futures sequentially is inefficient. Using Dart 3's record pattern with `.wait` runs them in parallel, significantly improving performance.
+
+```dart
+// GOOD: Fetches user and settings in parallel
+final (user, settings) = await (
+  ref.read(userRepositoryProvider).fetchUser(),
+  ref.read(settingsRepositoryProvider).fetchSettings(),
+).wait;
+```
+
+**5. Use `unawaited` for Fire-and-Forget Futures**
+
+- ✅ **DO**: Wrap futures you don't `await` with `unawaited()`.
+- **Why**: This signals to the linter (`unawaited_futures`) and other developers that you are intentionally not waiting for the future to complete. It prevents unhandled exceptions from being silently swallowed.
+
+```dart
+// GOOD: Intent is clear, and linter is satisfied.
+unawaited(analytics.logEvent('user_action'));
+```
 
 ### Common Errors to Avoid
 
@@ -270,23 +403,133 @@ When using mobile-mcp:
 - Wait ~20s after restart for stabilization
 - Use `flutter run -d <device_id>` to target a device
 
-### Debug Workflow
+### 🤖 The Systematic "Observe → Diagnose → Fix" Protocol
 
-#### Debugging Principle
+Your primary mission is to build and maintain the application. When a task requires verification or when you encounter a bug, you **MUST** follow this protocol. Do not guess the cause of a problem; use the tools to prove it.
 
-When facing an error, prioritize a systematic approach: **1. Observe** (behavior via `mobile-mcp`, screenshots), **2. Diagnose** (JS logs via `onConsoleMessage`, Riverpod state, CSS selectors), **3. Fix the root cause** (not the symptom), **4. Verify** (re-test complete workflow).
+#### Phase 1: Observe the Behavior (`mobile-mcp`)
 
-#### Debugging Guides
+Before diagnosing, you must first understand **what** is happening. Use `mobile-mcp` to interact with the running application and capture the state of the UI.
 
-1. **WebView Problem**:
-   - Verify that `npm run build` was executed after TypeScript modifications
-   - Verify the JS bridge in `assets/js/bridge.js` (this file is generated, do not modify directly)
-   - Verify JavaScript logs in the WebView console
-2. **State Problem**: Verify Riverpod providers and generated files
-3. **Build Problem**:
-   - For TypeScript: Verify that `npm run build` executes without errors
-   - For Dart: Verify that dependencies are synchronized (`flutter pub get`)
-   - Verify that `build_runner` was launched after @riverpod/@freezed modifications
+- **To see the UI:** Use `mobile_take_screenshot`. This provides essential visual context of the problem.
+
+- **To confirm UI elements:** Use `mobile_list_elements_on_screen` to verify if a widget is present, visible, and accessible.
+
+- **To test a workflow:** Use `mobile_tap_on_screen` or `mobile_type_keys` to replicate the user journey that triggers the bug.
+
+**You must include the output (especially screenshots) in your analysis.**
+
+#### Phase 2: Diagnose the Root Cause (`dart-mcp` + Logs)
+
+After observing the symptom with `mobile-mcp`, use `dart-mcp` and logs to find the **why**.
+
+**Your diagnostic process must follow this priority:**
+
+**1. Check for Crashes and Runtime Errors:**
+
+- **Tool:** `dart-mcp`
+
+- **Command:** `get_runtime_errors`
+
+- **When:** Always run this first if the app is unresponsive, has crashed, or behaves unexpectedly. A runtime exception is the most likely culprit.
+
+**2. Inspect Application State (Riverpod):**
+
+- **Tool:** `dart-mcp`
+
+- **Problem:** The UI *looks* correct, but the data is wrong, a button is disabled, or the app is stuck in a state. This is likely a state management issue.
+
+- **Action:** Investigate the state of the key Riverpod providers.
+
+  - **`automationStateProvider`**: Is the app stuck in `sending`, `observing`, or `failed`?
+
+  - **`isExtractingProvider`**: Is the "Extract" button disabled because this is unexpectedly `true`?
+
+  - **`conversationProvider`**: Does the list of messages match what's on screen? Is the last message in an `error` state?
+
+  - **`currentTabIndexProvider`**: Is the app on the wrong tab?
+
+**3. Analyze the Widget Tree:**
+
+- **Tool:** `dart-mcp`
+
+- **Command:** `get_widget_tree`
+
+- **When:** If a widget is visually missing or laid out incorrectly, this command confirms whether it exists in the Flutter widget hierarchy at all. Compare this with the output of `mobile_list_elements_on_screen`.
+
+**4. Check the WebView Bridge:**
+
+- **Context:** The native UI and Riverpod state seem correct, but the WebView is not responding.
+
+- **Action:**
+
+  1. Review the **WebView Console Logs** (`onConsoleMessage` output). Look for JavaScript errors like "function not found" or "null is not an object". This is the most common source of WebView issues.
+
+  2. Use `get_runtime_errors` (`dart-mcp`) to check for Dart-side exceptions originating from the `JavaScriptBridge`.
+
+#### Phase 3: Fix and Verify
+
+1. **Propose the Fix:** Based on your diagnosis from Phase 2, implement the code change.
+
+2. **Verify the Fix:**
+
+   - Run `npm run build` (if TS changed) and/or `build_runner`.
+
+   - Run `flutter test` to catch any regressions.
+
+   - Use `mobile-mcp` to re-run the exact same workflow from Phase 1.
+
+   - Use `mobile_take_screenshot` to provide visual proof that the bug is resolved.
+
+---
+
+### 💡 Practical Example: Debugging a Disabled Button
+
+**Scenario:** The user reports that after sending a prompt, the "Extract & View Hub" button sometimes remains disabled indefinitely.
+
+**Your Thought Process & Actions:**
+
+1. **OBSERVE:**
+
+   - **Action:** Use `mobile-mcp` to launch the app and send a prompt. Wait for the automation to reach the refinement phase.
+
+   - **Action:** Use `mobile_take_screenshot`.
+
+   - **Output:** *You provide the screenshot showing the disabled button.*
+
+   - **Analysis:** "I have confirmed the 'Extract & View Hub' button is disabled when it should be active."
+
+2. **DIAGNOSE:**
+
+   - **Hypothesis 1 (Crash):** "First, I will check for any runtime errors."
+
+     - **Action:** Run `get_runtime_errors` with `dart-mcp`.
+
+     - **Output:** *You provide the (empty) list of errors.*
+
+     - **Conclusion:** "No runtime errors. The issue is likely state-related."
+
+   - **Hypothesis 2 (State):** "The button is disabled when `isExtractingProvider` is `true`. I will inspect the provider's state."
+
+     - **Action:** *(As of Nov 2025, an agent would describe its internal check or use a conceptual tool to check the provider's value).* "I am inspecting the state of `isExtractingProvider`. The logs show its value is `true`."
+
+     - **Analysis:** "Diagnosis complete. The `isExtractingProvider` is being set to `true` but is never reset to `false` in the case of an extraction error. This is a bug in the `extractAndReturnToHub` method in `conversation_provider.dart`."
+
+3. **FIX & VERIFY:**
+
+   - **Action:** "I will add a `finally` block in `extractAndReturnToHub` to ensure `isExtractingProvider` is always set to `false`."
+
+   - **Action:** *Propose the code change for `conversation_provider.dart`.*
+
+   - **Action:** "Now I will verify the fix. I have re-built the app and will repeat the initial steps."
+
+   - **Action:** Use `mobile-mcp` to trigger the same workflow, including the error condition.
+
+   - **Action:** Use `mobile_take_screenshot`.
+
+   - **Output:** *You provide the new screenshot showing the button is now enabled after the workflow completes.*
+
+   - **Conclusion:** "The fix is verified. The button is now correctly enabled."
 
 ## 📁 Critical Structure
 
@@ -306,6 +549,11 @@ ts_src/
 - Persistence is **in-memory** only (no Drift in MVP)
 - Architecture is **2-tabs** and not 5-tabs like the full version
 - Tests use **fakes** rather than complex mocks
+
+## 🏗️ Critical Constraints
+
+Always priorize using your native tools over fragile cli commands. You have a lot of tools : use them !
+Make sure to always wait 30sec after running flutter run -d ...
 
 ## 🏗️ Critical Architectural Rules
 

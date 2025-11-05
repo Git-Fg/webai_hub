@@ -1,4 +1,5 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
@@ -53,6 +54,8 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  // A key to measure the overlay widget size for clamping drag within screen bounds
+  final GlobalKey _overlayKey = GlobalKey();
 
   @override
   void initState() {
@@ -90,6 +93,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
     });
 
     final currentIndex = ref.watch(currentTabIndexProvider);
+    // Screen size is handled inside the overlay widget
 
     return Scaffold(
       body: Stack(
@@ -104,29 +108,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
               AiWebviewScreen(),
             ],
           ),
-          Consumer(
-            builder: (context, ref, _) {
-              final status = ref.watch(automationStateProvider);
-              final currentTabIndex = ref.watch(currentTabIndexProvider);
-              final shouldShow = status != const AutomationStateData.idle() &&
-                  currentTabIndex == 1;
-
-              // Positioned must be a direct child of Stack
-              return Positioned(
-                bottom: 20,
-                left: 20,
-                right: 20,
-                child: AnimatedOpacity(
-                  opacity: shouldShow ? 1.0 : 0.0,
-                  duration: kShortAnimationDuration,
-                  child: IgnorePointer(
-                    ignoring: !shouldShow,
-                    child: const CompanionOverlay(),
-                  ),
-                ),
-              );
-            },
-          ),
+          _DraggableCompanionOverlay(overlayKey: _overlayKey),
         ],
       ),
       bottomNavigationBar: TabBar(
@@ -144,6 +126,58 @@ class _MainScreenState extends ConsumerState<MainScreen>
         labelColor: Colors.blue,
         unselectedLabelColor: Colors.grey,
         indicatorColor: Colors.blue,
+      ),
+    );
+  }
+}
+
+class _DraggableCompanionOverlay extends ConsumerWidget {
+  const _DraggableCompanionOverlay({
+    required this.overlayKey,
+  });
+
+  final GlobalKey overlayKey;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(automationStateProvider);
+    final currentTabIndex = ref.watch(currentTabIndexProvider);
+    final overlayState = ref.watch(overlayManagerProvider);
+    final shouldShow =
+        status != const AutomationStateData.idle() && currentTabIndex == 1;
+
+    final screenSize = MediaQuery.of(context).size;
+
+    return Positioned(
+      child: AnimatedOpacity(
+        opacity: shouldShow ? 1.0 : 0.0,
+        duration: kShortAnimationDuration,
+        child: IgnorePointer(
+          ignoring: !shouldShow,
+          child: Transform.translate(
+            offset: overlayState.position,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                final overlayBox =
+                    overlayKey.currentContext?.findRenderObject() as RenderBox?;
+                if (overlayBox == null) return;
+                final widgetSize = overlayBox.size;
+                ref.read(overlayManagerProvider.notifier).updateClampedPosition(
+                      details.delta,
+                      screenSize,
+                      widgetSize,
+                    );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(kDefaultPadding),
+                child: SizedBox(
+                  key: overlayKey,
+                  child: const CompanionOverlay(),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

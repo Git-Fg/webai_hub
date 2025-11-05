@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
@@ -12,8 +13,35 @@ class CompanionOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final overlayState = ref.watch(overlayManagerProvider);
+    return AnimatedSwitcher(
+      duration: kShortAnimationDuration,
+      child: overlayState.isMinimized
+          ? _buildMinimizedView(context, ref)
+          : _buildExpandedView(context, ref),
+    );
+  }
+
+  Widget _buildMinimizedView(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      key: const Key('minimized_overlay_drag_handle'),
+      onPanUpdate: (details) {
+        ref.read(overlayManagerProvider.notifier).updatePosition(details.delta);
+      },
+      child: FloatingActionButton(
+        key: const Key('minimized_overlay'),
+        tooltip: 'Expand Automation Panel',
+        onPressed: () {
+          ref.read(overlayManagerProvider.notifier).toggleMinimized();
+        },
+        child: const Icon(Icons.open_in_full),
+      ),
+    );
+  }
+
+  Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
-    return status.when(
+    final content = status.when(
       idle: () => const SizedBox.shrink(),
       sending: () => _buildStatusUI(
         context: context,
@@ -27,7 +55,7 @@ class CompanionOverlay extends ConsumerWidget {
         statusIcon: Icons.visibility,
         statusColor: Colors.orange,
         message: 'Phase 2: Assistant is responding...',
-        isLoading: true, // Affiche un indicateur de chargement
+        isLoading: true,
       ),
       refining: (messageCount) => _buildStatusUI(
         context: context,
@@ -73,6 +101,63 @@ class CompanionOverlay extends ConsumerWidget {
             foregroundColor: Colors.white,
           ),
         ),
+      ),
+    );
+
+    return Material(
+      key: const Key('expanded_overlay'),
+      elevation: kDefaultElevation,
+      borderRadius: BorderRadius.circular(kMediumBorderRadius),
+      color: Colors.transparent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            key: const Key('expanded_overlay_drag_handle'),
+            onPanUpdate: (details) {
+              ref
+                  .read(overlayManagerProvider.notifier)
+                  .updatePosition(details.delta);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: kSmallPadding),
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.grey[700],
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(kMediumBorderRadius),
+                  topRight: Radius.circular(kMediumBorderRadius),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Icon(Icons.drag_handle, color: Colors.white70),
+                  IconButton(
+                    tooltip: 'Minimize Automation Panel',
+                    icon:
+                        const Icon(Icons.close_fullscreen, color: Colors.white),
+                    onPressed: () {
+                      ref
+                          .read(overlayManagerProvider.notifier)
+                          .toggleMinimized();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(kMediumBorderRadius),
+                bottomRight: Radius.circular(kMediumBorderRadius),
+              ),
+            ),
+            child: content,
+          ),
+        ],
       ),
     );
   }

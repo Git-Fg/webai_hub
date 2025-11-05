@@ -7,7 +7,9 @@ part 'general_settings.g.dart';
 abstract class GeneralSettingsData with _$GeneralSettingsData {
   const factory GeneralSettingsData({
     @Default(['ai_studio']) List<String> enabledProviders,
-    // Future settings can be added here, e.g., theme settings
+    // WHY: Add a flag for the new prompt engineering mode. Default to true to
+    // encourage the more robust XML-based method while retaining a fallback.
+    @Default(true) bool useAdvancedPrompting,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>
