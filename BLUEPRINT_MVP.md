@@ -431,3 +431,15 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
 - ✅ **Fiabilité accrue :** Élimine une classe entière d'erreurs de timing et de "race conditions" difficiles à déboguer.
 
 - ✅ **Simplification du code Dart :** La suppression du flag `_isBridgeInjected` simplifie la gestion de l'état dans le widget `AiWebviewScreen`.
+
+### 7.6. Evolution Towards v2.0: From Linear Flow to Conversation Building
+
+The MVP successfully validated the core automation loop but revealed its primary limitation: the workflow is strictly **linear and single-turn**. Each prompt initiated a self-contained, one-shot automation cycle.
+
+This model is insufficient for building a truly useful "meta-conversation" where context is curated and refined over multiple turns. The logical evolution, which will be detailed in `BLUEPRINT_FULL.md`, is to transition from this linear flow to a more dynamic, stateful conversation-building process based on two core concepts:
+
+1.  **Iterative Refinement:** Allowing the user to re-extract a response for the *same* conversation turn. This transforms the "extract" step from a final action into a repeatable refinement loop, giving the user full control to perfect the AI's output before finalizing it.
+
+2.  **Contextual Seeding:** Enabling the start of a *new* conversation turn by packaging the entire history of the native "meta-conversation" and sending it to the AI in a fresh web session. This allows the AI to have full context of the curated dialogue, enabling sophisticated, multi-step reasoning.
+
+These enhancements represent the shift from simply "proving the automation" to "building the product."

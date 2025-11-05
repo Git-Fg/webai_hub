@@ -56,13 +56,53 @@ ts_src/
     4.  Kimi
 -   **Navigation:** An `IndexedStack` manages 5 persistent views: 1 native Hub + 4 dedicated `WebView`s.
 
-### 3.2. "Assist & Validate" Workflow (Full)
+### 3.2. The "Assist & Validate" Meta-Conversation Workflow
 
-The workflow is implemented with a refined 3-phase approach, driven by the Companion Overlay.
+The core user experience is building a "meta-conversation" within the native Hub. This is orchestrated through a state-driven cycle that gives the user complete control over the AI's input and output.
 
-1.  **Phase 1 (Sending):** Dart calls `startAutomation(prompt, providerConfig)` on the TS bridge. Le script injecte le prompt et lance la génération. L'application passe **immédiatement** à l'état de raffinement.
-2.  **Phase 2 (Refining & Live Observing):** L'overlay natif affiche "Ready for refinement". L'utilisateur observe la réponse de l'IA se générer en temps réel dans la `WebView` et peut interagir avec la page (scroller, éditer le texte en cours) sans attendre.
-3.  **Phase 3 (Validation & Extraction):** L'utilisateur clique sur "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le contenu **actuel** du dernier message. L'utilisateur peut répéter cette étape plusieurs fois s'il modifie manuellement la réponse dans la `WebView` avant de finaliser.
+#### 3.2.1. Building the Conversation: Contextual Seeding & Iterative Refinement
+
+The workflow is defined by two primary user actions: **Starting a New Turn** and **Refining the Current Turn**.
+
+#### A. Starting a New Turn (Contextual Seeding)
+
+This is triggered when the user sends a new prompt from the Hub UI while the automation state is `idle`.
+
+1.  **Context Compilation:** The `ConversationProvider` (Dart) iterates through the existing Hub message history. It compiles them into a single, structured string.
+
+    *   **Format:** A Markdown-like plain text format is preferred for maximum LLM compatibility (e.g., `User: ... \n\n Assistant: ...`). This is simpler and more effective than custom XML.
+
+2.  **Session Reset:** To ensure a clean slate and prevent context leaks from previous web sessions, the `WebView` is programmatically reloaded to its initial "new chat" URL.
+
+3.  **Automation Kick-off:** Once the page is ready, the compiled context string is passed to the `startAutomation` function of the JavaScript bridge. The script injects this full context as the initial prompt.
+
+4.  **State Transition:** The app state moves from `idle` -> `sending` -> `observing` as the AI generates its response in the `WebView`.
+
+#### B. Refining the Current Turn (Iterative Refinement Loop)
+
+This phase begins once the AI's response is detected, and the automation state moves to `refining`.
+
+1.  **Initial Extraction:** The user clicks "Extract & View Hub". Dart calls `extractFinalResponse()`, and the extracted text updates the last AI message in the Hub. The user is returned to the Hub tab (index 0). **Crucially, the automation state remains `refining`**.
+
+2.  **Review & Re-engage:** The user can review the extracted text. If it needs changes, they simply navigate back to the `WebView` tab.
+
+3.  **Manual Refinement:** The user can continue the conversation directly in the `WebView` (e.g., asking for clarification, rephrasing).
+
+4.  **Re-extraction:** After the AI provides an updated response in the `WebView`, the user clicks "Extract & View Hub" again. The `extractFinalResponse()` function is called, and the Dart layer **replaces the content of the same AI message** in the Hub with the newly extracted text. This loop can be repeated as many times as needed.
+
+5.  **Finalization:** Once satisfied, the user clicks the **"Done"** button on the Companion Overlay. This finalizes the turn, moving the automation state back to `idle` and making the application ready to start a new turn (back to step A).
+
+### 3.3. Advanced User Controls
+
+To enhance the user's ability to curate the perfect conversation, two advanced features are integrated directly into the Hub UI.
+
+#### 3.3.1. Manual Message Editing
+
+The user is the final authority on the conversation's content. After an AI response has been extracted and finalized (i.e., the automation state is `idle`), the user can tap on any AI-generated message bubble in the Hub to open an editing dialog. This allows for manual corrections, additions, or removals. The edited text permanently replaces the original in the conversation history, ensuring that all future "Contextual Seeding" turns use the user-approved version.
+
+#### 3.3.2. System Prompt Management
+
+Users can define a persistent "system prompt" or master instruction (e.g., "You are an expert Flutter developer. All code examples must be sound and null-safe.") that guides the AI's behavior across an entire conversation. This prompt is applied at the beginning of each new turn, ensuring consistent tone, personality, and constraints.
 
 ## 4. Detailed Technical Specifications
 
@@ -95,6 +135,58 @@ The workflow is implemented with a refined 3-phase approach, driven by the Compa
     -   **Login:** Displays a message indicating reconnection is needed.
     -   **Selector:** Informs the user of temporary unavailability and logs the error for maintenance.
 
+### 4.4. State-Driven Workflow Orchestration (Dart-side)
+
+The complex "Assist & Validate" workflow is orchestrated entirely within the Dart layer, primarily in the `ConversationProvider`. The JavaScript bridge remains a simple "driver" for the web page.
+
+-   **Context Management:** A private method (`_buildContextualPrompt`) is responsible for serializing the `List<Message>` into a single string. It prefixes each message with its role (e.g., "User:", "Assistant:") to provide clear context for the LLM.
+
+-   **WebView Lifecycle Control:** Before starting a new conversation turn (Contextual Seeding), the provider explicitly calls `webViewController.loadUrl()` on the target provider's "new chat" URL. This is a critical step to ensure each turn is hermetic and contextually clean.
+
+-   **State Machine Logic:** The `AutomationState` provider acts as the central state machine.
+
+    -   `idle`: The default state. Sending a prompt from here triggers the **Contextual Seeding** workflow.
+
+    -   `sending`/`observing`: Transitional states during AI response generation.
+
+    -   `refining`: A persistent, looping state. The app remains here throughout the **Iterative Refinement** process. All `extractAndReturnToHub` calls during this state will update the last AI message.
+
+    -   The `finalizeAutomation` method (triggered by the "Done" button) is the sole path from `refining` back to `idle`.
+
+### 4.5. Native-Side Conversation Curation
+
+The logic for manual message editing is handled entirely within the Dart/Riverpod layer, requiring no changes to the TypeScript automation engine.
+
+-   **State Management:** The `ConversationProvider` will expose a new method, `editMessage(messageId, newText)`. This method finds the target message in the state list and replaces it with a new instance containing the updated text.
+
+-   **UI Trigger:** The `ChatBubble` widget's `onTap` behavior will be updated to allow editing of both user and assistant messages, but only when the `AutomationState` is `idle`. This prevents editing a message that is actively being refined by the AI.
+
+### 4.6. Dual-Strategy System Prompt Injection
+
+To provide maximum compatibility, the system prompt is implemented using a dual strategy, chosen based on the capabilities of the target web UI.
+
+-   **Provider Configuration:** The remote JSON configuration for each provider will be extended with a `systemPromptSelector` field. If this field is present and not null, the "Native Strategy" is used. Otherwise, the "Emulation Strategy" is the fallback.
+
+-   **Global State:** A new `SystemPromptProvider` (`@Riverpod(keepAlive: true)`) will be created to store the user-defined system prompt string globally. A UI element (e.g., a settings dialog accessible from the `AppBar`) will allow the user to modify this state.
+
+-   **Strategy 1: Native Injection (for compatible UIs)**
+
+    1.  The `Chatbot` TypeScript interface's `sendPrompt` method is updated to `sendPrompt(prompt: string, systemPrompt?: string)`.
+
+    2.  The Dart `ConversationProvider` calls the bridge, passing the main prompt and the system prompt as separate arguments.
+
+    3.  The specific chatbot's TypeScript implementation (`chatgpt.ts`, for example) uses the `systemPromptSelector` to find the dedicated input field on the web page and populates it with the `systemPrompt` text before sending the main `prompt`.
+
+-   **Strategy 2: Emulation (for UIs without a dedicated field, like AI Studio)**
+
+    1.  If `systemPromptSelector` is null in the provider's configuration, the Dart `ConversationProvider` takes responsibility.
+
+    2.  Before building the context string, it prepends the user's system prompt to the very beginning of the entire payload.
+
+    3.  The combined string (System Prompt + Conversation History + New Prompt) is sent to the bridge's `startAutomation` method as a single `prompt` argument. The optional `systemPrompt` argument is left `null`.
+
+    4.  The `ai-studio.ts` chatbot implementation requires no changes, as it receives a single, pre-formatted prompt to inject. This keeps the automation logic for simple UIs clean.
+
 ## 5. Data & Persistence
 
 ### 5.1. Native Conversation Persistence
@@ -115,6 +207,11 @@ The workflow is implemented with a refined 3-phase approach, driven by the Compa
 | **Scope**           | 1 Provider (Google AI Studio)   | 4+ Providers                                           |
 | **Database**        | **None** (in-memory state)      | ✅ **Drift** for history                               |
 | **CSS Selectors**   | **Hardcoded** in TypeScript     | ✅ **Remote JSON Configuration**                       |
+| **Conversation Model**| Linear (single shot per prompt) | ✅ **Multi-Turn (Contextual Seeding)**                 |
+| **Extraction Process**| One-time per prompt             | ✅ **Iterative Refinement & Replacement**              |
+| **WebView State**   | Persistent session              | ✅ **Reloaded per turn for clean context**             |
+| **Message Editing** | Only user prompts               | ✅ **Manual editing of AI responses in Hub**           |
+| **AI Instruction**  | Via prompt content only         | ✅ **Persistent System Prompt (Native & Emulated)**    |
 | **Fallback Strategy** | Yes (simple hardcoded array)    | ✅ **Yes (array of fallbacks)**                        |
 | **Error Handling**  | Structured (code, location)     | ✅ **Specific Heuristic Triage**                       |
 | **`MutationObserver`**| Simple (absence of indicator)   | ✅ **Optimized (two-step)**                            |

@@ -34,8 +34,6 @@ const SEND_BUTTON_SELECTORS = [
   'ms-run-button > button',
 ];
 
-const MODEL_TURN_SELECTOR = 'ms-chat-turn[data-turn-role="Model"]';
-
 // WHY: Wait for token count update to ensure prompt is processed before sending
 const TOKEN_COUNT_SELECTOR = 'span.v3-token-count-value';
 
