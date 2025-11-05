@@ -78,19 +78,11 @@ The workflow is now driven by a structured XML prompt that ensures clarity, elim
 
   <!-- The history provides the full conversational context. -->
   <history>
-    <turn>
-      <user>
-        <![CDATA[
-        How do I implement a Riverpod provider with keepAlive?
-        ]]>
-      </user>
-      <assistant>
-        <![CDATA[
-        To keep a provider's state, you can use the `@Riverpod(keepAlive: true)` annotation. Here is an example...
-        ]]>
-      </assistant>
-    </turn>
-    <!-- Additional turns would be added here -->
+User: How do I implement a Riverpod provider with keepAlive?
+
+Assistant: To keep a provider's state, you can use the `@Riverpod(keepAlive: true)` annotation. Here is an example...
+
+User: [Additional turns would be added here as flat text]
   </history>
 
   <!-- The user's current, specific request. -->
@@ -105,7 +97,7 @@ The workflow is now driven by a structured XML prompt that ensures clarity, elim
 Key principles of this structure:
 
 - CDATA encapsulation for all user/assistant/system content to avoid breaking XML on `<`/`>` characters.
-- Clear separation of roles via `<system>`, `<history>`/`<turn>`, and `<user_input>` tags to improve instruction adherence.
+- Clear separation of roles via `<system>`, `<history>`, and `<user_input>` tags to improve instruction adherence. History is formatted as flat text inside `<history>` tags for natural readability.
 - Unchanged automation engine: the TypeScript bridge still receives a single `prompt` string and injects it; prompt construction logic lives in Dart.
 - Provider capability nuance: for providers with a reliable, native "system prompt" field, the `<system>` section MAY be omitted from the XML and provided natively instead (see §4.6 Exception).
 
@@ -113,7 +105,7 @@ Flow remains centered on two actions:
 
 #### A. Starting a New Turn (Contextual Seeding)
 
-1. **Context Compilation (XML):** The Dart layer composes `<system>`, `<history>` built from curated Hub messages, and the new `<user_input>` into a single XML string.
+1. **Context Compilation (XML):** The Dart layer composes `<system>`, `<history>` (containing flat text format of conversation turns), and the new `<user_input>` into a single XML string.
 2. **Session Reset:** The `WebView` is reloaded to a "new chat" URL to ensure a clean slate prior to injection.
 3. **Automation Kick-off:** The XML string is passed to `startAutomation(prompt)` in the JavaScript bridge for injection and submission.
 4. **State Transition:** `idle` → `sending` → `observing` as the AI generates its response in the `WebView`.
@@ -137,6 +129,10 @@ The user is the final authority on the conversation's content. After an AI respo
 #### 3.3.2. System Prompt Management
 
 Users can define a persistent "system prompt" or master instruction (e.g., "You are an expert Flutter developer. All code examples must be sound and null-safe.") that guides the AI's behavior across an entire conversation. This prompt is applied at the beginning of each new turn, ensuring consistent tone, personality, and constraints.
+
+#### 3.3.3. History Context Instruction Customization
+
+Users can customize the instruction text that introduces the conversation history in XML prompts. This text appears before the `<history>` section and frames how the AI interprets the contextual conversation. The default instruction is: "Here is the previous conversation history for your context. Consider these your own past messages:". This setting can be edited in the Settings screen under "Prompt Engineering", allowing users to tailor the framing to their specific use case or to match their preferred AI's instruction style.
 
 ## 4. Detailed Technical Specifications
 
@@ -175,7 +171,7 @@ This configuration-driven approach directly supports the README's Multi-Provider
 
 The complex "Assist & Validate" workflow is orchestrated entirely within the Dart layer, primarily in the `ConversationProvider`. The JavaScript bridge remains a simple "driver" for the web page.
 
-- **Context Management:** The private method `_buildPromptWithContext` is responsible for generating the XML prompt string. It composes `<system>`, `<history>/<turn>`, and `<user_input>` from current state. A robust XML construction approach will be used (library vs. safe builder to be decided). A legacy plain‑text format may be retained as a user‑selectable fallback.
+- **Context Management:** The private method `_buildPromptWithContext` is responsible for generating the XML prompt string. It composes `<system>`, `<history>` (flat text format), and `<user_input>` from current state. A robust XML construction approach will be used (library vs. safe builder to be decided). A legacy plain‑text format may be retained as a user‑selectable fallback. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
 
 - **WebView Lifecycle Control:** Before starting any new conversation turn (Contextual Seeding), the `_orchestrateAutomation` method explicitly calls `webViewController.loadUrl()` with the provider's "new chat" URL. This is a critical step to ensure each turn is hermetic and contextually clean.
 
@@ -269,10 +265,9 @@ Example: Targeted Message Refinement
 
 ```xml
 <history>
-  <turn>
-    <user><![CDATA[...]]></user>
-    <assistant messageId="asst_123"><![CDATA[Initial code example...]]></assistant>
-  </turn>
+User: ...
+
+Assistant: Initial code example...
 </history>
 <user_input>
   <![CDATA[
@@ -368,6 +363,7 @@ Goal: Identify reliable anchor points for each action.
 
 1. Use JS logs during development at key steps (e.g., `console.log('Target element:', element.outerHTML)`).
 2. Use DOM inspection tools to capture a snapshot of the DOM when extraction fails and analyze why selectors did not match.
+
 ### Annexe de Blueprint : Guide d'Intégration d'un Nouveau Provider Web
 
 Ce guide récapitule la méthodologie et les leçons apprises lors de l'intégration de Google AI Studio. Suivre ces étapes permettra d'intégrer de nouveaux providers (ChatGPT, Claude, etc.) de manière rapide, robuste et maintenable.

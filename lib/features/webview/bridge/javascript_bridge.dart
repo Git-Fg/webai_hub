@@ -129,6 +129,27 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
+  Future<void> loadUrlAndWaitForReady(URLRequest urlRequest) async {
+    // First, ensure the controller itself exists.
+    await _waitForWebViewToBeCreated();
+
+    final controller = _controller;
+
+    // WHY: Before starting a new page load, we must reset the readiness state.
+    // The bridge will be "not ready" until the new page finishes loading
+    // and the script is re-injected.
+    ref.read(bridgeReadyProvider.notifier).reset();
+
+    // Start the page load. This returns quickly and does not wait for the page to finish.
+    await controller.loadUrl(urlRequest: urlRequest);
+
+    // WHY: Now, we can use our existing, robust polling mechanism to wait for the
+    // entire cycle to complete: page load -> onLoadStop -> script injection -> JS ready signal.
+    // This is the most reliable way to ensure the bridge is truly ready.
+    await waitForBridgeReady();
+  }
+
+  @override
   Future<void> waitForBridgeReady() async {
     // First ensure the WebView controller exists (with extended timeout for IndexedStack)
     await _waitForWebViewToBeCreated();

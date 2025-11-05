@@ -23,6 +23,7 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 - ✅ **Native Chat Experience** - A modern, intuitive chat UI for sending prompts and viewing conversations with features like message editing and copying.
 - ✅ **Multi-Provider Integration** - Connects seamlessly to multiple providers like Google AI Studio, with a modular architecture ready for ChatGPT, Claude, and more.
 - ✅ **Contextual "Assist & Validate" Workflow** - Build a "meta-conversation" in the native UI. The app compiles the entire chat history into a structured XML prompt for the AI, enabling complex, multi-turn dialogues while you visually validate each step in a fresh, clean WebView session.
+- ✅ **Customizable Prompt Engineering** - Fine-tune how the AI receives context with customizable settings, including the ability to customize the instruction text that introduces conversation history in XML prompts.
 - ✅ **Resilient & Interactive UI** - A draggable overlay provides an unobstructed view of the web provider. The UI is decoupled from business logic via signal-based providers, and error messages are displayed as non-destructive, ephemeral bubbles, allowing you to retry actions without losing context.
 - ✅ **JavaScript Automation Engine** - A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
 - ❤️ **Free and Open-Source** - Released under the GNU license.
@@ -41,7 +42,7 @@ This project is under active development.
 #### 🚀 On the Roadmap
 
 - **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.).
- - **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.). This will be enabled by a robust remote JSON configuration for CSS selectors, allowing updates without requiring an app release.
+- **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.). This will be enabled by a robust remote JSON configuration for CSS selectors, allowing updates without requiring an app release.
 - **Automated Provider Comparison** - Send the same prompt to multiple providers simultaneously and compare their responses side-by-side.
 - **Intelligent Response Synthesis** - Use a "main agent" (like Google AI Studio) to classify, compare, and synthesize responses from multiple providers, leveraging the best aspects of each answer.
 - **Smart Meta-Chat Management** - Advanced conversation management features:

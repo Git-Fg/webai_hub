@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 enum ErrorType {
   none,
@@ -47,6 +48,13 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     if (!_readyCompleter.isCompleted) {
       _readyCompleter.complete();
     }
+  }
+
+  @override
+  Future<void> loadUrlAndWaitForReady(URLRequest urlRequest) async {
+    // Simulate loading a URL: reset readiness state and wait for it to be ready
+    simulateReload();
+    await waitForBridgeReady();
   }
 
   @override

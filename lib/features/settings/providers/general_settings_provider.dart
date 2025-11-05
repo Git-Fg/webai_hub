@@ -63,4 +63,25 @@ class GeneralSettings extends _$GeneralSettings {
       );
     });
   }
+
+  // WHY: Allows users to customize the instruction that frames the conversation history.
+  Future<void> updateHistoryContextInstruction(String newInstruction) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(
+        historyContextInstruction: newInstruction,
+      );
+    });
+  }
+
+  // WHY: Reset the history context instruction to its default value.
+  // We get the default value by creating a new default instance of the settings model
+  // and accessing its property. This is the cleanest way to access the default.
+  Future<void> resetHistoryContextInstruction() async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(
+        historyContextInstruction:
+            const GeneralSettingsData().historyContextInstruction,
+      );
+    });
+  }
 }

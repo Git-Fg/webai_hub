@@ -6,6 +6,7 @@ import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
@@ -48,7 +49,7 @@ class Conversation extends _$Conversation {
     state = [...state, message];
   }
 
-  /// Helper to build the <system> XML node as a string fragment.
+  /// Helper to build the system XML node as a string fragment.
   String _buildSystemPromptXml(String systemPrompt) {
     final builder = XmlBuilder();
     builder.element(
@@ -60,45 +61,34 @@ class Conversation extends _$Conversation {
     return builder.buildDocument().toXmlString(pretty: true);
   }
 
-  /// Helper to build the <history> XML node as a string fragment.
-  String _buildHistoryXml(List<Message> history) {
-    final builder = XmlBuilder();
-    builder.element(
-      'history',
-      nest: () {
-        for (var i = 0; i < history.length;) {
-          if (history[i].isFromUser) {
-            final userMessage = history[i];
-            final assistantMessage =
-                (i + 1 < history.length && !history[i + 1].isFromUser)
-                    ? history[i + 1]
-                    : null;
+  /// Helper to build the history as a flat, human-readable string.
+  String _buildHistoryText(List<Message> history) {
+    final buffer = StringBuffer();
 
-            builder.element(
-              'turn',
-              nest: () {
-                builder.element(
-                  'user',
-                  nest: () => builder.cdata(userMessage.text),
-                );
-                if (assistantMessage != null) {
-                  builder.element(
-                    'assistant',
-                    nest: () => builder.cdata(assistantMessage.text),
-                  );
-                }
-              },
-            );
+    // WHY: This logic correctly pairs User/Assistant messages into turns
+    // and safely handles any orphaned messages, ensuring a clean log format.
+    for (var i = 0; i < history.length;) {
+      if (history[i].isFromUser) {
+        final userMessage = history[i];
+        final assistantMessage =
+            (i + 1 < history.length && !history[i + 1].isFromUser)
+                ? history[i + 1]
+                : null;
 
-            i += (assistantMessage != null) ? 2 : 1;
-          } else {
-            // Skip orphaned assistant messages
-            i++;
-          }
+        buffer.writeln('User: ${userMessage.text}');
+        if (assistantMessage != null) {
+          buffer.writeln('Assistant: ${assistantMessage.text}');
         }
-      },
-    );
-    return builder.buildDocument().toXmlString(pretty: true);
+        // Add a blank line between turns for better readability
+        buffer.writeln();
+
+        i += (assistantMessage != null) ? 2 : 1;
+      } else {
+        // Skip orphaned assistant messages
+        i++;
+      }
+    }
+    return buffer.toString().trim();
   }
 
   void clearConversation() {
@@ -177,6 +167,11 @@ User: $newPrompt
 
   String _buildXmlPrompt(String newPrompt, {String? excludeMessageId}) {
     try {
+      final settingsAsync = ref.read(generalSettingsProvider);
+      // Use .value to get the data, with a fallback to the default constructor.
+      final generalSettings =
+          settingsAsync.value ?? const GeneralSettingsData();
+
       final settings = ref.read(conversationSettingsProvider);
       final systemPrompt = settings.systemPrompt;
       final providerConfig = ref.read(currentProviderConfigurationProvider);
@@ -202,7 +197,24 @@ User: $newPrompt
 
       // --- Part 2: Context ---
       if (history.isNotEmpty) {
-        promptBuffer.writeln(_buildHistoryXml(history));
+        // Use the instruction from the settings object instead of a hardcoded string.
+        promptBuffer.writeln('\n${generalSettings.historyContextInstruction}');
+
+        // 1. Generate the history as a flat string.
+        final historyText = _buildHistoryText(history);
+
+        // 2. Build a simple XML block that contains the flat string.
+        final historyBuilder = XmlBuilder();
+        historyBuilder.element(
+          'history',
+          nest: () {
+            // Use .text() to safely wrap the entire multi-line string.
+            // This will handle any special characters correctly.
+            historyBuilder.text(historyText);
+          },
+        );
+        promptBuffer
+            .writeln(historyBuilder.buildDocument().toXmlString(pretty: true));
       }
       // Future <files> context would be added here.
 
@@ -272,32 +284,21 @@ User: $newPrompt
 
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
-      final webViewController = ref.read(webViewControllerProvider);
 
       // Switch to the WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
 
-      // TIMING: Yield to event loop to ensure widget tree updates before WebView reload
+      // TIMING: Yield to event loop to ensure widget tree updates before WebView is touched.
       await Future<void>.delayed(Duration.zero);
-
       if (!ref.mounted) return;
 
-      // CRITICAL: Reload the WebView to get a clean slate, per blueprint.
-      // This ensures each new turn is isolated and prevents context leaks.
-      await webViewController?.loadUrl(
-        urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
+      // WHY: A single, declarative call that handles everything.
+      // This replaces loadUrl, the Completer, and the direct call to waitForBridgeReady.
+      // The bridge encapsulates the entire load-and-wait cycle: reset state, load URL,
+      // and poll until the bridge is ready (page loaded, script injected, JS signaled ready).
+      await bridge.loadUrlAndWaitForReady(
+        URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       );
-
-      // TIMING: 2s delay after loadUrl is required to give the WebView time to
-      // initiate the page request before bridge readiness polling begins.
-      // Per BLUEPRINT_MVP.md, this mitigates [PAGENOTLOADED] startup races.
-      // This delay is necessary for the workflow to function correctly.
-      await Future<void>.delayed(const Duration(seconds: 2));
-
-      // WHY: We now rely entirely on waitForBridgeReady.
-      // This function polls until the onLoadStop event has fired, the script has been injected,
-      // and the JS side has signaled back that it's ready. This is the most robust method.
-      await bridge.waitForBridgeReady();
 
       if (!ref.mounted) return;
 
@@ -472,17 +473,16 @@ User: $newPrompt
   void _updateLastMessage(String text, MessageStatus status) {
     if (!ref.mounted) return;
 
-    if (state.isNotEmpty) {
-      final lastMessage = state.last;
-      if (!lastMessage.isFromUser &&
-          lastMessage.status == MessageStatus.sending) {
-        final newMessages = List<Message>.from(state);
-        newMessages[newMessages.length - 1] = lastMessage.copyWith(
-          text: text,
-          status: status,
-        );
-        state = newMessages;
-      }
+    // WHY: Explicitly check that state is not empty and the last message is an assistant's "sending" message.
+    // This prevents errors if the state is cleared while an async operation is in flight.
+    if (state.isNotEmpty &&
+        !state.last.isFromUser &&
+        state.last.status == MessageStatus.sending) {
+      final updatedMessage = state.last.copyWith(text: text, status: status);
+      // Create a new list to maintain immutability.
+      final newMessages = List<Message>.from(state)
+        ..[state.length - 1] = updatedMessage;
+      state = newMessages;
     }
   }
 }
