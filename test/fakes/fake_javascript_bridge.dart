@@ -9,17 +9,17 @@ enum ErrorType {
 }
 
 class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
-  // Pour vérifier que les méthodes ont été appelées
+  // For verifying that methods were called
   String? lastPromptSent;
   bool wasExtractCalled = false;
 
-  // Pour simuler des erreurs - séparés par méthode
+  // To simulate errors — separated per method
   ErrorType startAutomationErrorType = ErrorType.none;
   ErrorType extractFinalResponseErrorType = ErrorType.none;
   String? extractFinalResponseValue =
       'This is a fake AI response from the test bridge.';
 
-  // Legacy support: si shouldThrowError est true, on lève une Exception générique
+  // Legacy support: if shouldThrowError is true, throw a generic Exception
   bool get shouldThrowError =>
       startAutomationErrorType == ErrorType.genericException ||
       extractFinalResponseErrorType == ErrorType.genericException;
@@ -34,15 +34,15 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
-  // --- NEW: Controle d'async pour l'état de readiness du bridge ---
+  // --- NEW: Async control for the bridge readiness state ---
   late Completer<void> _readyCompleter = Completer<void>()..complete();
 
-  // Permet aux tests de simuler un rechargement de page: le bridge redevient non-prêt
+  // Allow tests to simulate a page reload: the bridge becomes not-ready again
   void simulateReload() {
     _readyCompleter = Completer<void>();
   }
 
-  // Permet aux tests d'indiquer que le bridge est prêt à nouveau
+  // Allow tests to mark the bridge as ready again
   void markAsReady() {
     if (!_readyCompleter.isCompleted) {
       _readyCompleter.complete();
@@ -51,19 +51,19 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
 
   @override
   Future<void> waitForBridgeReady() async {
-    // Attendre explicitement que les tests marquent le bridge comme prêt
+    // Explicitly wait until tests mark the bridge as ready
     await _readyCompleter.future;
   }
 
   @override
   Future<void> startResponseObserver() async {
-    // Dans les tests, on simule simplement que l'observateur démarre
+    // In tests, simply simulate that the observer starts
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 
   @override
   Future<void> startAutomation(String prompt) async {
-    // Simuler un délai réseau
+    // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     switch (startAutomationErrorType) {
@@ -77,14 +77,14 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
           diagnostics: {'prompt': prompt},
         );
       case ErrorType.none:
-        // Enregistrer le prompt pour vérification
+        // Record the prompt for verification
         lastPromptSent = prompt;
     }
   }
 
   @override
   Future<String> extractFinalResponse() async {
-    // Simuler un délai réseau
+    // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     switch (extractFinalResponseErrorType) {
@@ -110,14 +110,14 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
-  // SUPPRIMÉ : waitForResponseCompletion n'est plus nécessaire
+  // REMOVED: waitForResponseCompletion is no longer needed
 
-  // Méthode pour simuler getCapturedLogs (utilisée par conversation_provider)
+  // Method to simulate getCapturedLogs (used by conversation_provider)
   Future<List<Map<String, dynamic>>> getCapturedLogs() async {
     return [];
   }
 
-  // Méthode utilitaire pour réinitialiser l'état entre les tests
+  // Utility method to reset state between tests
   void reset() {
     lastPromptSent = null;
     wasExtractCalled = false;

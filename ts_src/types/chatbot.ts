@@ -1,26 +1,26 @@
 // ts_src/types/chatbot.ts
 
-// Interface décrivant les capacités d'un module de chatbot.
-// Pour le MVP, on se concentre sur l'essentiel.
+// Interface describing the core capabilities of a chatbot module.
+// For the MVP, we focus on the essentials only.
 export interface Chatbot {
   /**
-   * Une fonction qui attend que la page du chatbot soit complètement chargée et prête pour l'automatisation.
+   * Waits until the chatbot page is fully loaded and ready for automation.
    */
   waitForReady: () => Promise<void>;
 
   /**
-   * Trouve la zone de saisie, y insère le prompt, et clique sur le bouton d'envoi.
-   * Doit retourner une promesse qui se résout une fois la génération de la réponse terminée.
-   * @param prompt Le message à envoyer.
+   * Finds the input area, inserts the prompt, and clicks the submit button.
+   * Resolves only after the response generation is complete.
+   * @param prompt The message to send.
    */
   sendPrompt: (prompt: string) => Promise<void>;
 
   /**
-   * Extrait le texte de la dernière réponse du modèle, de manière nettoyée.
+   * Extracts the cleaned text of the latest model response.
    */
   extractResponse: () => Promise<string>;
 
-  // SUPPRIMÉ : Cette méthode n'est plus nécessaire.
+  // REMOVED: This method is no longer required.
   // waitForResponse: (timeout: number) => Promise<void>;
 }
 

@@ -37,8 +37,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Fichiers générés spécifiques au projet
-# C'est un artefact de build, il DOIT être ignoré.
+# Project-specific generated files
+# This is a build artifact, it MUST be ignored.
 /assets/js/bridge.js
 
 # Android
@@ -62,7 +62,7 @@ yarn-error.log*
 /ios/Runner.xcodeproj/xcuserdata/
 /ios/Podfile.lock
 
-# Fichiers de build génériques
+# Generic build files
 app.*.symbols
 app.*.map.json
 

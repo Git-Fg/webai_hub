@@ -1,15 +1,15 @@
 (async () => {
     console.clear();
-    console.log("🚀 Démarrage du test de validation des sélecteurs pour AI Studio (v3 - Cycle Complet)...");
+    console.log("🚀 Starting AI Studio selector validation test (v3 - Full Cycle)...");
   
     // --- Fonctions d'aide ---
     const testSelector = (name, selector, root = document) => {
       const element = root.querySelector(selector);
       if (element) {
-        console.log(`✅ [SUCCÈS] Sélecteur "${name}" trouvé :`, element);
+        console.log(`✅ [SUCCESS] Selector "${name}" found:`, element);
         return element;
       } else {
-        console.error(`❌ [ÉCHEC] Sélecteur "${name}" (${selector}) non trouvé.`);
+        console.error(`❌ [FAIL] Selector "${name}" (${selector}) not found.`);
         return null;
       }
     };
@@ -18,10 +18,10 @@
       const elements = document.querySelectorAll(selector);
       if (elements.length > 0) {
         const lastElement = elements[elements.length - 1];
-        console.log(`✅ [SUCCÈS] Sélecteur "${name}" trouvé (${elements.length} correspondances). Sélection du dernier :`, lastElement);
+        console.log(`✅ [SUCCESS] Selector "${name}" found (${elements.length} matches). Selecting the last:`, lastElement);
         return lastElement;
       } else {
-        console.error(`❌ [ÉCHEC] Sélecteur "${name}" (${selector}) n'a trouvé aucune correspondance.`);
+        console.error(`❌ [FAIL] Selector "${name}" (${selector}) returned no matches.`);
         return null;
       }
     };
@@ -33,74 +33,74 @@
   
     try {
       // --- ÉTAPE 1: Trouver le dernier message de l'assistant via :has() ---
-      console.log("\n--- Étape 1: Recherche du dernier message de l'assistant ---");
+      console.log("\n--- Step 1: Find the last assistant message ---");
       const lastTurn = testSelectorAllAndTakeLast(
-        "Dernier message de l'IA",
+        "Last AI message",
         'ms-chat-turn:has(button[aria-label="Edit"])'
       );
-      if (!lastTurn) throw new Error("Étape 1 échouée.");
+      if (!lastTurn) throw new Error("Step 1 failed.");
   
       // --- ÉTAPE 2: Trouver le bouton "Edit" DANS ce message et cliquer ---
-      console.log("\n--- Étape 2: Passage en mode édition ---");
+      console.log("\n--- Step 2: Enter edit mode ---");
       const editButton = testSelector(
-        "Bouton 'Edit'",
+        "'Edit' button",
         'button[aria-label="Edit"]',
         lastTurn
       );
-      if (!editButton) throw new Error("Étape 2 échouée (bouton Edit introuvable).");
+      if (!editButton) throw new Error("Step 2 failed (Edit button not found).");
       
-      console.log("   -> Clic sur le bouton 'Edit'...");
+      console.log("   -> Clicking the 'Edit' button...");
       (editButton).click();
   
       // --- ÉTAPE 3: Attendre l'apparition du textarea et extraire le contenu ---
-      console.log("\n--- Étape 3: Extraction du contenu ---");
-      await delay(500); // Attente pour que le DOM se mette à jour
+      console.log("\n--- Step 3: Extract content ---");
+      await delay(500); // Wait for the DOM to update
   
       const textarea = testSelector(
-        "Textarea d'édition",
+        "Editing textarea",
         'textarea',
         lastTurn
       );
-      if (!textarea) throw new Error("Étape 3 échouée (textarea introuvable).");
+      if (!textarea) throw new Error("Step 3 failed (textarea not found).");
   
       const extractedContent = textarea.value || "";
-      console.log("   -> ✨ Contenu extrait (échantillon) :", extractedContent.substring(0, 100) + "...");
+      console.log("   -> ✨ Extracted content (sample):", extractedContent.substring(0, 100) + "...");
   
       // --- NOUVELLE ÉTAPE 4: Sortir du mode édition ---
-      console.log("\n--- Étape 4: Sortie du mode édition ---");
+      console.log("\n--- Step 4: Exit edit mode ---");
       const stopEditingButton = testSelector(
-        "Bouton 'Stop editing'",
-        'button[aria-label="Stop editing"]', // Le nouveau sélecteur clé !
+        "'Stop editing' button",
+        'button[aria-label="Stop editing"]', // The new key selector!
         lastTurn
       );
-      if (!stopEditingButton) throw new Error("Étape 4 échouée (bouton Stop editing introuvable).");
+      if (!stopEditingButton) throw new Error("Step 4 failed (Stop editing button not found).");
   
-      console.log("   -> Clic sur le bouton 'Stop editing'...");
+      console.log("   -> Clicking the 'Stop editing' button...");
       (stopEditingButton).click();
   
       // --- ÉTAPE 5: Vérification finale (optionnelle mais recommandée) ---
-      console.log("\n--- Étape 5: Vérification de la sortie du mode édition ---");
-      await delay(500); // Attente pour que le DOM se mette à jour
+      console.log("\n--- Step 5: Verify exit from edit mode ---");
+      await delay(500); // Wait for the DOM to update
       
       const textareaAfter = lastTurn.querySelector('textarea');
       if (textareaAfter) {
-          console.warn("⚠️ [AVERTISSEMENT] Le textarea est toujours présent après avoir quitté le mode édition.");
-          // Ce n'est pas un échec bloquant, mais c'est bon à savoir.
+          console.warn("⚠️ [WARNING] The textarea is still present after exiting edit mode.");
+          // Not a blocking failure, but worth noting.
       } else {
-          console.log("   -> ✅ Le textarea a bien disparu. Sortie du mode édition confirmée.");
+          console.log("   -> ✅ The textarea disappeared. Exit from edit mode confirmed.");
       }
   
   
     } catch (e) {
       hasFailed = true;
-      console.error(`\n🔥 Le test a été interrompu : ${e.message}`);
+      console.error(`\n🔥 Test aborted: ${e.message}`);
     }
   
     // --- RAPPORT FINAL ---
-    console.log("\n--- Rapport Final ---");
+    console.log("\n--- Final Report ---");
     if (hasFailed) {
-      console.error("❌ Au moins un sélecteur critique a échoué. Le cycle d'extraction est cassé.");
+      console.error("❌ At least one critical selector failed. The extraction cycle is broken.");
     } else {
-      console.log("✅ Tout le cycle d'extraction (Entrée -> Extraction -> Sortie) a été validé avec succès !");
+      console.log("✅ The full extraction cycle (Input -> Extraction -> Exit) has been validated successfully!");
     }
   })();

@@ -11,6 +11,8 @@ This blueprint is built on four core principles:
 3. **Anti-Fragile Robustness:** Failures (CAPTCHAs, selector changes) are nominal states that trigger graceful degradation.
 4. **"Local-First" Privacy:** All user data is stored and processed exclusively on-device.
 
+In alignment with the project README's long-term roadmap, the Full Blueprint ultimately enables Automated Provider Comparison and Intelligent Response Synthesis. These are direct expressions of the "Assist, Don't Hide" philosophy: the app transparently orchestrates multiple providers, compares their outputs, and helps synthesize a better final answer without hiding how results are produced.
+
 ## 2. Production Architecture & Tech Stack
 
 This stack is prescriptive and optimized for static type-safety and performance.
@@ -149,6 +151,8 @@ Users can define a persistent "system prompt" or master instruction (e.g., "You 
 - **Optimized `MutationObserver`:** The "Ephemeral Two-Step Observer" strategy is implemented to preserve performance and battery on mobile.
 
 - **Shadow DOM Handling:** The engine includes a recursive search function for `open` mode and a "monkey-patching" strategy to attempt to force `open` mode on `closed` roots.
+
+This configuration-driven approach directly supports the README's Multi-Provider Support goal: by relying on a remotely fetched JSON (with ETag-based caching), providers can be added or updated (selectors and behaviors) without requiring a new app release.
 
 ### 4.2. JavaScript Bridge (RPC API)
 
@@ -307,6 +311,63 @@ By evolving the schema (e.g., adding attributes or new sections), the prompt bec
 | **Advanced Cases**  | Ignored (e.g., Shadow DOM)      | ✅ **Handled**                                         |
 | **Code Quality**    | `flutter_lints` (standard)      | ✅ **`very_good_analysis` (strict)**                   |
 
+## 7. New Provider Integration Guide
+
+This section promotes and translates the original French annex to a first-class guide. It captures the methodology and lessons learned when integrating Google AI Studio and generalizes them to any new web provider (ChatGPT, Claude, Qwen, Zai, Kimi, etc.).
+
+### Fundamental Principles
+
+1. Simplicity first: Start with the simplest and most standard CSS selectors and DOM operations.
+2. From reliable to uncertain: If a container is hard to target, find a stable inner element (like a button) and traverse up to its parent using `.closest()` to locate a robust anchor.
+3. Explicit asynchrony: Avoid blind fixed delays (`setTimeout`, `Future.delayed`). Prefer active waits (e.g., a `waitForElement` utility) and explicit asynchronous communication (`callAsyncJavaScript`).
+4. Fault tolerance: The automation must be resilient. It should still accomplish its primary mission (e.g., extract text) even if non-critical errors occur in the page.
+5. Universal injection: The bridge script should be present on all pages to survive navigations and rendering crashes. The decision logic ("Should I act?") belongs in the script itself, not in the injection code.
+
+---
+
+### Step-by-Step Integration Process
+
+#### Phase 1: Manual Analysis (Desktop Browser)
+
+Goal: Identify reliable anchor points for each action.
+
+1. Identify the three fundamental actions for a new provider:
+   - Enter text: Which `<textarea>` or `<input>` is used?
+   - Submit the prompt: Which `<button>` submits?
+   - Extract the response: What is the most stable method? (see below)
+2. Find the simplest selectors:
+   - Use Chrome/Firefox DevTools on the provider site.
+   - Prefer `[aria-label]`, IDs, or `data-*` attributes over generic, auto-generated CSS classes (e.g., `.div-a23bc`).
+   - Create a quick validation script (like `validation/aistudio_selector_validator.js`) to test selectors directly in the console.
+3. Validate the extraction strategy:
+   - Scenario A (ideal): Check whether the conversation content is available in a global JavaScript object (e.g., `window.appState`). If yes, prefer this.
+   - Scenario B (most common): If no global object exists, use the "reliable-to-uncertain" strategy:
+     1) Find a unique, stable button on the finalized response (e.g., "Copy", "Edit", "Regenerate").
+     2) Use this button as an anchor point.
+     3) From that button, traverse up with `.closest()` to the main message container.
+     4) Once located, use `.querySelector()` to find the element containing the response text.
+     5) Validate the sequence with your validation script.
+
+#### Phase 2: Implement Logic (TypeScript)
+
+1. Create a new chatbot file in `ts_src/chatbots/` (e.g., `chatgpt.ts`).
+2. Implement the `Chatbot` interface using your validated selectors and strategy:
+   - `waitForReady()`: Waits for an element that appears only once the page is fully ready.
+   - `sendPrompt(prompt)`: Locate the input field, fill it, locate the submit button, and click.
+   - `extractResponse()`: Implement the validated extraction strategy. Use a resilient approach to separate value extraction from cleanup actions (e.g., closing edit mode) with permissive `try...catch` blocks.
+3. Add small strategic delays (50–100ms) only after DOM-changing actions (like a click that reveals a textarea) to allow the page framework to settle.
+4. Update `automation_engine.ts` to register the new provider in `SUPPORTED_SITES`.
+
+#### Phase 3: Orchestration & Communication (Dart)
+
+1. Prefer `callAsyncJavaScript` for stability: To call an async JS function and await its result, avoid `evaluateJavascript` with manual `Promise`s and timeouts. Use `callAsyncJavaScript` so the value is returned reliably via `result.value`.
+2. Tolerant error handling: In `extractAndReturnToHub`, prioritize returning useful text even if an error also occurred. Capture both and decide based on response presence/emptiness.
+3. Integrate response observer: If waiting is needed after sending the prompt, transition to `.observing()` and start a provider-specific response observer; adapt `checkUIState` to detect the provider's end-of-response indicator (e.g., the appearance of a "Copy" button).
+
+#### Phase 4: Final Debugging
+
+1. Use JS logs during development at key steps (e.g., `console.log('Target element:', element.outerHTML)`).
+2. Use DOM inspection tools to capture a snapshot of the DOM when extraction fails and analyze why selectors did not match.
 ### Annexe de Blueprint : Guide d'Intégration d'un Nouveau Provider Web
 
 Ce guide récapitule la méthodologie et les leçons apprises lors de l'intégration de Google AI Studio. Suivre ces étapes permettra d'intégrer de nouveaux providers (ChatGPT, Claude, etc.) de manière rapide, robuste et maintenable.

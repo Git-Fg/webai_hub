@@ -101,9 +101,9 @@ This is where the main MVP simplifications are made. The focus is on function, n
 
 ## 5. MVP "Assist & Validate" Workflow
 
-1. **Phase 1 (Sending):** L'utilisateur envoie un prompt. Dart appelle `startAutomation(prompt)`. Le script TypeScript trouve le champ de saisie, tape le prompt et clique sur le bouton d'envoi. L'application passe **instantanément** à l'état suivant.
-2. **Phase 2 (Refining):** L'overlay affiche "Ready for refinement". L'utilisateur regarde la réponse se générer directement dans la `WebView` et peut interagir avec la page.
-3. **Phase 3 (Validation):** L'utilisateur clique sur le bouton "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le texte de la dernière réponse et le retourne à Dart, qui met à jour l'interface de conversation. Cette action peut être répétée.
+1. **Phase 1 (Sending):** The user sends a prompt. Dart calls `startAutomation(prompt)`. The TypeScript script finds the input field, types the prompt, and clicks the send button. The app transitions **immediately** to the next state.
+2. **Phase 2 (Refining):** The overlay shows "Ready for refinement". The user watches the response generate directly in the `WebView` and can interact with the page.
+3. **Phase 3 (Validation):** The user taps the "Extract & View Hub" button. Dart calls `extractFinalResponse()`. The script extracts the latest response's text and returns it to Dart, which updates the conversation UI. This action can be repeated.
 
 ## 6. MVP Validation Checklist
 
@@ -117,17 +117,17 @@ The MVP is considered a **success** if and only if all the following conditions 
 - [ ] The extracted response appears correctly in the Hub.
 - [ ] The entire workflow can be repeated multiple times without restarting the app.
 
-## 7. Leçons Apprises et Décisions Architecturales Clés
+## 7. Lessons Learned and Key Architectural Decisions
 
 This section documents key architectural decisions made during MVP development that shaped the final implementation.
 
-### 7.1. Gestion des Onglets : L'Approche "Riverpod Pure"
+### 7.1. Tab Management: The "Pure Riverpod" Approach
 
-#### Problème Identifié
+#### Problem Identified
 
 Initially, we attempted to use Flutter's native `TabController` with a `Provider` override. This created synchronization issues because `ProviderScope` overrides only apply to descendant widgets, not global `NotifierProvider`s. As a result, `tabControllerProvider` always returned `null` in `ConversationProvider`, causing tab switching failures.
 
-#### Solution : Architecture Riverpod Pure
+#### Solution: Pure Riverpod Architecture
 
 **Principle:** Use **only** `currentTabIndexProvider` Riverpod to manage tab changes. The Flutter `TabController` is used **only for UI display**.
 
@@ -175,9 +175,9 @@ class CurrentTabIndex extends _$CurrentTabIndex {
 
 > See also: `AGENTS.md` → "🚫 Critical Anti-Patterns" → "Anti-Pattern 2: Outdated Riverpod and Async Patterns" for mandatory Riverpod 3.0 async safety rules (`ref.mounted`, `ProviderException`, concurrent awaits, `unawaited`).
 
-### 7.2. Fiabilisation du Timing : Mécanisme `waitForBridgeReady`
+### 7.2. Timing Reliability: `waitForBridgeReady` Mechanism
 
-#### Problème des Délais Arbitraires
+#### The Problem with Arbitrary Delays
 
 Early MVP iterations relied on arbitrary `Future.delayed(Duration(seconds: 2))` calls to wait for the WebView to initialize. This approach proved unreliable because:
 
@@ -185,7 +185,7 @@ Early MVP iterations relied on arbitrary `Future.delayed(Duration(seconds: 2))` 
 - Fixed delays created race conditions
 - Tests became flaky and non-deterministic
 
-#### Solution : Signal Explicite via Bridge Ready
+#### Solution: Explicit Signal via Bridge Ready
 
 **Approach:** The WebView JavaScript bridge signals when it's fully initialized by calling `bridgeReadyProvider.notifier.markReady()` after successful script injection. The Dart side waits for this signal instead of using arbitrary delays.
 
@@ -224,11 +224,11 @@ Future<void> waitForBridgeReady() async {
 - ✅ Adaptive: Responds to actual device conditions, not arbitrary timeouts
 - ✅ Debuggable: Clear signal of initialization success/failure
 
-### 7.3. Stratégie Anti-Délais Arbitraires
+### 7.3. Anti-Delay Strategy
 
 > See also: `AGENTS.md` → "Timing Management: A Pragmatic Approach to Delays" for the authoritative, up-to-date guidance on when and how to use delays. This section captures the MVP rationale; follow `AGENTS.md` for day-to-day practice.
 
-#### Pourquoi les Délais Sont des Anti-Patterns
+#### Why Delays Are Anti-Patterns
 
 Adding `Future.delayed` or `setTimeout` as a first response to timing issues masks the underlying problem and creates technical debt:
 
@@ -237,7 +237,7 @@ Adding `Future.delayed` or `setTimeout` as a first response to timing issues mas
 - They degrade user experience (unnecessary waits)
 - They are maintenance burdens (arbitrary magic numbers)
 
-#### Approche Correcte
+#### Correct Approach
 
 **When encountering timing issues, investigate:**
 
@@ -269,15 +269,15 @@ Only as a **last resort** when:
 
 **Rule:** If a delay fixes a symptom but not the root cause, **remove the delay immediately**. Investigate further and fix the underlying issue. When a short, well-justified delay is necessary, document it per `AGENTS.md` → "Timing Management: A Pragmatic Approach to Delays" (use a `// TIMING:` comment with justification and date).
 
-### 7.4. Stratégie d'État Riverpod : autoDispose vs. keepAlive
+### 7.4. Riverpod State Strategy: autoDispose vs. keepAlive
 
-#### Problème Résolu lors du Test d'Intégration
+#### Problem Found During Integration Testing
 
 During development of the integration test `bridge_communication_test.dart`, a critical issue was identified: `BridgeReady` and `WebViewController` providers were auto-dispose by default, creating **separate instances** between the widget tree and external test container, preventing state synchronization.
 
 **Solution:** Use `@Riverpod(keepAlive: true)` for providers shared between multiple contexts (widget tree + test container).
 
-#### Règle Générale : Quand utiliser quoi ?
+#### General Rule: When to Use What?
 
 **Use `autoDispose` (default `@riverpod`) for:**
 
@@ -380,9 +380,9 @@ Before creating a provider, ask:
    - Yes → `autoDispose` (default)
    - No → `keepAlive: true`
 
-### 7.5. Stratégie de Survie du Bridge : L'Injection Idempotente Systématique
+### 7.5. Bridge Survivability Strategy: Systematic Idempotent Injection
 
-#### Problème Identifié : La Disparition Silencieuse du Script
+#### Problem Identified: Silent Disappearance of the Script
 
 Lors des tests, une erreur de `timeout` survenait systématiquement lors de l'extraction de la réponse, même avec des sélecteurs corrects. L'analyse des logs a révélé la cause racine :
 
@@ -390,17 +390,17 @@ Lors des tests, une erreur de `timeout` survenait systématiquement lors de l'ex
 E/chromium: [ERROR:aw_browser_terminator.cc(165)] Renderer process crash detected.
 ```
 
-Ce crash silencieux du processus de rendu de la `WebView` (ou une navigation pleine page initiée par le site web lui-même) entraînait la perte complète du contexte JavaScript injecté. L'approche initiale, qui utilisait un flag Dart (`_isBridgeInjected`) pour n'injecter le script qu'une seule fois, était donc fondamentalement fragile. Une fois le script perdu, il n'était jamais réinjecté, rendant toute communication ultérieure impossible.
+This silent crash of the `WebView` rendering process (or a full-page navigation initiated by the website itself) led to the complete loss of the injected JavaScript context. The initial approach, which used a Dart flag (`_isBridgeInjected`) to inject the script only once, was fundamentally fragile. Once the script was lost, it was never re-injected, making further communication impossible.
 
-#### Solution : L'Approche de Ré-injection Robuste
+#### Solution: Robust Re-injection Approach
 
 Pour garantir que le bridge de communication est toujours disponible, une stratégie d'injection systématique et idempotente a été mise en place.
 
-1. **Côté Dart (`ai_webview_screen.dart`) : Injection Systématique à chaque `onLoadStop`**
+1. **Dart side (`ai_webview_screen.dart`): Systematic injection on every `onLoadStop`**
 
-    Le principe est de considérer que chaque chargement de page peut potentiellement avoir un contexte vierge. On injecte donc notre script à chaque fois, sans condition.
+    The principle is to assume every page load may have a fresh, empty context. Therefore, we inject our script every time, unconditionally.
 
-    **Ancienne logique (FRAGILE) :**
+    **Previous logic (FRAGILE):**
 
     ```dart
     // Flag pour contrôler l'injection unique
@@ -414,7 +414,7 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
     }
     ```
 
-    **Nouvelle logique (ROBUSTE) :**
+    **New logic (ROBUST):**
 
     ```dart
     onLoadStop: (controller, url) async {
@@ -429,11 +429,11 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
     }
     ```
 
-2. **Côté TypeScript (`automation_engine.ts`) : Assurer l'Idempotence**
+2. **TypeScript side (`automation_engine.ts`): Ensure idempotency**
 
-    Injecter le même script plusieurs fois sur une page qui n'a pas été rechargée pourrait causer des problèmes (ex: redéfinir des fonctions). Pour rendre cette opération sûre, le script JS lui-même vérifie s'il a déjà été initialisé.
+    Injecting the same script multiple times on a page that was not reloaded could cause issues (e.g., redefining functions). To make this safe, the JS script itself checks whether it has already been initialized.
 
-    **Nouvelle logique (SÉCURISÉE) :**
+    **New logic (SAFE):**
 
     ```typescript
     // Vérifier un flag global pour s'assurer que le script ne s'exécute qu'une fois par contexte.
@@ -447,15 +447,15 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
     }
     ```
 
-#### Bénéfices de cette architecture
+#### Benefits of this Architecture
 
-- ✅ **Résilience aux crashs :** L'application se remet automatiquement d'un crash du processus de rendu de la `WebView`.
+- ✅ **Resilience to crashes:** The app automatically recovers from a `WebView` renderer crash.
 
-- ✅ **Gestion transparente de la navigation :** Le bridge reste fonctionnel même si le site web navigue vers une URL complètement différente.
+- ✅ **Transparent navigation handling:** The bridge remains functional even if the site navigates to a completely different URL.
 
-- ✅ **Fiabilité accrue :** Élimine une classe entière d'erreurs de timing et de "race conditions" difficiles à déboguer.
+- ✅ **Increased reliability:** Eliminates a whole class of timing errors and hard-to-debug race conditions.
 
-- ✅ **Simplification du code Dart :** La suppression du flag `_isBridgeInjected` simplifie la gestion de l'état dans le widget `AiWebviewScreen`.
+- ✅ **Simpler Dart code:** Removing the `_isBridgeInjected` flag simplifies state management in the `AiWebviewScreen` widget.
 
 ### 7.6. Known transient provider issue (permission/icon warning)
 
@@ -477,3 +477,15 @@ This model has now been evolved into the "meta-conversation" builder originally 
 3. **Iterative Refinement:** The ability to repeatedly extract a response for the *same* turn has been preserved. The user can refine the AI's output in the WebView and re-extract as needed. The "Session Reset" only occurs when a new prompt is initiated from the Hub.
 
 These enhancements successfully transition the project from "proving the automation" to "building the product," fully realizing the core workflow described in `BLUEPRINT_FULL.md`.
+
+### 7.8. UI Pattern: Draggable & Minimizable Companion Overlay
+
+To maximize the visible area of the provider `WebView`, the automation panel is implemented as a draggable, minimizable overlay instead of a static banner. A dedicated `OverlayStateNotifier` (keepAlive) manages position and minimized state so the overlay persists across tab switches.
+
+### 7.9. UI Pattern: Decoupled Error Messaging
+
+Errors during extraction or automation are surfaced via an ephemeral message provider rather than altering the permanent conversation history. This preserves the ability to retry without losing context, while making transient issues visible to the user.
+
+### 7.10. UI Pattern: Signal-Based UI Actions
+
+Business logic (e.g., `ConversationProvider`) emits a lightweight signal (e.g., `ScrollToBottomRequestProvider`) when UI actions like scrolling should occur. The UI layer listens to the signal and performs the action locally. This decouples state management from widget-specific controllers.
