@@ -48,6 +48,59 @@ class Conversation extends _$Conversation {
     state = [...state, message];
   }
 
+  /// Helper to build the <system> XML node as a string fragment.
+  String _buildSystemPromptXml(String systemPrompt) {
+    final builder = XmlBuilder();
+    builder.element(
+      'system',
+      nest: () {
+        builder.cdata(systemPrompt);
+      },
+    );
+    return builder.buildDocument().toXmlString(pretty: true);
+  }
+
+  /// Helper to build the <history> XML node as a string fragment.
+  String _buildHistoryXml(List<Message> history) {
+    final builder = XmlBuilder();
+    builder.element(
+      'history',
+      nest: () {
+        for (var i = 0; i < history.length;) {
+          if (history[i].isFromUser) {
+            final userMessage = history[i];
+            final assistantMessage =
+                (i + 1 < history.length && !history[i + 1].isFromUser)
+                    ? history[i + 1]
+                    : null;
+
+            builder.element(
+              'turn',
+              nest: () {
+                builder.element(
+                  'user',
+                  nest: () => builder.cdata(userMessage.text),
+                );
+                if (assistantMessage != null) {
+                  builder.element(
+                    'assistant',
+                    nest: () => builder.cdata(assistantMessage.text),
+                  );
+                }
+              },
+            );
+
+            i += (assistantMessage != null) ? 2 : 1;
+          } else {
+            // Skip orphaned assistant messages
+            i++;
+          }
+        }
+      },
+    );
+    return builder.buildDocument().toXmlString(pretty: true);
+  }
+
   void clearConversation() {
     state = [];
     ref.read(automationStateProvider.notifier).returnToIdle();
@@ -135,67 +188,39 @@ User: $newPrompt
           )
           .toList();
 
-      final builder = XmlBuilder();
-      builder.element(
-        'prompt',
-        nest: () {
-          if (systemPrompt.isNotEmpty &&
-              !providerConfig.supportsNativeSystemPrompt) {
-            builder.element(
-              'system',
-              nest: () {
-                builder.cdata(systemPrompt);
-              },
-            );
-          }
+      final shouldInjectSystemPrompt =
+          systemPrompt.isNotEmpty && !providerConfig.supportsNativeSystemPrompt;
 
-          if (history.isNotEmpty) {
-            builder.element(
-              'history',
-              nest: () {
-                for (var i = 0; i < history.length;) {
-                  if (history[i].isFromUser) {
-                    final userMessage = history[i];
-                    final assistantMessage =
-                        (i + 1 < history.length && !history[i + 1].isFromUser)
-                            ? history[i + 1]
-                            : null;
+      // WHY: Use StringBuffer for efficient string concatenation to build the template.
+      final promptBuffer = StringBuffer();
 
-                    builder.element(
-                      'turn',
-                      nest: () {
-                        builder.element(
-                          'user',
-                          nest: () => builder.cdata(userMessage.text),
-                        );
-                        if (assistantMessage != null) {
-                          builder.element(
-                            'assistant',
-                            nest: () => builder.cdata(assistantMessage.text),
-                          );
-                        }
-                      },
-                    );
+      // --- Part 1: Initial Instruction ---
+      promptBuffer.writeln(newPrompt);
+      if (shouldInjectSystemPrompt) {
+        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
+      }
 
-                    i += (assistantMessage != null) ? 2 : 1;
-                  } else {
-                    i++;
-                  }
-                }
-              },
-            );
-          }
+      // --- Part 2: Context ---
+      if (history.isNotEmpty) {
+        promptBuffer.writeln(_buildHistoryXml(history));
+      }
+      // Future <files> context would be added here.
 
-          builder.element('user_input', nest: () => builder.cdata(newPrompt));
-        },
-      );
+      // --- Part 3: Repeated Instruction for Focus ---
+      promptBuffer.writeln(newPrompt);
+      if (shouldInjectSystemPrompt) {
+        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
+      }
 
-      return builder.buildDocument().toXmlString(pretty: true);
+      final finalPrompt = promptBuffer.toString().trim();
+      log('Generated Prompt Template:\n---\n$finalPrompt\n---');
+      return finalPrompt;
     } on XmlException catch (e) {
       log(
-        'XML build error: ${e.message}. Falling back to simple prompt.',
+        'XML fragment build error: ${e.message}. Falling back to simple prompt.',
         error: e,
       );
+      // WHY: On any XML failure, we fall back to the reliable simple prompt.
       return _buildSimplePrompt(newPrompt, excludeMessageId: excludeMessageId);
     }
   }
@@ -263,10 +288,10 @@ User: $newPrompt
         urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       );
 
-      // TIMING (FRAGILE): 2s delay after loadUrl gives the WebView time to
+      // TIMING: 2s delay after loadUrl is required to give the WebView time to
       // initiate the page request before bridge readiness polling begins.
-      // Per BLUEPRINT_MVP.md, this mitigates [PAGENOTLOADED] startup races and
-      // is a known piece of technical debt to revisit if AI Studio changes.
+      // Per BLUEPRINT_MVP.md, this mitigates [PAGENOTLOADED] startup races.
+      // This delay is necessary for the workflow to function correctly.
       await Future<void>.delayed(const Duration(seconds: 2));
 
       // WHY: We now rely entirely on waitForBridgeReady.
