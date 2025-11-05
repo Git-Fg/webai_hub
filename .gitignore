@@ -26,6 +26,11 @@
 .pub/
 /build/
 
+# Generated Dart files
+**/*.g.dart
+**/*.freezed.dart
+**/*.mocks.dart
+
 # Node.js
 /node_modules/
 npm-debug.log*

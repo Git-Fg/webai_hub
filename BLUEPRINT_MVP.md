@@ -9,24 +9,24 @@
 
 To implement and validate the complete 4-phase "Assist & Validate" workflow for a **single AI provider**.
 
--   **Target Provider:** **Google AI Studio**. Chosen for its seemingly stable selectors, making it ideal for a hardcoded MVP.
--   **Core Functionality:** The user must be able to send a prompt from the native UI, watch the automation unfold in the `WebView`, manually refine the response, and validate it to bring it back into the native UI.
+- **Target Provider:** **Google AI Studio**. Chosen for its seemingly stable selectors, making it ideal for a hardcoded MVP.
+- **Core Functionality:** The user must be able to send a prompt from the native UI, watch the automation unfold in the `WebView`, manually refine the response, and validate it to bring it back into the native UI.
 
 ### 1.2. What's In Scope (Strictly)
 
--   **Functional 2-Tab Architecture:** A native "Hub" tab and a `WebView` tab for the target provider.
--   **Minimal Hub UI:** A text input field, a send button, and a list of chat bubbles to display the current conversation.
--   **Functional JavaScript Bridge:** Bi-directional communication (Dart <-> TypeScript) to drive the automation.
--   **Simplified Automation:** Prompt injection, send button click, and final response extraction.
--   **Basic Companion Overlay:** A simple banner displaying the automation state ("Sending...", "Ready for refinement") and "Extract & View Hub" / "Cancel" buttons.
+- **Functional 2-Tab Architecture:** A native "Hub" tab and a `WebView` tab for the target provider.
+- **Minimal Hub UI:** A text input field, a send button, and a list of chat bubbles to display the current conversation.
+- **Functional JavaScript Bridge:** Bi-directional communication (Dart <-> TypeScript) to drive the automation.
+- **Simplified Automation:** Prompt injection, send button click, and final response extraction.
+- **Basic Companion Overlay:** A simple banner displaying the automation state ("Sending...", "Ready for refinement") and "Extract & View Hub" / "Cancel" buttons.
 
 ### 1.3. What's Explicitly Out of Scope
 
--   **Data Persistence:** The conversation is managed **in-memory only**. It is lost when the app restarts.
--   **Multi-Provider Support:** The automation logic is hardcoded for a single provider.
--   **Remote Configuration:** All CSS selectors are **hardcoded** in the TypeScript file.
--   **Advanced Robustness:** No fallback strategy for selectors, no Shadow DOM handling.
--   **Sophisticated Error Handling:** The system only handles one failure type: `AUTOMATION_FAILED`, without diagnosing the cause.
+- **Data Persistence:** The conversation is managed **in-memory only**. It is lost when the app restarts.
+- **Multi-Provider Support:** The automation logic is hardcoded for a single provider.
+- **Remote Configuration:** All CSS selectors are **hardcoded** in the TypeScript file.
+- **Advanced Robustness:** No fallback strategy for selectors, no Shadow DOM handling.
+- **Sophisticated Error Handling:** The system only handles one failure type: `AUTOMATION_FAILED`, without diagnosing the cause.
 
 ## 2. Simplified Tech Stack
 
@@ -42,25 +42,25 @@ To implement and validate the complete 4-phase "Assist & Validate" workflow for 
 
 ### 3.1. App Structure
 
--   A `Stack` with `IndexedStack` and `Offstage` widgets managing two primary views:
-    1.  **Hub (Native):** A `Scaffold` with a `ListView` (for bubbles) and a `Row` (for the input field).
-    2.  **Provider (WebView):** An `InAppWebView` that loads the target provider's URL.
-    
+- A `Stack` with `IndexedStack` and `Offstage` widgets managing two primary views:
+    1. **Hub (Native):** A `Scaffold` with a `ListView` (for bubbles) and a `Row` (for the input field).
+    2. **Provider (WebView):** An `InAppWebView` that loads the target provider's URL.
+
 This approach was chosen over `TabBarView` to ensure the `WebView` state is preserved and can initialize in the background, which is critical for the automation workflow.
 
 ### 3.2. Session Persistence (Simplified)
 
--   **Approach:** Rely on the default behavior of `flutter_inappwebview`.
--   **User Workflow:**
-    1.  The user manually navigates to the `WebView` tab on first use.
-    2.  They sign in to their account on the provider's website.
-    3.  `flutter_inappwebview`'s `CookieManager` will persist the session for subsequent app launches. No manual cookie management is implemented.
+- **Approach:** Rely on the default behavior of `flutter_inappwebview`.
+- **User Workflow:**
+    1. The user manually navigates to the `WebView` tab on first use.
+    2. They sign in to their account on the provider's website.
+    3. `flutter_inappwebview`'s `CookieManager` will persist the session for subsequent app launches. No manual cookie management is implemented.
 
 ### 3.3. Communication Bridge
 
--   The TypeScript bridge is developed and bundled into a **single JavaScript file**.
--   This bundle is injected into the `WebView` via a **`UserScript`** at **`AT_DOCUMENT_START`**.
--   Communication follows a simple **RPC (Remote Procedure Call)** pattern, based on `Promise`s and `JavaScriptHandler`s.
+- The TypeScript bridge is developed and bundled into a **single JavaScript file**.
+- This bundle is injected into the `WebView` via a **`UserScript`** at **`AT_DOCUMENT_START`**.
+- Communication follows a simple **RPC (Remote Procedure Call)** pattern, based on `Promise`s and `JavaScriptHandler`s.
 
 ## 4. "Hardcoded" DOM Automation Engine
 
@@ -68,49 +68,54 @@ This is where the main MVP simplifications are made. The focus is on function, n
 
 ### 4.1. CSS Selectors
 
--   **Implementation:** Selectors are **`string` constants** declared directly at the top of the TypeScript automation engine file.
+- **Implementation:** Selectors are **`string` constants** declared directly at the top of the TypeScript automation engine file.
+
+  Note for v2.0 Evolution: The MVP deliberately used a simple `User: ... / Assistant: ...` plain‑text prompt format for maximum initial compatibility and speed. The full version transitions to a robust XML‑based prompt structure (see `BLUEPRINT_FULL.md`) to remove ambiguity and improve instruction adherence.
+
     ```typescript
     // File: ts_src/automation_engine.ts
     const PROMPT_INPUT_SELECTOR = "input-area";
     const SEND_BUTTON_SELECTOR = 'send-button[variant="primary"]';
     // ...etc
     ```
--   **Fallback Strategy:** **Yes (limited).** The TypeScript engine uses an **array of CSS selectors** for each target element (input, button), trying them sequentially. This provides basic resilience to minor DOM changes. If all selectors fail, the MVP considers the provider broken.
+
+- **Fallback Strategy:** **Yes (limited).** The TypeScript engine uses an **array of CSS selectors** for each target element (input, button), trying them sequentially. This provides basic resilience to minor DOM changes. If all selectors fail, the MVP considers the provider broken.
 
 ### 4.2. Interaction Logic
 
--   Interaction functions (`clickElement`, `typeText`) use `async/await` and a simple `waitForElement` primitive.
--   `waitForElement` implements a `setInterval` loop that checks for the element's presence until a timeout is reached. No complex "actionability" checks.
+- Interaction functions (`clickElement`, `typeText`) use `async/await` and a simple `waitForElement` primitive.
+- `waitForElement` implements a `setInterval` loop that checks for the element's presence until a timeout is reached. No complex "actionability" checks.
 
 ### 4.3. State Detection with `MutationObserver` (Simplified)
 
--   **Strategy:** A single `MutationObserver` is attached to a known, broad chat container.
--   **End-of-Generation Detection:** A simple **"debounce"** technique is used. The end is declared after a period of calm (e.g., 500ms) with no new DOM mutations. Performance and battery impact are not concerns for the MVP.
+- **Strategy:** A single `MutationObserver` is attached to a known, broad chat container.
+- **End-of-Generation Detection:** A simple **"debounce"** technique is used. The end is declared after a period of calm (e.g., 500ms) with no new DOM mutations. Performance and battery impact are not concerns for the MVP.
 
 ### 4.4. Error Handling (Improved)
 
--   **Implementation:** The automation workflow is wrapped in a single `try/catch` block.
--   **Communication:**
-    -   On success, the engine returns the extracted text to Dart.
-    -   On failure (any exception in the `catch` block), the engine sends a **structured error object** to Dart containing a `payload` (message), an `errorCode`, and a `location`. This structured approach greatly facilitates debugging.
--   **UI Response:** The Dart layer receives the structured error and displays an error message in the conversation, then dismisses the companion overlay.
+- **Implementation:** The automation workflow is wrapped in a single `try/catch` block.
+- **Communication:**
+  - On success, the engine returns the extracted text to Dart.
+  - On failure (any exception in the `catch` block), the engine sends a **structured error object** to Dart containing a `payload` (message), an `errorCode`, and a `location`. This structured approach greatly facilitates debugging.
+- **UI Response:** The Dart layer receives the structured error and displays an error message in the conversation, then dismisses the companion overlay.
 
 ## 5. MVP "Assist & Validate" Workflow
 
-1.  **Phase 1 (Sending):** L'utilisateur envoie un prompt. Dart appelle `startAutomation(prompt)`. Le script TypeScript trouve le champ de saisie, tape le prompt et clique sur le bouton d'envoi. L'application passe **instantanément** à l'état suivant.
-2.  **Phase 2 (Refining):** L'overlay affiche "Ready for refinement". L'utilisateur regarde la réponse se générer directement dans la `WebView` et peut interagir avec la page.
-3.  **Phase 3 (Validation):** L'utilisateur clique sur le bouton "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le texte de la dernière réponse et le retourne à Dart, qui met à jour l'interface de conversation. Cette action peut être répétée.
+1. **Phase 1 (Sending):** L'utilisateur envoie un prompt. Dart appelle `startAutomation(prompt)`. Le script TypeScript trouve le champ de saisie, tape le prompt et clique sur le bouton d'envoi. L'application passe **instantanément** à l'état suivant.
+2. **Phase 2 (Refining):** L'overlay affiche "Ready for refinement". L'utilisateur regarde la réponse se générer directement dans la `WebView` et peut interagir avec la page.
+3. **Phase 3 (Validation):** L'utilisateur clique sur le bouton "Extract & View Hub". Dart appelle `extractFinalResponse()`. Le script extrait le texte de la dernière réponse et le retourne à Dart, qui met à jour l'interface de conversation. Cette action peut être répétée.
 
 ## 6. MVP Validation Checklist
 
 The MVP is considered a **success** if and only if all the following conditions are met:
--   [ ] The user can send a prompt from the Hub.
--   [ ] The app automatically switches to the `WebView` tab.
--   [ ] The prompt is correctly injected and sent in the `WebView`.
--   [ ] The app detects the end of response generation.
--   [ ] The user can click "Validate" to extract the response.
--   [ ] The extracted response appears correctly in the Hub.
--   [ ] The entire workflow can be repeated multiple times without restarting the app.
+
+- [ ] The user can send a prompt from the Hub.
+- [ ] The app automatically switches to the `WebView` tab.
+- [ ] The prompt is correctly injected and sent in the `WebView`.
+- [ ] The app detects the end of response generation.
+- [ ] The user can click "Validate" to extract the response.
+- [ ] The extracted response appears correctly in the Hub.
+- [ ] The entire workflow can be repeated multiple times without restarting the app.
 
 ## 7. Leçons Apprises et Décisions Architecturales Clés
 
@@ -129,6 +134,7 @@ Initially, we attempted to use Flutter's native `TabController` with a `Provider
 **Architecture:**
 
 1. **Global Riverpod Provider** (`lib/main.dart`):
+
 ```dart
 @riverpod
 class CurrentTabIndex extends _$CurrentTabIndex {
@@ -162,6 +168,7 @@ class CurrentTabIndex extends _$CurrentTabIndex {
 3. **Access from Providers:** Always use `ref.read(currentTabIndexProvider.notifier).changeTo(index)`, accessible from any `NotifierProvider` without widget tree dependencies
 
 **Problems Solved:**
+
 - ✅ TabBar/IndexedStack synchronization: The TabBar updates visually when business logic changes tabs
 - ✅ Global accessibility: `currentTabIndexProvider` is accessible from all Riverpod providers
 - ✅ No race conditions: The provider manages state deterministically
@@ -171,6 +178,7 @@ class CurrentTabIndex extends _$CurrentTabIndex {
 #### Problème des Délais Arbitraires
 
 Early MVP iterations relied on arbitrary `Future.delayed(Duration(seconds: 2))` calls to wait for the WebView to initialize. This approach proved unreliable because:
+
 - The actual initialization time varies based on device performance and network conditions
 - Fixed delays created race conditions
 - Tests became flaky and non-deterministic
@@ -182,6 +190,7 @@ Early MVP iterations relied on arbitrary `Future.delayed(Duration(seconds: 2))` 
 **Implementation:**
 
 1. **JavaScript Side** (`lib/features/webview/widgets/ai_webview_screen.dart`):
+
 ```dart
 onLoadStop: (controller, url) async {
   // Script successfully injected
@@ -190,6 +199,7 @@ onLoadStop: (controller, url) async {
 ```
 
 2. **Dart Side** (`lib/features/webview/bridge/javascript_bridge.dart`):
+
 ```dart
 Future<void> waitForBridgeReady() async {
   // Wait for WebView controller
@@ -206,6 +216,7 @@ Future<void> waitForBridgeReady() async {
 ```
 
 **Benefits:**
+
 - ✅ Reliable: Waits for actual initialization event
 - ✅ Testable: Deterministic behavior in tests
 - ✅ Adaptive: Responds to actual device conditions, not arbitrary timeouts
@@ -216,6 +227,7 @@ Future<void> waitForBridgeReady() async {
 #### Pourquoi les Délais Sont des Anti-Patterns
 
 Adding `Future.delayed` or `setTimeout` as a first response to timing issues masks the underlying problem and creates technical debt:
+
 - They don't address the root cause
 - They make tests flaky
 - They degrade user experience (unnecessary waits)
@@ -246,6 +258,7 @@ Adding `Future.delayed` or `setTimeout` as a first response to timing issues mas
 **When a delay is acceptable:**
 
 Only as a **last resort** when:
+
 - The external system (e.g., WebView) provides no callback/event for the state you're waiting for
 - A short, bounded delay is the only way to ensure readiness
 - The delay is explicitly documented with rationale
@@ -265,12 +278,14 @@ During development of the integration test `bridge_communication_test.dart`, a c
 **Use `autoDispose` (default `@riverpod`) for:**
 
 ✅ **Screen/widget-specific state:**
+
 - `TextEditingController` for a form
 - Carousel current index
 - Local dialog or bottom sheet state
 - Temporary cache for a specific screen
 
 ✅ **FutureProvider/StreamProvider for screen data:**
+
 - Loading data that should refresh when the user leaves and returns to the screen
 - Example: `@riverpod Future<List<Item>> itemsForScreen(Ref ref) async { ... }`
 
@@ -279,20 +294,24 @@ During development of the integration test `bridge_communication_test.dart`, a c
 **Use `keepAlive: true` (`@Riverpod(keepAlive: true)`) for:**
 
 ✅ **Services and repositories:**
+
 - API clients, authentication services
 - Data repositories
 - **Example in project:** `javaScriptBridgeProvider` (keepAlive by default as simple provider)
 
 ✅ **Shared state between multiple screens:**
+
 - User authentication state
 - App theme
 - **Example in project:** `bridgeReadyProvider` - shared between WebView widget, test container, and business providers
 
 ✅ **Handles to unique resources:**
+
 - WebView controller (unique instance to share)
 - **Example in project:** `webViewControllerProvider` - unique reference to `InAppWebViewController`
 
 ✅ **Global navigation state:**
+
 - Active tab index (`currentTabIndexProvider`)
 - Global automation state (`automationStateProvider`)
 
@@ -326,11 +345,13 @@ class Conversation extends _$Conversation {
 #### Symptoms if You Use the Wrong Mode
 
 **If you use `autoDispose` for a shared provider:**
+
 - ❌ Different instances created in different contexts
 - ❌ Updates not visible between widget tree and external container (tests)
 - ❌ Provider disposes prematurely while still used elsewhere
 
 **If you use `keepAlive` for screen-local state:**
+
 - ❌ Memory leak: state retained even after navigation
 - ❌ Stale data reused after navigation
 - ❌ Degraded performance (providers not disposed unnecessarily)
@@ -371,7 +392,7 @@ Ce crash silencieux du processus de rendu de la `WebView` (ou une navigation ple
 
 Pour garantir que le bridge de communication est toujours disponible, une stratégie d'injection systématique et idempotente a été mise en place.
 
-1.  **Côté Dart (`ai_webview_screen.dart`) : Injection Systématique à chaque `onLoadStop`**
+1. **Côté Dart (`ai_webview_screen.dart`) : Injection Systématique à chaque `onLoadStop`**
 
     Le principe est de considérer que chaque chargement de page peut potentiellement avoir un contexte vierge. On injecte donc notre script à chaque fois, sans condition.
 
@@ -404,7 +425,7 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
     }
     ```
 
-2.  **Côté TypeScript (`automation_engine.ts`) : Assurer l'Idempotence**
+2. **Côté TypeScript (`automation_engine.ts`) : Assurer l'Idempotence**
 
     Injecter le même script plusieurs fois sur une page qui n'a pas été rechargée pourrait causer des problèmes (ex: redéfinir des fonctions). Pour rendre cette opération sûre, le script JS lui-même vérifie s'il a déjà été initialisé.
 
@@ -434,12 +455,14 @@ Pour garantir que le bridge de communication est toujours disponible, une strat�
 
 ### 7.6. Evolution Towards v2.0: From Linear Flow to Conversation Building
 
-The MVP successfully validated the core automation loop but revealed its primary limitation: the workflow is strictly **linear and single-turn**. Each prompt initiated a self-contained, one-shot automation cycle.
+The MVP successfully validated the core automation loop but highlighted its primary limitation: a strictly **linear, single-turn** workflow where each new prompt simply continued the existing web session.
 
-This model is insufficient for building a truly useful "meta-conversation" where context is curated and refined over multiple turns. The logical evolution, which will be detailed in `BLUEPRINT_FULL.md`, is to transition from this linear flow to a more dynamic, stateful conversation-building process based on two core concepts:
+This model has now been evolved into the "meta-conversation" builder originally envisioned. The key architectural changes implemented are:
 
-1.  **Iterative Refinement:** Allowing the user to re-extract a response for the *same* conversation turn. This transforms the "extract" step from a final action into a repeatable refinement loop, giving the user full control to perfect the AI's output before finalizing it.
+1. **Contextual Seeding:** When a user sends a new or edited prompt from the Hub, the **entire native conversation history is compiled into a single, formatted string**. This provides the AI with the full context of the curated dialogue.
 
-2.  **Contextual Seeding:** Enabling the start of a *new* conversation turn by packaging the entire history of the native "meta-conversation" and sending it to the AI in a fresh web session. This allows the AI to have full context of the curated dialogue, enabling sophisticated, multi-step reasoning.
+2. **Session Reset:** To ensure a clean slate, the `ConversationProvider` now **programmatically reloads the WebView to a "new chat" page before sending the compiled context**. This guarantees that each turn is hermetic and not influenced by any previous, unrelated web session state.
 
-These enhancements represent the shift from simply "proving the automation" to "building the product."
+3. **Iterative Refinement:** The ability to repeatedly extract a response for the *same* turn has been preserved. The user can refine the AI's output in the WebView and re-extract as needed. The "Session Reset" only occurs when a new prompt is initiated from the Hub.
+
+These enhancements successfully transition the project from "proving the automation" to "building the product," fully realizing the core workflow described in `BLUEPRINT_FULL.md`.

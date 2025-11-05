@@ -28,17 +28,19 @@ class WebViewController extends _$WebViewController {
       if (controller != null) {
         debugPrint('[WebViewController] Disposing controller.');
         // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
-        controller.evaluateJavascript(
-          source: '''
-          delete window.startAutomation;
-          delete window.extractFinalResponse;
-          delete window.inspectDOMForSelectors;
-          delete window.__AI_HYBRID_HUB_INITIALIZED__;
-        ''',
-        ).catchError((Object error) {
-          // WHY: Controller may already be destroyed, errors are non-critical here
-          debugPrint('[WebViewController] Error during disposal: $error');
-        });
+        unawaited(
+          controller.evaluateJavascript(
+            source: '''
+            delete window.startAutomation;
+            delete window.extractFinalResponse;
+            delete window.inspectDOMForSelectors;
+            delete window.__AI_HYBRID_HUB_INITIALIZED__;
+          ''',
+          ).catchError((Object error) {
+            // WHY: Controller may already be destroyed, errors are non-critical here
+            debugPrint('[WebViewController] Error during disposal: $error');
+          }),
+        );
       }
     });
     return null;
@@ -192,7 +194,8 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       dynamic isPageLoaded;
       try {
         isPageLoaded = await controller.evaluateJavascript(
-          source: "document.readyState === 'complete'",
+          source:
+              "document.readyState === 'interactive' || document.readyState === 'complete'",
         );
       } on Object catch (e, stackTrace) {
         throw AutomationError(
@@ -212,7 +215,8 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         throw AutomationError(
           errorCode: AutomationErrorCode.pageNotLoaded,
           location: 'startAutomation',
-          message: 'WebView page not fully loaded',
+          message:
+              'WebView page not ready for DOM interaction (must be interactive or complete)',
           diagnostics: {
             ..._getBridgeDiagnostics(),
             'documentReadyState': isPageLoaded.toString(),

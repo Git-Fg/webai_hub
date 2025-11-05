@@ -14,67 +14,76 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 
 ### ✨ Key Features
 
--   ✅ **Native Chat Experience** — A modern, intuitive chat UI for sending prompts and viewing conversations with features like message editing and copying.
--   ✅ **Multi-Provider Integration** — Connects seamlessly to multiple providers like Google AI Studio, with a modular architecture ready for ChatGPT, Claude, and more.
--   ✅ **"Assist & Validate" Workflow** — A unique process (Sending, Observing, Refining, Extraction) that gives you full control by visually validating each step in the integrated WebView.
--   ✅ **JavaScript Automation Engine** — A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
--   ❤️ **Free and Open-Source** — Released under the MIT license.
+- ✅ **Native Chat Experience** — A modern, intuitive chat UI for sending prompts and viewing conversations with features like message editing and copying.
+- ✅ **Multi-Provider Integration** — Connects seamlessly to multiple providers like Google AI Studio, with a modular architecture ready for ChatGPT, Claude, and more.
+- ✅ **Contextual "Assist & Validate" Workflow** — A unique process where you build a "meta-conversation" in the native UI. The entire chat history is used as context for the AI, enabling complex, multi-turn dialogues, while you visually validate each step in a fresh, clean WebView session.
+- ✅ **JavaScript Automation Engine** — A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
+- ❤️ **Free and Open-Source** — Released under the GNU license.
 
 ### 📊 Project Status & Roadmap
 
 This project is under active development.
 
-#### ✅ Currently Functional:
--   Core "Assist & Validate" workflow.
--   Integration with **Google AI Studio**.
--   Native chat interface with message history, editing, and copying.
--   Robust, modular TypeScript architecture for the automation engine.
+#### ✅ Currently Functional
 
-#### 🚀 On the Roadmap:
--   Adding more AI providers (ChatGPT, Claude, etc.).
--   Advanced chat features: conversation export (Markdown), multi-message selection.
--   File attachments (TXT, PDF) for context augmentation.
--   UI for managing provider-specific settings (model selection, temperature, etc.).
+- Core "Assist & Validate" workflow.
+- Integration with **Google AI Studio**.
+- Native chat interface with message history, editing, and copying.
+- Robust, modular TypeScript architecture for the automation engine.
+
+#### 🚀 On the Roadmap
+
+- Adding more AI providers (ChatGPT, Claude, etc.).
+- Advanced chat features: conversation export (Markdown), multi-message selection.
+- File attachments (TXT, PDF) for context augmentation.
+- UI for managing provider-specific settings (model selection, temperature, etc.).
 
 ### 🛠️ Technology Stack
 
--   **Framework**: Flutter & Dart
--   **State Management**: Riverpod (`riverpod_generator`)
--   **WebView Integration**: `flutter_inappwebview`
--   **Automation Bridge**: TypeScript + Vite
+- **Framework**: Flutter & Dart
+- **State Management**: Riverpod (`riverpod_generator`)
+- **WebView Integration**: `flutter_inappwebview`
+- **Automation Bridge**: TypeScript + Vite
 
 ### 🚀 Quick Start
 
 **Prerequisites**
--   Flutter SDK (>= 3.3.0)
--   Node.js and npm
+
+- Flutter SDK (>= 3.3.0)
+- Node.js and npm
 
 **Installation & Launch**
-1.  **Clone the repository:**
+
+1. **Clone the repository:**
+
     ```bash
     git clone <YOUR_REPO_URL>
     cd ai_hybrid_hub
     ```
 
-2.  **Install dependencies:**
+2. **Install dependencies:**
+
     ```bash
     flutter pub get
     npm install
     ```
 
-3.  **Build the JavaScript bridge:**
+3. **Build the JavaScript bridge:**
     *This command is mandatory after any change in the `ts_src/` directory.*
+
     ```bash
     npm run build
     ```
 
-4.  **Generate Dart code:**
+4. **Generate Dart code:**
     *Run this after modifying Riverpod providers or Freezed models.*
+
     ```bash
     flutter pub run build_runner build --delete-conflicting-outputs
     ```
 
-5.  **Run the application:**
+5. **Run the application:**
+
     ```bash
     flutter run
     ```

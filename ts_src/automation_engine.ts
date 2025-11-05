@@ -70,7 +70,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   (window as any).__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
 
   const SUPPORTED_SITES = {
-    'https://aistudio.google.com/prompts/new_chat': aiStudioChatbot,
+    'https://aistudio.google.com': aiStudioChatbot,
     // Future: Add other sites here
     // 'https://chatgpt.com/': chatGptChatbot,
     // 'https://claude.ai/': claudeChatbot,

@@ -21,6 +21,17 @@
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
+        },
+        {
+            "name": "Flutter Tests (Agent)",
+            "request": "launch",
+            "type": "dart",
+            "program": "test",
+            "args": [
+              "--reporter=expanded",
+              "--verbose"
+            ],
+            "console": "integratedTerminal"
         }
     ]
 }

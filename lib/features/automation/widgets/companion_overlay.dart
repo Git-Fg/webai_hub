@@ -66,9 +66,7 @@ class CompanionOverlay extends ConsumerWidget {
           icon: const Icon(Icons.close),
           label: const Text('Dismiss'),
           onPressed: () {
-            ref
-                .read(automationStateProvider.notifier)
-                .setStatus(const AutomationStateData.idle());
+            ref.read(automationStateProvider.notifier).returnToIdle();
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.grey[600],
@@ -88,57 +86,47 @@ class CompanionOverlay extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Primary: Extract & View Hub
-        Semantics(
-          label: 'companion_extract_and_view_hub_button',
-          button: true,
-          child: ElevatedButton.icon(
-            key: Key('companion_extract_and_view_hub_button_$messageCount'),
-            icon: isExtracting
-                ? const SizedBox(
-                    width: kDefaultIconSize,
-                    height: kDefaultIconSize,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.check_circle),
-            label: const Text('Extract & View Hub'),
-            onPressed: isExtracting
-                ? null
-                : () {
-                    unawaited(
-                      ref
-                          .read(conversationProvider.notifier)
-                          .extractAndReturnToHub(),
-                    );
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
+        ElevatedButton.icon(
+          key: Key('companion_extract_and_view_hub_button_$messageCount'),
+          icon: isExtracting
+              ? const SizedBox(
+                  width: kDefaultIconSize,
+                  height: kDefaultIconSize,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check_circle),
+          label: const Text('Extract & View Hub'),
+          onPressed: isExtracting
+              ? null
+              : () {
+                  unawaited(
+                    ref
+                        .read(conversationProvider.notifier)
+                        .extractAndReturnToHub(),
+                  );
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
           ),
         ),
         const SizedBox(width: kDefaultSpacing),
         // Secondary: Done
-        Semantics(
-          label: 'companion_done_button',
-          button: true,
-          child: ElevatedButton.icon(
-            key: const Key('companion_done_button'),
-            icon: const Icon(Icons.check_circle),
-            label: const Text('Done'),
-            onPressed: isExtracting
-                ? null
-                : () {
-                    ref
-                        .read(conversationProvider.notifier)
-                        .finalizeAutomation();
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey,
-              foregroundColor: Colors.white,
-            ),
+        ElevatedButton.icon(
+          key: const Key('companion_done_button'),
+          icon: const Icon(Icons.check_circle),
+          label: const Text('Done'),
+          onPressed: isExtracting
+              ? null
+              : () {
+                  ref.read(conversationProvider.notifier).finalizeAutomation();
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueGrey,
+            foregroundColor: Colors.white,
           ),
         ),
       ],
@@ -185,16 +173,23 @@ class CompanionOverlay extends ConsumerWidget {
                   ),
                   child: isLoading
                       ? const LoadingIndicator(size: kDefaultIconSize)
-                      : Icon(statusIcon, color: statusColor, size: kDefaultIconSize),
+                      : Icon(
+                          statusIcon,
+                          color: statusColor,
+                          size: kDefaultIconSize,
+                        ),
                 ),
                 const SizedBox(width: kMediumSpacing),
                 Expanded(
-                  child: Text(
-                    message,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: kSmallFontSize,
-                      color: Colors.grey[800],
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: kSmallFontSize,
+                        color: Colors.grey[800],
+                      ),
                     ),
                   ),
                 ),

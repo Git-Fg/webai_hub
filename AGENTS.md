@@ -1,3 +1,69 @@
+# AGENT MANIFESTO: AI Hybrid Hub
+
+Your primary mission is to assist in the development of the AI Hybrid Hub, a Flutter application bridging a native UI with web-based AI providers.
+
+Core Philosophy: Prioritize simplicity, robustness, and maintainability. The code is the single source of truth; your contributions must be clear and self-documenting.
+
+Current Phase: MVP-1.0. Focus on validating the core "Assist & Validate" workflow for the Google AI Studio provider. Refer to @blueprint_mvp for scope limitations.
+
+---
+
+## 📚 Critical File References (Aliases)
+
+- @blueprint_mvp: `BLUEPRINT_MVP.md` (Current scope & architecture)
+- @blueprint_full: `BLUEPRINT_FULL.md` (Future vision & v2.0 architecture)
+- @automation_engine: `ts_src/automation_engine.ts` (JS automation logic)
+- @conversation_provider: `lib/features/hub/providers/conversation_provider.dart` (Dart state orchestration)
+- @webview_screen: `lib/features/webview/widgets/ai_webview_screen.dart` (WebView implementation)
+- @contributing: `CONTRIBUTING.md` (Guide for human developers)
+
+---
+
+## 🔁 Development Workflow (Understand → Modify → Verify)
+
+### Phase 1 — Understand
+
+1. Consult blueprints: @blueprint_mvp and @blueprint_full.
+2. Explore the codebase (see Critical Structure below).
+3. Use recommended tools: dart-mcp, context7; mobile-mcp for device runs.
+
+### Phase 2 — Modify
+
+Absolute Rules:
+
+- TypeScript → npm run build after ANY modification in `ts_src/` (app uses compiled `assets/js/bridge.js`).
+- Riverpod/Freezed → flutter pub run build_runner build --delete-conflicting-outputs after any `@riverpod` / `@freezed` change.
+
+Symptoms if you forget the TypeScript build:
+
+- TypeScript modifications are not reflected in the app
+- JavaScript errors appear in the WebView console
+- Functions are not found when called from Dart
+
+Code Quality:
+
+- Explain "Why", not "What" (use // WHY: and // TIMING: where relevant).
+- Zero tolerance for debugging artifacts (no print/debugPrint/console.log; no commented-out code).
+
+Anti-Patterns / Timing:
+
+- Never use TabController for business logic; use `ref.read(currentTabIndexProvider.notifier).changeTo(index)`.
+- Avoid delays; only as last resort with a short, justified // TIMING: comment.
+
+### Phase 3 — Verify
+
+- Run unit tests: `flutter test` (or VS Code: Run configuration "Flutter Tests (Agent)").
+- For manual checks: use mobile-mcp and `flutter run -d <device_id>`.
+
+---
+
+## 🌍 Project Environment
+
+- Project Root: `/Users/felix/Documents/Flutter/WebAI_Hub/`
+- Editor Hooks: see `.vscode/settings.json` (format on save, markdownlint) and `.vscode/launch.json` (includes "Flutter Tests (Agent)").
+
+---
+
 # AGENTS.md
 
 Guide for AI agents working on this Flutter AI Hybrid Hub project.
@@ -120,17 +186,17 @@ Committing debugging artifacts is strictly forbidden. They pollute the codebase,
 
 **The following must be removed before any commit:**
 
--   `print()` or `debugPrint()` statements.
+- `print()` or `debugPrint()` statements.
 
--   `console.log()`, `console.warn()`, `console.error()`.
+- `console.log()`, `console.warn()`, `console.error()`.
 
--   **Commented-out code blocks.** Your Git history is the only archive. Old code left in comments becomes technical debt and quickly goes stale.
+- **Commented-out code blocks.** Your Git history is the only archive. Old code left in comments becomes technical debt and quickly goes stale.
 
 ### 🚫 Critical Anti-Patterns
 
 #### Anti-Pattern 1: Using Flutter `TabController` for Business Logic
 
-- ❌ **NEVER**: `final tabController = ref.read(tabControllerProvider); tabController?.animateTo(1);`
+- ❌ **NEVER**: `final tabController = ref.read(tabControllerProvider); tabcontroller?.animateTo(1);`
 - ✅ **ALWAYS**: `ref.read(currentTabIndexProvider.notifier).changeTo(index)`
 - **Why**: `TabController` is heavy to synchronize and cannot be shared between widgets and providers. See `BLUEPRINT_MVP.md` section 7.1 for details.
 
@@ -171,6 +237,7 @@ It is sometimes necessary to increase an existing delay because the web page beh
 1. **Diagnose**: Understand *precisely why* the initial delay is no longer sufficient. (Ex: "The AI loading spinner now lasts on average 500ms longer").
 
 2. **Document**: Add or update the comment to justify the increase.
+
    ```dart
    // TIMING (UPDATED 03/11/2025): Increased from 300ms to 800ms because the new AI interface
    // adds a fade animation that delays the button appearance.
@@ -225,9 +292,9 @@ When facing an error, prioritize a systematic approach: **1. Observe** (behavior
 
 ```text
 lib/features/
-├── hub/          # Native chat UI
-├── webview/      # WebView + JS bridge
-└── automation/   # Workflow + overlay
+├── hub          # Native chat UI
+├── webview      # WebView + JS bridge
+└── automation   # Workflow + overlay
 
 ts_src/
 └── automation_engine.ts  # JS engine (hardcoded selectors MVP)

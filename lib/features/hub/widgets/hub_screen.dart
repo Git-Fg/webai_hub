@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
+import 'package:ai_hybrid_hub/features/hub/widgets/conversation_settings_sheet.dart';
+import 'package:ai_hybrid_hub/features/settings/widgets/settings_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,9 +79,40 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            color: Colors.white,
+            tooltip: 'Open application settings',
+            onPressed: () {
+              unawaited(
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (context) => const SettingsScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            color: Colors.white,
+            tooltip: 'Open conversation settings',
+            onPressed: () {
+              unawaited(
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (BuildContext context) {
+                    return const ConversationSettingsSheet();
+                  },
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             color: Colors.white,
-            tooltip: 'New Chat',
+            tooltip: 'Start a new chat',
             onPressed: () {
               unawaited(
                 showDialog<void>(
@@ -150,7 +183,8 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: kDefaultPadding),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: kDefaultPadding),
                     itemCount: conversation.length,
                     itemBuilder: (context, index) {
                       return ChatBubble(message: conversation[index]);
@@ -180,46 +214,40 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Semantics(
-                      label: 'hub_message_input',
-                      textField: true,
-                      child: TextField(
-                        key: const Key('hub_message_input'),
-                        focusNode: _focusNode,
-                        controller: _textController,
-                        decoration: InputDecoration(
-                          hintText: 'Type your message...',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(kInputBorderRadius),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade100,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: kDefaultPadding + kTinyPadding,
-                            vertical: kMediumVerticalPadding,
-                          ),
+                    child: TextField(
+                      key: const Key('hub_message_input'),
+                      focusNode: _focusNode,
+                      controller: _textController,
+                      decoration: InputDecoration(
+                        hintText: 'Type your message...',
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(kInputBorderRadius),
+                          borderSide: BorderSide.none,
                         ),
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: kDefaultPadding + kTinyPadding,
+                          vertical: kMediumVerticalPadding,
+                        ),
                       ),
+                      maxLines: null,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: kDefaultSpacing),
-                  Semantics(
-                    label: 'hub_send_button',
-                    button: true,
-                    child: FloatingActionButton(
-                      key: const Key('hub_send_button'),
-                      onPressed: _sendMessage,
-                      backgroundColor: Colors.blue.shade600,
-                      mini: true,
-                      elevation: 2,
-                      child: const Icon(
-                        Icons.send,
-                        color: Colors.white,
-                      ),
+                  FloatingActionButton(
+                    key: const Key('hub_send_button'),
+                    tooltip: 'Send message',
+                    onPressed: _sendMessage,
+                    backgroundColor: Colors.blue.shade600,
+                    mini: true,
+                    elevation: 2,
+                    child: const Icon(
+                      Icons.send,
+                      color: Colors.white,
                     ),
                   ),
                 ],

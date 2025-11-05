@@ -4,7 +4,9 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -20,9 +22,6 @@ class AiWebviewScreen extends ConsumerStatefulWidget {
 class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   InAppWebViewController? webViewController;
   double _progress = 0;
-
-  static const String _aiStudioUrl =
-      'https://aistudio.google.com/prompts/new_chat';
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +101,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   Widget _buildWebView(String bridgeScript) {
     return InAppWebView(
       key: const ValueKey('ai_webview'),
-      initialUrlRequest: URLRequest(url: WebUri(_aiStudioUrl)),
+      initialUrlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       initialSettings: InAppWebViewSettings(
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
@@ -118,31 +117,26 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         controller.addJavaScriptHandler(
           handlerName: BridgeConstants.automationHandler,
           callback: (args) {
-            if (args.isNotEmpty) {
-              final event = args[0] as Map<String, dynamic>;
-              final eventType = event['type'] as String?;
+            if (args.isEmpty || args[0] is! Map) return;
+            try {
+              final json = Map<String, dynamic>.from(args[0] as Map);
+              final event = BridgeEvent.fromJson(json);
               final notifier = ref.read(conversationProvider.notifier);
               final automationNotifier =
                   ref.read(automationStateProvider.notifier);
 
-              switch (eventType) {
+              switch (event.type) {
                 case BridgeConstants.eventTypeNewResponse:
-                  automationNotifier.setStatus(
-                    AutomationStateData.refining(
-                      messageCount: ref.read(conversationProvider).length,
-                    ),
+                  automationNotifier.moveToRefining(
+                    messageCount: ref.read(conversationProvider).length,
                   );
                 case BridgeConstants.eventTypeLoginRequired:
-                  automationNotifier.setStatus(
-                    const AutomationStateData.needsLogin(),
-                  );
+                  automationNotifier.moveToNeedsLogin();
                 case BridgeConstants.eventTypeAutomationFailed:
-                  final payload =
-                      event['payload'] as String? ?? 'Unknown error';
-                  final errorCode = event['errorCode'] as String?;
-                  final location = event['location'] as String?;
-                  final diagnostics =
-                      event['diagnostics'] as Map<String, dynamic>?;
+                  final payload = event.payload ?? 'Unknown error';
+                  final errorCode = event.errorCode;
+                  final location = event.location;
+                  final diagnostics = event.diagnostics;
 
                   var errorMessage = payload;
                   if (errorCode != null && location != null) {
@@ -161,6 +155,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
 
                   notifier.onAutomationFailed(errorMessage);
               }
+            } on Object catch (e) {
+              debugPrint('[Bridge Handler] Failed to parse event: $e');
             }
           },
         );
@@ -192,10 +188,14 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
           _progress = 1.0;
         });
 
-        await controller.evaluateJavascript(source: bridgeScript);
-        debugPrint(
-          '[AiWebviewScreen] Bridge script universally (re-)injected on $url.',
-        );
+        final currentUrl = url?.toString() ?? '';
+        if (currentUrl.contains(WebViewConstants.aiStudioDomain) ||
+            currentUrl.startsWith('file://')) {
+          await controller.evaluateJavascript(source: bridgeScript);
+          debugPrint(
+            '[AiWebviewScreen] Bridge script (re-)injected on $currentUrl.',
+          );
+        }
 
         final bridge = ref.read(javaScriptBridgeProvider);
         if (bridge is JavaScriptBridge) {

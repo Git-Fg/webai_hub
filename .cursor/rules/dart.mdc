@@ -1,0 +1,22 @@
+---
+description: Dart build_runner/codegen guidance (auto-attached when editing lib/**)
+globs: lib/**/*.dart
+alwaysApply: false
+---
+
+## Code Generation — build_runner
+
+- After changes to `@riverpod` or `@freezed` code, run:
+  - `flutter pub run build_runner build --delete-conflicting-outputs`
+
+## Why
+
+- Providers and models rely on generated files (`*.g.dart`, `*.freezed.dart`).
+- Stale generated code causes runtime and test failures.
+
+## Guidance
+
+- Do NOT edit generated files.
+- Keep annotations minimal and clear; prefer readability over cleverness.
+- If analyzer complains about missing parts, re-run build_runner.
+- Before committing, ensure tests pass: `flutter test`.

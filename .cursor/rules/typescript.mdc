@@ -1,0 +1,21 @@
+---
+description: TypeScript workflow rules for AI Hybrid Hub (auto-attached when editing ts_src/**)
+globs: ts_src/**/*.ts
+alwaysApply: false
+---
+## TypeScript Workflow — MANDATORY
+
+- After ANY modification in `ts_src/**`, you MUST run:
+  - `npm run build`
+
+## Why
+
+- TS in `ts_src/` compiles to `assets/js/bridge.js` which the Flutter WebView loads.
+- If you forget the build, Dart→JS calls may fail (function not found) and UI behavior will reflect the previous bundle.
+
+## Additional Guidance
+
+- Never modify `assets/js/bridge.js` directly. It is generated.
+- If dependencies change: `npm install` then `npm run build`.
+- Update CSS selectors with care; prefer stable anchors and validate with `validation/aistudio_selector_validator.js` when relevant.
+- Keep code clear and self-documenting; add `// WHY:` and `// TIMING:` comments only when non-obvious.

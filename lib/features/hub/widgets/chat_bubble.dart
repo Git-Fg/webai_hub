@@ -20,132 +20,154 @@ class ChatBubble extends ConsumerWidget {
     final isEditable = message.isFromUser &&
         ref.watch(automationStateProvider) == const AutomationStateData.idle();
 
-    return GestureDetector(
-      onTap: isEditable
-          ? () {
-              _showEditDialog(context, ref, message);
-            }
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding, vertical: kTinyPadding),
-        child: Row(
-          mainAxisAlignment: message.isFromUser
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
-          children: [
-            if (!message.isFromUser) ...[
-              CircleAvatar(
-                radius: kMediumIconSize,
-                backgroundColor: Colors.blue.shade100,
-                child: Icon(
-                  Icons.smart_toy,
-                  size: kDefaultIconSize,
-                  color: Colors.blue.shade700,
-                ),
-              ),
-              const SizedBox(width: kDefaultSpacing),
-            ],
-            Flexible(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: kDefaultPadding,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: message.isFromUser
-                      ? Colors.blue.shade500
-                      : Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
-                    bottomLeft: Radius.circular(message.isFromUser ? kDefaultBorderRadius : kChatBubbleSmallRadius),
-                    bottomRight: Radius.circular(message.isFromUser ? kChatBubbleSmallRadius : kDefaultBorderRadius),
+    // This user-friendly label describes the content and the available action.
+    final semanticLabel = message.isFromUser
+        ? 'Your message: ${message.text}. ${isEditable ? 'Tap to edit and resend.' : ''}'
+        : 'Assistant message: ${message.text}';
+
+    return Semantics(
+      label: semanticLabel,
+      button: isEditable,
+      child: GestureDetector(
+        onTap: isEditable
+            ? () {
+                _showEditDialog(context, ref, message);
+              }
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: kDefaultPadding,
+            vertical: kTinyPadding,
+          ),
+          child: Row(
+            mainAxisAlignment: message.isFromUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: [
+              if (!message.isFromUser) ...[
+                CircleAvatar(
+                  radius: kMediumIconSize,
+                  backgroundColor: Colors.blue.shade100,
+                  child: Icon(
+                    Icons.smart_toy,
+                    size: kDefaultIconSize,
+                    color: Colors.blue.shade700,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: kSmallBlurRadius,
-                      offset: kDefaultShadowOffset,
-                    ),
-                  ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.text,
-                      style: TextStyle(
-                        color:
-                            message.isFromUser ? Colors.white : Colors.black87,
-                        fontSize: kDefaultTextFontSize,
+                const SizedBox(width: kDefaultSpacing),
+              ],
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: kDefaultPadding,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: message.isFromUser
+                        ? Colors.blue.shade500
+                        : Colors.grey.shade200,
+                    borderRadius:
+                        BorderRadius.circular(kDefaultBorderRadius).copyWith(
+                      bottomLeft: Radius.circular(
+                        message.isFromUser
+                            ? kDefaultBorderRadius
+                            : kChatBubbleSmallRadius,
+                      ),
+                      bottomRight: Radius.circular(
+                        message.isFromUser
+                            ? kChatBubbleSmallRadius
+                            : kDefaultBorderRadius,
                       ),
                     ),
-                    if (message.status == MessageStatus.sending)
-                      Padding(
-                        padding: const EdgeInsets.only(top: kTinyPadding),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            LoadingIndicator(
-                              size: kTinyFontSize,
-                              color: message.isFromUser
-                                  ? Colors.white70
-                                  : Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Sending...',
-                              style: TextStyle(
-                                fontSize: kTinyFontSize,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: kSmallBlurRadius,
+                        offset: kDefaultShadowOffset,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        message.text,
+                        style: TextStyle(
+                          color: message.isFromUser
+                              ? Colors.white
+                              : Colors.black87,
+                          fontSize: kDefaultTextFontSize,
+                        ),
+                      ),
+                      if (message.status == MessageStatus.sending)
+                        Padding(
+                          padding: const EdgeInsets.only(top: kTinyPadding),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              LoadingIndicator(
+                                size: kTinyFontSize,
                                 color: message.isFromUser
                                     ? Colors.white70
                                     : Colors.grey.shade600,
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else if (message.status == MessageStatus.error)
-                      Padding(
-                        padding: const EdgeInsets.only(top: kTinyPadding),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: kTinyFontSize,
-                              color: message.isFromUser
-                                  ? Colors.red.shade200
-                                  : Colors.red.shade600,
-                            ),
-                            const SizedBox(width: kTinyPadding),
-                            Text(
-                              'Error',
-                              style: TextStyle(
-                                fontSize: kTinyFontSize,
+                              const SizedBox(width: 6),
+                              Text(
+                                'Sending...',
+                                style: TextStyle(
+                                  fontSize: kTinyFontSize,
+                                  color: message.isFromUser
+                                      ? Colors.white70
+                                      : Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (message.status == MessageStatus.error)
+                        Padding(
+                          padding: const EdgeInsets.only(top: kTinyPadding),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: kTinyFontSize,
                                 color: message.isFromUser
                                     ? Colors.red.shade200
                                     : Colors.red.shade600,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: kTinyPadding),
+                              Text(
+                                'Error',
+                                style: TextStyle(
+                                  fontSize: kTinyFontSize,
+                                  color: message.isFromUser
+                                      ? Colors.red.shade200
+                                      : Colors.red.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            if (message.isFromUser) ...[
-              const SizedBox(width: kDefaultSpacing),
-              CircleAvatar(
-                radius: kMediumIconSize,
-                backgroundColor: Colors.green.shade100,
-                child: Icon(
-                  Icons.person,
-                  size: kDefaultIconSize,
-                  color: Colors.green.shade700,
+              if (message.isFromUser) ...[
+                const SizedBox(width: kDefaultSpacing),
+                CircleAvatar(
+                  radius: kMediumIconSize,
+                  backgroundColor: Colors.green.shade100,
+                  child: Icon(
+                    Icons.person,
+                    size: kDefaultIconSize,
+                    color: Colors.green.shade700,
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

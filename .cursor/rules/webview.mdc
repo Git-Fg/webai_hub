@@ -1,0 +1,27 @@
+---
+description: WebView debugging rules (JS bridge checks, console logs, build sync)
+globs: ["lib/features/webview/**", "ts_src/**"]
+alwaysApply: false
+---
+
+## WebView Debugging Workflow
+
+1) Confirm TypeScript build is up-to-date:
+   - Run `npm run build` after ANY change under `ts_src/**`.
+   - Do NOT edit `assets/js/bridge.js` directly.
+
+2) Inspect WebView console logs:
+   - Use `onConsoleMessage` in `lib/features/webview/widgets/ai_webview_screen.dart`.
+   - Look for missing functions/selectors and timing issues.
+
+3) Validate JS bridge and selectors:
+   - Ensure the Dart ↔ JS function names match.
+   - Re-check selectors and anchors; prefer robust, semantic hooks.
+   - Use `validation/aistudio_selector_validator.js` when adjusting AI Studio selectors.
+
+4) Avoid blind delays:
+   - Prefer event-based readiness (load stops, DOM observers).
+   - If a minimal delay is required, justify with `// TIMING:` and keep it short.
+
+5) If generated code changed (Riverpod/Freezed):
+   - Run `flutter pub run build_runner build --delete-conflicting-outputs`.

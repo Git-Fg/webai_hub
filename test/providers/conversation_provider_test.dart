@@ -3,40 +3,54 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart'; // Pour importer currentTabIndexProvider
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mockito/annotations.dart';
+import 'package:mockito/mockito.dart';
 
 import '../fakes/fake_javascript_bridge.dart';
+import 'conversation_provider_test.mocks.dart';
 
-// Mock Notifier pour les tests qui retourne toujours true
-class AlwaysReadyBridge extends BridgeReady {
-  @override
-  bool build() => true;
-}
-
+@GenerateNiceMocks([
+  MockSpec<InAppWebViewController>(),
+])
 void main() {
+  late ProviderContainer container;
+  late FakeJavaScriptBridge fakeBridge;
+  late MockInAppWebViewController mockWebViewController;
+  late ProviderSubscription<List<Message>> convSub;
+  late ProviderSubscription<dynamic> autoSub;
+  late ProviderSubscription<int> tabSub;
+
+  setUp(() {
+    fakeBridge = FakeJavaScriptBridge();
+    mockWebViewController = MockInAppWebViewController();
+    container = ProviderContainer(
+      overrides: [
+        javaScriptBridgeProvider.overrideWithValue(fakeBridge),
+        webViewControllerProvider.overrideWithValue(mockWebViewController),
+      ],
+    );
+
+    // Keep critical providers alive during async orchestration
+    convSub = container.listen(conversationProvider, (p, n) {});
+    autoSub = container.listen(automationStateProvider, (p, n) {});
+    tabSub = container.listen(currentTabIndexProvider, (p, n) {});
+  });
+
+  tearDown(() {
+    convSub.close();
+    autoSub.close();
+    tabSub.close();
+    container.dispose();
+  });
+
   group('ConversationProvider Tests', () {
-    late ProviderContainer container;
-    late FakeJavaScriptBridge fakeBridge;
-
-    setUp(() {
-      fakeBridge = FakeJavaScriptBridge();
-      container = ProviderContainer(
-        overrides: [
-          javaScriptBridgeProvider.overrideWithValue(fakeBridge),
-          // Forcer le bridge à être toujours prêt dans cet environnement de test unitaire.
-          // Cela isole le test de la logique de cycle de vie de la WebView.
-          bridgeReadyProvider.overrideWith(AlwaysReadyBridge.new),
-        ],
-      );
-    });
-
-    tearDown(() {
-      container.dispose();
-    });
-
     test('Initial state is correct', () {
       final initialConversation = container.read(conversationProvider);
       final initialAutomation = container.read(automationStateProvider);
@@ -49,28 +63,9 @@ void main() {
     test(
         'sendPromptToAutomation updates states, calls bridge, and requests tab switch',
         () async {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
-      // Ensure provider is initialized by reading it first
       final notifier = container.read(conversationProvider.notifier);
+      await notifier.sendPromptToAutomation('Hello');
 
-      // Act
-      try {
-        await notifier.sendPromptToAutomation('Hello');
-      } catch (e, stackTrace) {
-        // If there's an error, we want to see it with stack trace
-        conversationSub.close();
-        tabIndexSub.close();
-        fail(
-          'sendPromptToAutomation threw an error: $e\nStack trace: $stackTrace',
-        );
-      }
-
-      // Assert
       final conversation = container.read(conversationProvider);
       expect(
         conversation.length,
@@ -90,20 +85,38 @@ void main() {
 
       // VERIFY: S'assurer que le provider de navigation a été mis à jour
       expect(container.read(currentTabIndexProvider), 1);
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
+
+    test(
+      'sendPromptToAutomation should include system prompt when one is set',
+      () async {
+        // ARRANGE
+        // Set a system prompt in the conversation settings
+        container
+            .read(conversationSettingsProvider.notifier)
+            .updateSystemPrompt('You are a helpful assistant.');
+
+        // ACT
+        await container
+            .read(conversationProvider.notifier)
+            .sendPromptToAutomation('Hello');
+
+        // ASSERT
+        // Verify the prompt sent to the bridge contains the system prompt.
+        expect(
+          fakeBridge.lastPromptSent,
+          contains('You are a helpful assistant.'),
+        );
+        expect(
+          fakeBridge.lastPromptSent,
+          contains('User: Hello'),
+        );
+      },
+    );
 
     test(
         'extractAndReturnToHub updates message, clears pending prompt, stays in refining and returns to Hub',
         () async {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       final notifier = container.read(conversationProvider.notifier);
 
       await notifier.sendPromptToAutomation('Hello');
@@ -111,9 +124,9 @@ void main() {
       // sendPromptToAutomation sets state to observing, then we need to simulate
       // the NEW_RESPONSE_DETECTED event to transition to refining
       // For this test, we'll manually set to refining to simulate the observer detecting the response
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 2),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 2);
 
       await notifier.extractAndReturnToHub();
 
@@ -141,26 +154,17 @@ void main() {
 
       // VERIFY: Le pending prompt est effacé
       expect(container.read(pendingPromptProvider), isNull);
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test('extractAndReturnToHub updates last AI message and stays in refining',
         () async {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       final notifier = container.read(conversationProvider.notifier);
 
       await notifier.sendPromptToAutomation('Hello');
       // Simuler l'extraction initiale réussie
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 2),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 2);
 
       await notifier.extractAndReturnToHub();
 
@@ -179,20 +183,14 @@ void main() {
 
       // Onglet retourne au Hub
       expect(container.read(currentTabIndexProvider), 0);
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test('finalizeAutomation sets idle and returns to Hub tab', () async {
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       final notifier = container.read(conversationProvider.notifier);
       // Simuler un état de raffinement
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 2),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 2);
 
       notifier.finalizeAutomation();
 
@@ -201,19 +199,11 @@ void main() {
         const AutomationStateData.idle(),
       );
       expect(container.read(currentTabIndexProvider), 0);
-
-      tabIndexSub.close();
     });
 
     test(
         'cancelAutomation updates message, state, and requests tab switch back',
         () async {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       final notifier = container.read(conversationProvider.notifier);
 
       // First add messages to simulate a conversation with a sending message
@@ -222,9 +212,9 @@ void main() {
         ..addMessage('Sending...', false, status: MessageStatus.sending);
 
       // Set status to refining to simulate ongoing automation
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 1),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 1);
 
       notifier.cancelAutomation();
 
@@ -239,19 +229,11 @@ void main() {
 
       // VERIFY: S'assurer que le retour à l'onglet Hub a été demandé
       expect(container.read(currentTabIndexProvider), 0);
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test(
         'sendPromptToAutomation handles bridge errors gracefully (generic Exception)',
         () async {
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       fakeBridge.startAutomationErrorType = ErrorType.genericException;
 
       final notifier = container.read(conversationProvider.notifier);
@@ -281,17 +263,9 @@ void main() {
         contains('Fake automation error'),
         reason: "Le message d'erreur devrait contenir le détail de l'exception",
       );
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test('sendPromptToAutomation handles AutomationError correctly', () async {
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       fakeBridge.startAutomationErrorType = ErrorType.automationError;
 
       final notifier = container.read(conversationProvider.notifier);
@@ -321,19 +295,11 @@ void main() {
         contains('automationExecutionFailed'),
         reason: "Le message d'erreur devrait contenir le code d'erreur",
       );
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test(
         'extractAndReturnToHub handles extraction errors gracefully and sets state to failed',
         () async {
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       fakeBridge.extractFinalResponseErrorType = ErrorType.genericException;
 
       final notifier = container.read(conversationProvider.notifier);
@@ -341,9 +307,9 @@ void main() {
       await notifier.sendPromptToAutomation('Hello');
 
       // Set status to refining to simulate ongoing automation
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 1),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 1);
 
       await notifier.extractAndReturnToHub();
 
@@ -369,19 +335,11 @@ void main() {
         contains('Failed to extract response'),
         reason: "Le message devrait contenir le texte d'erreur",
       );
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
     test(
         'extractAndReturnToHub handles AutomationError during extraction and sets state to failed',
         () async {
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       fakeBridge.extractFinalResponseErrorType = ErrorType.automationError;
 
       final notifier = container.read(conversationProvider.notifier);
@@ -389,9 +347,9 @@ void main() {
       await notifier.sendPromptToAutomation('Hello');
 
       // Set status to refining to simulate ongoing automation
-      container.read(automationStateProvider.notifier).setStatus(
-            const AutomationStateData.refining(messageCount: 1),
-          );
+      container
+          .read(automationStateProvider.notifier)
+          .moveToRefining(messageCount: 1);
 
       await notifier.extractAndReturnToHub();
 
@@ -417,49 +375,43 @@ void main() {
         contains('Extraction Error'),
         reason: "Le message devrait contenir le texte d'erreur avec le code",
       );
-
-      conversationSub.close();
-      tabIndexSub.close();
     });
 
-    test('clearConversation resets the state to an empty list', () {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
+    test(
+      'clearConversation resets conversation, automation state, and conversation settings',
+      () {
+        // ARRANGE
+        final notifier = container.read(conversationProvider.notifier);
+        notifier.addMessage('Message 1', true);
 
-      // ARRANGE: Pré-peupler le provider avec des messages.
-      final notifier = container.read(conversationProvider.notifier);
+        // Set a non-default conversation setting
+        container
+            .read(conversationSettingsProvider.notifier)
+            .updateSystemPrompt('Test Prompt');
+        expect(
+          container.read(conversationSettingsProvider).systemPrompt,
+          'Test Prompt',
+        );
 
-      notifier
-        ..addMessage('Message 1', true)
-        ..addMessage('Message 2', false);
+        // ACT
+        notifier.clearConversation();
 
-      // S'assurer que l'état n'est pas vide au départ.
-      final convBefore = container.read(conversationProvider);
-      expect(convBefore, isNotEmpty);
-
-      // ACT: Appeler la nouvelle méthode que nous allons créer.
-      notifier.clearConversation();
-
-      // ASSERT: Vérifier que l'état est maintenant une liste vide.
-      final convAfter = container.read(conversationProvider);
-      expect(convAfter, isEmpty);
-
-      // Vérifier aussi que l'automatisation est réinitialisée à idle
-      final automationAfter = container.read(automationStateProvider);
-      expect(automationAfter, const AutomationStateData.idle());
-
-      conversationSub.close();
-    });
+        // ASSERT
+        expect(container.read(conversationProvider), isEmpty);
+        expect(
+          container.read(automationStateProvider),
+          const AutomationStateData.idle(),
+        );
+        // Verify that the settings have been reset to their default state
+        expect(
+          container.read(conversationSettingsProvider).systemPrompt,
+          '',
+        );
+      },
+    );
 
     test('editAndResendPrompt removes subsequent messages and resends prompt',
         () async {
-      // Keep providers alive by listening to them
-      final conversationSub =
-          container.listen(conversationProvider, (previous, next) {});
-      final tabIndexSub =
-          container.listen(currentTabIndexProvider, (previous, next) {});
-
       // ARRANGE
       final notifier = container.read(conversationProvider.notifier);
 
@@ -502,9 +454,94 @@ void main() {
 
       // 4. Le bridge a bien été appelé avec le nouveau prompt.
       expect(fakeBridge.lastPromptSent, newPrompt);
+    });
+  });
+  group('ConversationProvider Resilience Tests', () {
+    test('sendPromptToAutomation successfully handles a page reload', () async {
+      // Arrange: bridge not ready initially
+      fakeBridge.simulateReload();
 
-      conversationSub.close();
-      tabIndexSub.close();
+      when(
+        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
+      ).thenAnswer((_) async {});
+
+      // Simulate onLoadStop + bridge reinjection making it ready shortly after
+      Future<void>.delayed(const Duration(milliseconds: 30), () {
+        fakeBridge.markAsReady();
+      });
+
+      await container
+          .read(conversationProvider.notifier)
+          .sendPromptToAutomation('Test');
+
+      expect(fakeBridge.lastPromptSent, contains('Test'));
+      expect(
+        container.read(automationStateProvider),
+        const AutomationStateData.observing(),
+      );
+    });
+
+    test(
+        'sendPromptToAutomation reloads WebView with correct URL (interaction verification)',
+        () async {
+      var called = false;
+      when(
+        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
+      ).thenAnswer((invocation) async {
+        final req = invocation.namedArguments[#urlRequest] as URLRequest;
+        expect(req.url.toString(), WebViewConstants.aiStudioUrl);
+        called = true;
+      });
+
+      await container
+          .read(conversationProvider.notifier)
+          .sendPromptToAutomation('Hello');
+
+      expect(called, isTrue);
+    });
+
+    test('sendPromptToAutomation handles WebView loadUrl failure gracefully',
+        () async {
+      when(
+        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
+      ).thenAnswer((_) async => throw Exception('WebView failed to load'));
+
+      await container
+          .read(conversationProvider.notifier)
+          .sendPromptToAutomation('This will fail');
+
+      final conversation = container.read(conversationProvider);
+      expect(
+        container.read(automationStateProvider),
+        const AutomationStateData.failed(),
+      );
+      expect(conversation.last.status, MessageStatus.error);
+      expect(conversation.last.text, contains('An unexpected error occurred'));
+      expect(conversation.last.text, contains('WebView failed to load'));
+    });
+  });
+
+  group('ConversationProvider Context Building', () {
+    test(
+        'editAndResendPrompt truncates context to edited message and rebuilds prompt',
+        () async {
+      final notifier = container.read(conversationProvider.notifier);
+
+      notifier.addMessage('Prompt 1', true); // will edit this
+      final messageToEditId = notifier.state.last.id;
+      notifier.addMessage('Response 1', false);
+      notifier.addMessage('Prompt 2', true);
+      notifier.addMessage('Response 2', false);
+
+      await notifier.editAndResendPrompt(messageToEditId, 'Edited Prompt 1');
+
+      expect(fakeBridge.lastPromptSent, contains('Edited Prompt 1'));
+      expect(fakeBridge.lastPromptSent, isNot(contains('Response 1')));
+      expect(fakeBridge.lastPromptSent, isNot(contains('Prompt 2')));
+
+      final conversation = container.read(conversationProvider);
+      expect(conversation.length, 2);
+      expect(conversation.first.text, 'Edited Prompt 1');
     });
   });
 }

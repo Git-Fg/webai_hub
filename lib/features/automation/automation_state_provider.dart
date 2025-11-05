@@ -22,10 +22,18 @@ class AutomationState extends _$AutomationState {
   @override
   AutomationStateData build() => const AutomationStateData.idle();
 
-  // ignore: use_setters_to_change_properties, reason: Preserve existing API for MVP stability
-  void setStatus(AutomationStateData newStatus) {
-    state = newStatus;
-  }
+  void moveToSending() => state = const AutomationStateData.sending();
+
+  void moveToObserving() => state = const AutomationStateData.observing();
+
+  void moveToRefining({required int messageCount}) =>
+      state = AutomationStateData.refining(messageCount: messageCount);
+
+  void moveToFailed() => state = const AutomationStateData.failed();
+
+  void moveToNeedsLogin() => state = const AutomationStateData.needsLogin();
+
+  void returnToIdle() => state = const AutomationStateData.idle();
 }
 
 /// Provider for extraction state during phase 3

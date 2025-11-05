@@ -1,9 +1,12 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
@@ -40,9 +43,9 @@ class Conversation extends _$Conversation {
 
   void clearConversation() {
     state = [];
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.idle());
+    ref.read(automationStateProvider.notifier).returnToIdle();
+    // WHY: When a new chat starts, we reset its specific settings to default.
+    ref.invalidate(conversationSettingsProvider);
   }
 
   Future<void> editAndResendPrompt(String messageId, String newText) async {
@@ -65,9 +68,15 @@ class Conversation extends _$Conversation {
 
   /// Constructs the prompt with conversation context
   String _buildPromptWithContext(String newPrompt, {String? excludeMessageId}) {
+    final settings = ref.read(conversationSettingsProvider);
+    final systemPrompt = settings.systemPrompt;
+
     if (state.isEmpty ||
         state.where((m) => m.status == MessageStatus.success).isEmpty) {
-      return newPrompt;
+      // If there's a system prompt, prepend it even to the first message.
+      return systemPrompt.isNotEmpty
+          ? '$systemPrompt\n\nUser: $newPrompt'
+          : newPrompt;
     }
 
     // WHY: Build context from previous messages, excluding error/sending messages
@@ -78,10 +87,16 @@ class Conversation extends _$Conversation {
     }).toList();
 
     if (previousMessages.isEmpty) {
-      return newPrompt;
+      return systemPrompt.isNotEmpty
+          ? '$systemPrompt\n\nUser: $newPrompt'
+          : newPrompt;
     }
 
     final contextBuffer = StringBuffer();
+    if (systemPrompt.isNotEmpty) {
+      contextBuffer.writeln(systemPrompt);
+      contextBuffer.writeln();
+    }
     for (final message in previousMessages) {
       if (message.isFromUser) {
         contextBuffer.writeln('User: ${message.text}');
@@ -102,19 +117,21 @@ User: $newPrompt
     return fullPrompt.trim();
   }
 
-  Future<void> sendPromptToAutomation(
-    String prompt, {
+  Future<void> _orchestrateAutomation(
+    String promptForContext, {
     bool isResend = false,
     String? excludeMessageId,
   }) async {
-    final promptWithContext =
-        _buildPromptWithContext(prompt, excludeMessageId: excludeMessageId);
+    final promptWithContext = _buildPromptWithContext(
+      promptForContext,
+      excludeMessageId: excludeMessageId,
+    );
 
     // WHY: Store original prompt (without context) to resume after login
-    ref.read(pendingPromptProvider.notifier).set(prompt);
+    ref.read(pendingPromptProvider.notifier).set(promptForContext);
 
     if (!isResend) {
-      addMessage(prompt, true);
+      addMessage(promptForContext, true);
     }
 
     final assistantMessage = Message(
@@ -125,30 +142,38 @@ User: $newPrompt
     );
     state = [...state, assistantMessage];
 
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.sending());
+    ref.read(automationStateProvider.notifier).moveToSending();
 
     if (!ref.mounted) return;
 
     try {
-      // Utilise le provider Riverpod qui EXISTE et FONCTIONNE
+      final bridge = ref.read(javaScriptBridgeProvider);
+      final webViewController = ref.read(webViewControllerProvider);
+
+      // Switch to the WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
 
-      // Let Flutter's render cycle complete to build the WebView widget
-      // Duration.zero cedes control to the event loop, allowing Flutter to
-      // process widget rebuilds (IndexedStack shows WebView, AiWebviewScreen is created)
+      // TIMING: Yield to event loop to ensure widget tree updates before WebView reload
       await Future<void>.delayed(Duration.zero);
 
       if (!ref.mounted) return;
 
-      final bridge = ref.read(javaScriptBridgeProvider);
+      // CRITICAL: Reload the WebView to get a clean slate, per blueprint.
+      // This ensures each new turn is isolated and prevents context leaks.
+      await webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
+      );
 
-      // Wait for WebView to be created and bridge to be ready
-      // This method handles all timing internally (WebView creation + JS bridge ready)
+      // TIMING (FRAGILE): 2s delay after loadUrl gives the WebView time to
+      // initiate the page request before bridge readiness polling begins.
+      // Per BLUEPRINT_MVP.md, this mitigates [PAGENOTLOADED] startup races and
+      // is a known piece of technical debt to revisit if AI Studio changes.
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      // WHY: We now rely entirely on waitForBridgeReady.
+      // This function polls until the onLoadStop event has fired, the script has been injected,
+      // and the JS side has signaled back that it's ready. This is the most robust method.
       await bridge.waitForBridgeReady();
-
-      // TIMING: No fixed delay; detection happens on JS side via immediate notification
 
       if (!ref.mounted) return;
 
@@ -166,6 +191,7 @@ User: $newPrompt
         // Ignore cast errors in tests - FakeJavaScriptBridge doesn't extend JavaScriptBridge
       }
 
+      // Start the automation with the full contextual prompt.
       await bridge.startAutomation(promptWithContext);
 
       if (ref.mounted) {
@@ -174,9 +200,7 @@ User: $newPrompt
           MessageStatus.sending,
         );
 
-        ref.read(automationStateProvider.notifier).setStatus(
-              const AutomationStateData.observing(),
-            );
+        ref.read(automationStateProvider.notifier).moveToObserving();
 
         await bridge.startResponseObserver();
       }
@@ -190,11 +214,21 @@ User: $newPrompt
         }
 
         _updateLastMessage(errorMessage, MessageStatus.error);
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(const AutomationStateData.failed());
+        ref.read(automationStateProvider.notifier).moveToFailed();
       }
     }
+  }
+
+  Future<void> sendPromptToAutomation(
+    String prompt, {
+    bool isResend = false,
+    String? excludeMessageId,
+  }) async {
+    await _orchestrateAutomation(
+      prompt,
+      isResend: isResend,
+      excludeMessageId: excludeMessageId,
+    );
   }
 
   // Extract and return to Hub without finalizing automation
@@ -224,9 +258,7 @@ User: $newPrompt
         }
         _updateLastMessage(errorMessage, MessageStatus.error);
         // WHY: Set failed state ONLY if extraction fails
-        ref.read(automationStateProvider.notifier).setStatus(
-              const AutomationStateData.failed(),
-            );
+        ref.read(automationStateProvider.notifier).moveToFailed();
       }
     } finally {
       // WHY: This block executes after try OR catch, ensuring loading indicator is always disabled
@@ -238,34 +270,26 @@ User: $newPrompt
 
   // Finalize automation and return to Hub
   void finalizeAutomation() {
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.idle());
+    ref.read(automationStateProvider.notifier).returnToIdle();
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }
 
   void cancelAutomation() {
     _updateLastMessage('Automation cancelled by user', MessageStatus.error);
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.idle());
+    ref.read(automationStateProvider.notifier).returnToIdle();
 
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }
 
   void onAutomationFailed(String error) {
     _updateLastMessage('Automation failed: $error', MessageStatus.error);
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.failed());
+    ref.read(automationStateProvider.notifier).moveToFailed();
   }
 
   Future<void> resumeAutomationAfterLogin() async {
     final pendingPrompt = ref.read(pendingPromptProvider);
     if (pendingPrompt == null) {
-      ref
-          .read(automationStateProvider.notifier)
-          .setStatus(const AutomationStateData.idle());
+      ref.read(automationStateProvider.notifier).returnToIdle();
       return;
     }
 
@@ -277,9 +301,7 @@ User: $newPrompt
       MessageStatus.sending,
     );
 
-    ref
-        .read(automationStateProvider.notifier)
-        .setStatus(const AutomationStateData.sending());
+    ref.read(automationStateProvider.notifier).moveToSending();
 
     if (!ref.mounted) return;
 
@@ -300,11 +322,9 @@ User: $newPrompt
           MessageStatus.sending,
         );
 
-        ref.read(automationStateProvider.notifier).setStatus(
-              AutomationStateData.refining(
-                messageCount: state.length,
-              ),
-            );
+        ref
+            .read(automationStateProvider.notifier)
+            .moveToRefining(messageCount: state.length);
       }
     } on Object catch (e) {
       if (ref.mounted) {
@@ -316,9 +336,7 @@ User: $newPrompt
         }
 
         _updateLastMessage(errorMessage, MessageStatus.error);
-        ref
-            .read(automationStateProvider.notifier)
-            .setStatus(const AutomationStateData.failed());
+        ref.read(automationStateProvider.notifier).moveToFailed();
       }
     }
   }

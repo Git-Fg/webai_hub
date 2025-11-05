@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 
@@ -15,6 +16,8 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // Pour simuler des erreurs - séparés par méthode
   ErrorType startAutomationErrorType = ErrorType.none;
   ErrorType extractFinalResponseErrorType = ErrorType.none;
+  String? extractFinalResponseValue =
+      'This is a fake AI response from the test bridge.';
 
   // Legacy support: si shouldThrowError est true, on lève une Exception générique
   bool get shouldThrowError =>
@@ -31,10 +34,25 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
+  // --- NEW: Controle d'async pour l'état de readiness du bridge ---
+  late Completer<void> _readyCompleter = Completer<void>()..complete();
+
+  // Permet aux tests de simuler un rechargement de page: le bridge redevient non-prêt
+  void simulateReload() {
+    _readyCompleter = Completer<void>();
+  }
+
+  // Permet aux tests d'indiquer que le bridge est prêt à nouveau
+  void markAsReady() {
+    if (!_readyCompleter.isCompleted) {
+      _readyCompleter.complete();
+    }
+  }
+
   @override
   Future<void> waitForBridgeReady() async {
-    // Dans les tests, le bridge est toujours prêt immédiatement
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    // Attendre explicitement que les tests marquent le bridge comme prêt
+    await _readyCompleter.future;
   }
 
   @override
@@ -81,8 +99,14 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
         );
       case ErrorType.none:
         wasExtractCalled = true;
-        // Retourner une réponse prédictible
-        return 'This is a fake AI response from the test bridge.';
+        if (extractFinalResponseValue == null) {
+          throw AutomationError(
+            errorCode: AutomationErrorCode.responseExtractionFailed,
+            location: 'extractFinalResponse',
+            message: 'Extraction returned null or an invalid type.',
+          );
+        }
+        return extractFinalResponseValue!;
     }
   }
 
@@ -99,5 +123,9 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     wasExtractCalled = false;
     startAutomationErrorType = ErrorType.none;
     extractFinalResponseErrorType = ErrorType.none;
+    extractFinalResponseValue =
+        'This is a fake AI response from the test bridge.';
+    // Reset readiness to completed by default to avoid hanging tests
+    _readyCompleter = Completer<void>()..complete();
   }
 }
