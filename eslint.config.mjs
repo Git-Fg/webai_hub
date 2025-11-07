@@ -68,19 +68,9 @@ const noJquerySelectorsRule = {
           if (selectorString.includes(invalid)) {
             const details = invalidSelectorMap[invalid];
             
-            // AI Agent Optimized Message
-            const agentMessage = `
-[AI Agent Action] Invalid Selector Detected.
-- Invalid: ${invalid}
-- Reason: ${details.reason}
-- Suggested Alternative: ${details.suggestion}
-- File: ${context.getFilename()}
-- Location: Line ${node.loc?.start.line || 'unknown'}
-            `;
-            
             context.report({
               node,
-              message: `Invalid selector '${invalid}'. ${details.reason} Suggestion: ${details.suggestion}` + agentMessage,
+              message: `Invalid selector '${invalid}'. ${details.reason} Suggestion: ${details.suggestion}`,
             });
 
             // Report only the first invalid selector found in the string.
