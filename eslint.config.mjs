@@ -75,7 +75,7 @@ const noJquerySelectorsRule = {
 - Reason: ${details.reason}
 - Suggested Alternative: ${details.suggestion}
 - File: ${context.getFilename()}
-- Location: Line ${node.loc.start.line}
+- Location: Line ${node.loc?.start.line || 'unknown'}
             `;
             
             context.report({
