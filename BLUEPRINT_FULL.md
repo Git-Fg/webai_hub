@@ -63,6 +63,12 @@ ts_src/
 
 The core user experience is building a "meta-conversation" within the native Hub. This is orchestrated through a state-driven cycle that gives the user complete control over the AI's input and output.
 
+The "Assist & Validate" workflow now supports two distinct operational modes, configurable by the user:
+
+- **"YOLO" Mode (Default):** A fully automated, streamlined workflow for rapid interaction. When enabled, the app automatically sends the prompt, waits for the AI to finish generating its response, and immediately extracts the result back into the native Hub UI in a single, seamless operation. This is the primary mode for users who trust the automation and want the fastest possible results.
+
+- **Manual Refinement Mode:** The original, step-by-step workflow. When "YOLO" mode is disabled, the app sends the prompt and then pauses, transitioning to the `refining` state. This allows the user to manually interact with the WebView, guide the AI through several iterations, and decide exactly when to click "Extract & View Hub" to bring the final, curated response back into the Hub. This mode provides maximum control and is ideal for complex, multi-step refinements.
+
 #### 3.2.1. Building the Conversation: Contextual Seeding & Iterative Refinement (XML-Driven)
 
 The workflow is now driven by a structured XML prompt that ensures clarity, eliminates ambiguity, and provides extensibility. While a simpler plain‑text format remains available as a fallback, the default is the following XML schema:

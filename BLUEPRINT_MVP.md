@@ -105,6 +105,8 @@ This is where the main MVP simplifications are made. The focus is on function, n
 2. **Phase 2 (Refining):** The overlay shows "Ready for refinement". The user watches the response generate directly in the `WebView` and can interact with the page.
 3. **Phase 3 (Validation):** The user taps the "Extract & View Hub" button. Dart calls `extractFinalResponse()`. The script extracts the latest response's text and returns it to Dart, which updates the conversation UI. This action can be repeated.
 
+> **Evolution Note for v2.0:** The MVP's manual "Refining" and "Validation" phases have become the foundation for "Manual Refinement Mode" in the full version. The full version introduces a default "YOLO Mode" that automates this entire cycle for a much faster user experience.
+
 ## 6. MVP Validation Checklist
 
 The MVP is considered a **success** if and only if all the following conditions are met:
