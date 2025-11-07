@@ -47,7 +47,8 @@ const SELECTORS = {
     // WHY: Primary by aria-label, fallback by icon text (best-effort)
     EDIT_BUTTON: [
         'button[aria-label="Edit"]',
-        'button:has(span:contains("edit"))',
+        'button[aria-label*="edit" i]',
+        'button:has([aria-label*="edit" i])',
     ],
     EDIT_TEXTAREA: [
         'textarea',
