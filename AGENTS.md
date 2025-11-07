@@ -40,11 +40,7 @@ You MUST commit after every logical, self-contained unit of work is completed an
 
 Use structured, conventional commit messages. This is not optional.
 
-First, stage all changes:
-
-```bash
-git add .
-```
+First, stage all changes.
 
 Then, commit with a message following this exact format: `type(scope): summary`
 
@@ -54,19 +50,17 @@ Then, commit with a message following this exact format: `type(scope): summary`
 
 **Examples:**
 
-```bash
-git commit -m "fix(webview): Correct bridge timeout handling on Android"
+commit message : "fix(webview): Correct bridge timeout handling on Android"
 
-git commit -m "feat(hub): Implement ephemeral error messages via new provider"
+commit message : "feat(hub): Implement ephemeral error messages via new provider"
 
-git commit -m "refactor(aistudio): Consolidate settings logic into applyAllSettings"
+commit message : "refactor(aistudio): Consolidate settings logic into applyAllSettings"
 
-git commit -m "docs(agents): Add Version Control Protocol with never-push rule"
-```
+commit message : "docs(agents): Add Version Control Protocol with never-push rule"
 
-**3. 🛑 ABSOLUTE CONSTRAINT: NEVER PUSH**
+**3. 🛑 ABSOLUTE CONSTRAINT: NEVER PUSH and NEVER USE GIT CLI**
 
-You MUST NEVER run `git push`. Your role is to build a clean, logical commit history on the local branch. The human user is solely responsible for reviewing, squashing (if necessary), and pushing changes to the remote repository. This is a critical safety boundary.
+You MUST NEVER use directly `git` cli command and never push by yourself : use your native tool `git`. Your role is to build a clean, logical commit history on the local branch. The human user is solely responsible for reviewing, squashing (if necessary), and pushing changes to the remote repository. This is a critical safety boundary.
 
 ---
 

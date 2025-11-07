@@ -19,7 +19,7 @@
     {
       "id": "test_2",
       "name": "Model Selection",
-      "description": "Change the model and verify it works",
+      "description": "Change model and verify it works",
       "logContains": "[AI Studio LOG] Setting model to",
       "steps": [
         "Open settings panel",
@@ -88,9 +88,20 @@
     },
     {
       "testId": "test_2",
-      "status": "in_progress",
+      "status": "issues_detected",
       "startTime": "2025-11-07T13:53:31Z",
-      "logContains": "[AI Studio LOG] Setting model to"
+      "endTime": "2025-11-07T13:54:00Z",
+      "logContains": "[AI Studio LOG] Setting model to",
+      "issues": [
+        "Model selection dialog appeared but selected model didn't persist",
+        "Messages in new chat session not being sent properly"
+      ]
+    },
+    {
+      "testId": "test_3",
+      "status": "in_progress",
+      "startTime": "2025-11-07T13:54:01Z",
+      "logContains": "[AI Studio LOG] Setting Temperature to"
     }
   ],
   "fixAttempts": []

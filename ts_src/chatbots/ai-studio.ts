@@ -2,7 +2,7 @@
 
 import { Chatbot, AutomationOptions } from '../types/chatbot';
 import { notifyDart } from '../utils/notify-dart';
-import { waitForElement, waitForElementWithin } from '../utils/wait-for-element';
+import { waitForElement, waitForElementWithin, waitForElementByText } from '../utils/wait-for-element';
 import { waitForActionableElement } from '../utils/wait-for-actionable-element';
 import { assertIsElement } from '../utils/assertions';
 import { 
@@ -205,36 +205,15 @@ export class AiStudioChatbot implements Chatbot {
     }
   }
 
-  private async waitForElementByText(tagName: string, text: string): Promise<Element> {
-    return new Promise((resolve, reject) => {
-      const intervalTime = TIMING.POLL_INTERVAL_MS;
-      let elapsedTime = 0;
-      const interval = setInterval(() => {
-        const elements = Array.from(document.querySelectorAll(tagName));
-        const targetElement = elements.find(el => el.textContent?.trim().toLowerCase() === text.toLowerCase());
-        if (targetElement) {
-          clearInterval(interval);
-          resolve(targetElement);
-          return;
-        }
-        elapsedTime += intervalTime;
-        if (elapsedTime >= TIMING.POLL_TIMEOUT_MS) {
-          clearInterval(interval);
-          reject(new Error(`Element <${tagName}> with text "${text}" not found within ${TIMING.POLL_TIMEOUT_MS}ms.`));
-        }
-      }, intervalTime);
-    });
-  }
-
   private async setSliderValueByLabel(labelName: string, value: number): Promise<void> {
     try {
-      const labelElement = await this.waitForElementByText('h3', labelName) as HTMLElement;
+      const labelElement = await waitForElementByText('h3', labelName) as HTMLElement;
       if (!labelElement) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find the '${labelName}' label in the settings panel.`);
+        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find '${labelName}' label in settings panel.`);
       }
       const container = labelElement.closest('.settings-item-column');
       if (!container) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find parent container for the '${labelName}' label.`);
+        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find parent container for '${labelName}' label.`);
       }
       const inputElement = container.querySelector('input[type=number]') as HTMLInputElement;
       if (!inputElement) {
@@ -310,7 +289,7 @@ export class AiStudioChatbot implements Chatbot {
 
   private async _setTopP(topP: number): Promise<void> {
     console.log(`[AI Studio LOG] Setting Top-P to: ${topP}`);
-    const advancedToggle = await this.waitForElementByText('p', 'Advanced settings') as HTMLElement;
+    const advancedToggle = await waitForElementByText('p', 'Advanced settings') as HTMLElement;
     const advancedToggleContainer = advancedToggle.closest(SELECTORS.ADVANCED_SETTINGS_TOGGLE);
     if (advancedToggleContainer && !advancedToggleContainer.classList.contains('expanded')) {
       (advancedToggleContainer as HTMLElement).click();
@@ -369,7 +348,7 @@ export class AiStudioChatbot implements Chatbot {
       }
     }
     if (options.useWebSearch !== undefined || options.urlContext !== undefined) {
-      const toolsToggle = await this.waitForElementByText('p', 'Tools') as HTMLElement;
+      const toolsToggle = await waitForElementByText('p', 'Tools') as HTMLElement;
       const toolsToggleContainer = toolsToggle.closest(SELECTORS.TOOLS_TOGGLE_SELECTOR);
       if (toolsToggleContainer && !toolsToggleContainer.classList.contains('expanded')) {
         (toolsToggleContainer as HTMLElement).click();

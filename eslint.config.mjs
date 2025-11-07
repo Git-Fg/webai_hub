@@ -19,13 +19,8 @@ const noJquerySelectorsRule = {
     schema: [],
   },
   create(context) {
-    // Skip checking in the ESLint config file itself
+    // Skip checking in ESLint config file itself
     if (context.getFilename().includes('eslint.config.mjs')) {
-      return {};
-    }
-    
-    // Skip checking in wait-for-element.ts since it has special handling for :contains()
-    if (context.getFilename().includes('wait-for-element.ts')) {
       return {};
     }
     

@@ -28,28 +28,6 @@ Context: URL=${pageState.url}, Timeout=${timeout}ms, Elapsed=${elapsedTime}ms
 Page State: Ready=${pageState.readyState}, VisibleElements=${pageState.visibleElementsCount}`;
 }
 
-// Helper to find elements by text content (for :contains() emulation)
-function findElementByText(selector: string, textMatch: string, caseSensitive = false): Element | null {
-  try {
-    // Extract base selector (remove :contains() part)
-    const baseSelector = selector.split(':contains')[0];
-    const elements = document.querySelectorAll(baseSelector || '*');
-    
-    for (const el of elements) {
-      const text = el.textContent || '';
-      const matchText = caseSensitive ? text : text.toLowerCase();
-      const searchText = caseSensitive ? textMatch : textMatch.toLowerCase();
-      
-      if (matchText.includes(searchText)) {
-        return el;
-      }
-    }
-      } catch {
-        // Fallback to standard querySelector
-      }
-  return null;
-}
-
 // WHY: Check selectors against DOM - extracted for reuse in both observer and polling
 function checkSelectors(
   selectors: readonly string[],
@@ -62,25 +40,17 @@ function checkSelectors(
     
     let element: Element | null = null;
     
-    // Handle :contains() pseudo-selector
-    if (selector.includes(':contains(')) {
-      const match = selector.match(/^(.+):contains\(['"](.+)['"]\)$/);
-      if (match && match[1] && match[2]) {
-        element = findElementByText(match[1], match[2]);
+    // Standard CSS selector only
+    try {
+      if (root) {
+        element = (root as Element | Document).querySelector(selector);
+      } else {
+        element = document.querySelector(selector);
       }
-    } else {
-      // Standard CSS selector
-      try {
-        if (root) {
-          element = (root as Element | Document).querySelector(selector);
-        } else {
-          element = document.querySelector(selector);
-        }
-      } catch (e) {
-        // Invalid selector, skip
-        console.warn(`[${operation}] Invalid selector "${selector}" (index ${i}):`, e);
-        continue;
-      }
+    } catch (e) {
+      // Invalid selector, skip
+      console.warn(`[${operation}] Invalid selector "${selector}" (index ${i}):`, e);
+      continue;
     }
     
     if (element) {
@@ -226,6 +196,91 @@ export function waitForElementWithin<T extends Element = HTMLElement>(
     retries,
     'waitForElementWithin'
   );
+}
+
+export function waitForElementByText<T extends Element = HTMLElement>(
+  baseSelector: string,
+  text: string,
+  timeout = DEFAULT_TIMEOUT_MS,
+  retries = DEFAULT_RETRIES
+): Promise<T> {
+  return retryOperation(
+    () => waitForElementByTextInternal<T>(baseSelector, text, timeout),
+    retries,
+    'waitForElementByText'
+  );
+}
+
+// Internal implementation of waitForElementByText
+async function waitForElementByTextInternal<T extends Element = HTMLElement>(
+  baseSelector: string,
+  text: string,
+  timeout: number
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    let observer: MutationObserver | null = null;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const checkForElement = () => {
+      const elements = document.querySelectorAll(baseSelector);
+      
+      for (const el of elements) {
+        if (el.textContent?.includes(text)) {
+          const elapsed = Date.now() - startTime;
+          console.log(`[waitForElementByText] Found element with text "${text}" after ${elapsed}ms`);
+          cleanup();
+          resolve(el as T);
+          return;
+        }
+      }
+
+      // Check timeout
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= timeout) {
+        cleanup();
+        reject(new Error(`Element with selector "${baseSelector}" containing text "${text}" not found within ${timeout}ms`));
+      }
+    };
+
+    // Use MutationObserver for event-driven detection
+    if (typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(() => {
+        checkForElement();
+      });
+      
+      observer.observe(document.body, { 
+        childList: true, 
+        subtree: true 
+      });
+      
+      // Check immediately in case element already exists
+      checkForElement();
+    } else {
+      // Fallback to polling
+      console.warn('[waitForElementByText] MutationObserver not available, using polling fallback');
+      const interval = window.setInterval(checkForElement, DEFAULT_INTERVAL_MS);
+      checkForElement();
+      
+      // Clean up interval on timeout
+      timeoutId = window.setTimeout(() => {
+        clearInterval(interval);
+        cleanup();
+        reject(new Error(`Element with selector "${baseSelector}" containing text "${text}" not found within ${timeout}ms`));
+      }, timeout);
+    }
+  });
 }
 
 // Retry wrapper for operations that may fail transiently

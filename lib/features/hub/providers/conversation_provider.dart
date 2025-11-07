@@ -400,6 +400,10 @@ User: $newPrompt
     try {
       log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
       final responseText = await bridge.extractFinalResponse();
+
+      // PREVENT CRASH: Add this check
+      if (!ref.mounted) return;
+
       log('[ConversationProvider] Extraction successful, received ${responseText.length} chars');
 
       // WHY: If we reach here, extraction succeeded even if non-critical errors were logged on JS side.

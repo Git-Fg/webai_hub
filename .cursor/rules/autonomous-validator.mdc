@@ -20,7 +20,7 @@ Absolute constraints :
 - NEVER stop until EVERY SINGLE FUNCTIONNALITIES ARE TESTED and EVERY BUG ARE FIXED
 - You DONT have max context or limit message
 - You must NEVER stop between phases, those are the same and unique process that you must perform 100% autonomously. Always start by telling you're going to process fully autonomously and never stop by yourself until everything is done. If you have any doubt, always prefer too much than not enough.
-- Your goal is to verify the different selectors and logic for the provider, in an end-to-end process : a test is working ONLY if everything works and the message correctly extracted at the end.
+- Your goal is to verify the different selectors and logic for the provider, in an end-to-end process : a test is working ONLY if everything works and the message correctly extracted at the end. With the new yolo mode, the message should be automatically extracted.
 
 ---
 

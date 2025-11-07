@@ -61,13 +61,11 @@ ts_src/
 
 ### 3.2. The "Assist & Validate" Meta-Conversation Workflow
 
-The core user experience is building a "meta-conversation" within the native Hub. This is orchestrated through a state-driven cycle that gives the user complete control over the AI's input and output.
+The core user experience is building a "meta-conversation" within the native Hub. This is orchestrated through a state-driven cycle that supports two distinct operational modes, configurable by the user:
 
-The "Assist & Validate" workflow now supports two distinct operational modes, configurable by the user:
+- **"YOLO" Mode (Default):** A fully automated, streamlined workflow for rapid interaction. When enabled, the app sends the prompt, waits for the AI to finish generating its response, and immediately extracts the result back into the native Hub UI in a single, seamless operation. This mode is for rapid, trusted interaction.
 
-- **"YOLO" Mode (Default):** A fully automated, streamlined workflow for rapid interaction. When enabled, the app automatically sends the prompt, waits for the AI to finish generating its response, and immediately extracts the result back into the native Hub UI in a single, seamless operation. This is the primary mode for users who trust the automation and want the fastest possible results.
-
-- **Manual Refinement Mode:** The original, step-by-step workflow. When "YOLO" mode is disabled, the app sends the prompt and then pauses, transitioning to the `refining` state. This allows the user to manually interact with the WebView, guide the AI through several iterations, and decide exactly when to click "Extract & View Hub" to bring the final, curated response back into the Hub. This mode provides maximum control and is ideal for complex, multi-step refinements.
+- **Manual Refinement Mode:** The original, step-by-step workflow. When "YOLO" mode is disabled, the app sends the prompt and then pauses in the `refining` state. This allows the user to manually interact with the WebView, guide the AI through several iterations, and decide exactly when to click "Extract & View Hub" to bring the final, curated response back into the Hub. This mode provides maximum control for complex tasks.
 
 #### 3.2.1. Building the Conversation: Contextual Seeding & Iterative Refinement (XML-Driven)
 
@@ -419,8 +417,8 @@ Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor ar
 
 **Decision Matrix:**
 
-| Use Case | API | Rationale |
-|----------|-----|-----------|
+| Use Case                                        | API                | Rationale                                                                                                                                                                         |
+| ----------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **DOM Structural Changes** (elements added/removed) | `MutationObserver` | Event-driven, responds immediately to DOM mutations. **Crucially, this avoids inefficient polling with `setInterval`, which is a primary cause of silent JavaScript context crashes on mobile.** |
 | **Element Visibility** (scrolling, lazy-loading) | `IntersectionObserver` | Most performant for visibility checks. Essential for virtualized lists and lazy-loaded content. |
 | **Layout-Dependent Properties** (animations, layout stabilization) | `requestAnimationFrame` polling | Synchronizes with browser's render loop. Correct tool for waiting on animations to complete. |

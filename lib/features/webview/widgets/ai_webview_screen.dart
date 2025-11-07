@@ -242,7 +242,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                 default:
                   // Handle any unexpected event types
                   debugPrint(
-                      '[Bridge Handler] Unknown event type: ${event.type}');
+                    '[Bridge Handler] Unknown event type: ${event.type}',
+                  );
                   return;
               }
             } on Object catch (e) {
