@@ -290,7 +290,7 @@ class CompanionOverlay extends ConsumerWidget {
       idle: () => Colors.grey,
       sending: () => Colors.blue,
       observing: () => Colors.orange,
-      refining: (_, __) => Colors.green,
+      refining: (_, isExtracting) => Colors.green,
       needsLogin: () => Colors.amber,
       failed: () => Colors.red,
     );

@@ -49,6 +49,16 @@ class Conversation extends _$Conversation {
     state = [...state, message];
   }
 
+  void updateMessageContent(String messageId, String newText) {
+    state = [
+      for (final message in state)
+        if (message.id == messageId)
+          message.copyWith(text: newText)
+        else
+          message,
+    ];
+  }
+
   /// Helper to build the system XML node as a string fragment.
   String _buildSystemPromptXml(String systemPrompt) {
     final builder = XmlBuilder();
@@ -73,8 +83,8 @@ class Conversation extends _$Conversation {
         final userMessage = history[i];
         final assistantMessage =
             (i + 1 < history.length && !history[i + 1].isFromUser)
-                ? history[i + 1]
-                : null;
+            ? history[i + 1]
+            : null;
 
         buffer.writeln('User: ${userMessage.text}');
         if (assistantMessage != null) {
@@ -161,7 +171,8 @@ class Conversation extends _$Conversation {
     }
 
     // Use a more descriptive intro for clarity
-    final fullPrompt = '''
+    final fullPrompt =
+        '''
 Here is the conversation history for context:
 
 $contextBuffer
@@ -223,8 +234,9 @@ User: $newPrompt
             historyBuilder.text(historyText);
           },
         );
-        promptBuffer
-            .writeln(historyBuilder.buildDocument().toXmlString(pretty: true));
+        promptBuffer.writeln(
+          historyBuilder.buildDocument().toXmlString(pretty: true),
+        );
       }
       // Future <files> context would be added here.
 
@@ -414,7 +426,9 @@ User: $newPrompt
       log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
       final responseText = await bridge.extractFinalResponse();
 
-      log('[ConversationProvider] Extraction successful, received ${responseText.length} chars');
+      log(
+        '[ConversationProvider] Extraction successful, received ${responseText.length} chars',
+      );
 
       // WHY: If we reach here, extraction succeeded even if non-critical errors were logged on JS side.
       // The important thing is that the Promise returned a value.

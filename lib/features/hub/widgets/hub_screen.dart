@@ -72,7 +72,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         _scrollToBottom();
       }
     });
-    ref.listen<Message?>(ephemeralMessageProvider, (_, __) {
+    ref.listen<Message?>(ephemeralMessageProvider, (_, message) {
       _scrollToBottom();
     });
 
