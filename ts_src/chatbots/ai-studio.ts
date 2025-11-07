@@ -563,73 +563,55 @@ export class AiStudioChatbot implements Chatbot {
     // WHY: Return both turn container and Edit button to avoid redundant search
     const waitForFinalizedTurn = (timeout = TIMING.FINALIZED_TURN_TIMEOUT_MS): Promise<{turn: HTMLElement, editButton: HTMLElement}> => {
       return new Promise((resolve, reject) => {
-        const intervalTime = TIMING.FINALIZED_TURN_CHECK_INTERVAL_MS;
-        let elapsedTime = 0;
-        const startTime = Date.now();
-
-        console.log(`[AI Studio LOG] Waiting for finalized turn (timeout: ${timeout}ms, check interval: ${intervalTime}ms)`);
-
         const EDIT_BUTTON_SELECTOR = Array.isArray(SELECTORS.EDIT_BUTTON) ? SELECTORS.EDIT_BUTTON.join(',') : SELECTORS.EDIT_BUTTON;
+        let observer: MutationObserver | null = null;
+        let timeoutId: number | null = null;
 
-        const interval = setInterval(() => {
-          // --- START of new interval callback ---
+        const cleanup = () => {
+          if (observer) observer.disconnect();
+          if (timeoutId) clearTimeout(timeoutId);
+        };
 
-          elapsedTime += intervalTime;
-
+        const check = () => {
           const allEditButtons = document.querySelectorAll(EDIT_BUTTON_SELECTOR);
-
-          // Log progress every 2 seconds for visibility
-          if (elapsedTime % 2000 < intervalTime) {
-            console.log(`[AI Studio LOG] Still waiting for finalized turn... (elapsed: ${elapsedTime}ms, edit buttons found: ${allEditButtons.length})`);
+          if (allEditButtons.length === 0) {
+            return; // Not ready yet
           }
 
-          if (allEditButtons.length > 0) {
-            const lastEditButton = allEditButtons[allEditButtons.length - 1] as HTMLElement;
-            const candidateTurn = findTurnContainerFromEditButton(lastEditButton);
+          const lastEditButton = allEditButtons[allEditButtons.length - 1] as HTMLElement;
+          const candidateTurn = findTurnContainerFromEditButton(lastEditButton);
 
-            if (candidateTurn) {
-              // WHY: This is new, more reliable check.
-              // A turn is finalized if it does NOT contain a "Stop editing" button.
-              const hasStopEditingButton = candidateTurn.querySelector('button[aria-label="Stop editing"]');
-              const isNotInEditMode = !hasStopEditingButton;
-              
-              const isTurnVisible = (candidateTurn as HTMLElement).offsetParent !== null;
-              const isEditButtonVisible = lastEditButton.offsetParent !== null;
-              const isEditButtonEnabled = !(lastEditButton as HTMLButtonElement).disabled && !lastEditButton.hasAttribute('inert');
-
-              // New diagnostic log
-              if (elapsedTime % 2000 < intervalTime) {
-                  console.log(`[AI Studio LOG] Diagnostic Check (elapsed: ${elapsedTime}ms):
-- Turn Visible: ${isTurnVisible}
-- Edit Button Visible: ${isEditButtonVisible}
-- Edit Button Enabled: ${isEditButtonEnabled}
-- Is Not In Edit Mode (aria-label check): ${isNotInEditMode}`);
-              }
-
-              if (isTurnVisible && isEditButtonVisible && isEditButtonEnabled && isNotInEditMode) {
-                const actualTime = Date.now() - startTime;
-                console.log(`[AI Studio LOG] Success: Found a finalized model turn after ${actualTime}ms.`);
-                clearInterval(interval);
-                resolve({turn: candidateTurn, editButton: lastEditButton});
-                return;
-              }
+          if (candidateTurn) {
+            const hasStopEditingButton = candidateTurn.querySelector('button[aria-label="Stop editing"]');
+            
+            if (!hasStopEditingButton && lastEditButton.offsetParent !== null && !(lastEditButton as HTMLButtonElement).disabled) {
+              console.log('[AI Studio LOG] Found finalized turn via MutationObserver check.');
+              cleanup();
+              resolve({ turn: candidateTurn, editButton: lastEditButton });
             }
           }
+        };
 
-          if (elapsedTime >= timeout) {
-            clearInterval(interval);
-            const pageState = {
-              url: window.location.href,
-              readyState: document.readyState,
-              editButtonsCount: allEditButtons.length,
-            };
-            const errorMessage = `Extraction timed out: No finalized model response found within ${timeout}ms.
-Context: URL=${pageState.url}, EditButtons=${pageState.editButtonsCount}, ReadyState=${pageState.readyState}`;
-            console.error(`[AI Studio LOG] ${errorMessage}`);
-            reject(new Error(errorMessage));
-          }
-          // --- END of new interval callback ---
-        }, intervalTime);
+        // WHY: Use a MutationObserver instead of setInterval to avoid crashing the JS context.
+        // This is far more performant as it only runs 'check' when the DOM actually changes.
+        observer = new MutationObserver(check);
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true, // Watch for changes to aria-label, disabled, etc.
+          attributeFilter: ['aria-label', 'disabled']
+        });
+
+        timeoutId = window.setTimeout(() => {
+          cleanup();
+          const allEditButtons = document.querySelectorAll(EDIT_BUTTON_SELECTOR);
+          const errorMessage = `Extraction timed out via MutationObserver. Final state: ${allEditButtons.length} edit buttons found.`;
+          console.error(`[AI Studio LOG] ${errorMessage}`);
+          reject(new Error(errorMessage));
+        }, timeout);
+
+        // Perform an initial check in case the element is already present
+        check();
       });
     };
 

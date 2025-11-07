@@ -114,12 +114,17 @@ class _MainScreenState extends ConsumerState<MainScreen>
             builder: (context) {
               final overlayState = ref.watch(overlayManagerProvider);
               final screenSize = MediaQuery.of(context).size;
-              final overlayBox = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+              final overlayBox =
+                  _overlayKey.currentContext?.findRenderObject() as RenderBox?;
               final overlaySize = overlayBox?.size ?? const Size(300, 150);
 
               final position = overlayState.position;
-              final top = (screenSize.height / 2) + position.dy - (overlaySize.height / 2);
-              final left = (screenSize.width / 2) + position.dx - (overlaySize.width / 2);
+              final top = (screenSize.height / 2) +
+                  position.dy -
+                  (overlaySize.height / 2);
+              final left = (screenSize.width / 2) +
+                  position.dx -
+                  (overlaySize.width / 2);
 
               return Positioned(
                 top: top,

@@ -251,6 +251,22 @@ These are the fundamental principles of quality code in this project. They apply
 * **Diagnose First:** Before adding a `Future.delayed`, always investigate alternatives (callbacks, `Promise`, `MutationObserver`).
 * **Justify and Document:** Delays are a last resort. If one is necessary, it **MUST** be documented with a `// TIMING:` comment explaining the justification and the date.
 
+**Critical Anti-Pattern: `setInterval` for DOM Polling**
+
+* ❌ **NEVER:** Use `setInterval` or recursive `setTimeout` loops to poll for existence or state of a DOM element.
+
+  * `// ANTI-PATTERN: Inefficient and causes silent crashes on mobile`
+
+  * `setInterval(() => { if (document.querySelector('#foo')) { ... } }, 100);`
+
+* ✅ **ALWAYS:** Use correct, modern, event-driven API for specific wait condition. This is a non-negotiable performance and stability requirement.
+
+  * **Use `MutationObserver` (`waitForElement`)** for waiting on elements to be added, removed, or changed in the DOM.
+
+  * **Use `IntersectionObserver` (`waitForVisibleElement`)** for waiting on elements to scroll into view.
+
+* **Why:** `setInterval` polling is extremely inefficient. It forces the browser's JavaScript engine to perform expensive query operations hundreds of times per second, even when nothing on the page has changed. On mobile devices with constrained CPU and memory, this resource exhaustion leads to the WebView's JavaScript context crashing silently, which is extremely difficult to debug. `MutationObserver` is a native, highly optimized browser API that solves this problem by only executing code when a relevant DOM change actually occurs.
+
 **Modern Waiting Patterns (TypeScript/JavaScript):**
 
 The automation engine uses event-driven APIs instead of polling. Follow these patterns:
@@ -264,50 +280,24 @@ The automation engine uses event-driven APIs instead of polling. Follow these pa
   4. Enabled (not disabled/inert)
   5. Unoccluded (not covered by another element)
 
-**Mobile Performance Checklist:**
+**Mobile Performance Checklist: The "Observe, Don't Poll" Mandate**
 
-When using `MutationObserver` or other observers:
+When waiting for DOM changes, `MutationObserver` is mandatory, but it must be used correctly to preserve battery and performance. The core principle is **"Observe Narrowly, Process Lightly"**.
 
-* ✅ Observe the smallest possible DOM subtree (prefer specific containers over `document.body`)
-* ✅ Filter mutations aggressively (only process relevant changes)
-* ✅ Disconnect observers immediately after purpose is served
-* ✅ Limit observation types (only observe `childList` if that's all you need)
-* ❌ Never observe `document.body` with `subtree: true` without filtering
-* ❌ Never leave observers connected after condition is met
+* ✅ **DO:** Observe the smallest possible DOM subtree (e.g., a specific chat container like `#chat-history` instead of `document.body`).
+
+* ✅ **DO:** Filter mutations aggressively inside your callback. Only process changes relevant to your goal.
+
+* ✅ **DO:** Disconnect observer (`observer.disconnect()`) immediately after the condition is met. Leaving observers running is a common cause of memory leaks.
+
+* ✅ **DO:** Limit observation types in the config (`{ childList: true }`). Only watch what you need.
+
+* ❌ **NEVER:** Use `setInterval` to poll the DOM. This is the primary cause of silent WebView crashes.
+
+* ❌ **NEVER:** Observe `document.body` with `subtree: true` unless absolutely necessary and combined with aggressive filtering.
+
+* ❌ **NEVER:** Leave an observer connected after its task is complete.
 
 **Actionability vs Simple Waiting:**
 
-* **Use `waitForElement`**: When you just need an element to exist in the DOM
-* **Use `waitForVisibleElement`**: When you need an element to be visible in the viewport (scrolling, lazy-loading)
-* **Use `waitForActionableElement`**: When you're about to interact with an element (click, set value, etc.)
-
-**Reference:** See `BLUEPRINT_FULL.md` §4.10 for comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies.
-
-#### 3.4. TypeScript Quality Standards
-
-These standards are enforced during Step 4A of the modification protocol.
-
-##### A. Statically Typing the `window` Object
-
-* **Correct Pattern:** Declare custom global properties in `ts_src/types/global.d.ts`. Never use `(window as any)`.
-
-##### B. Type-Safe DOM Element Selection
-
-* **Correct Pattern:** Use generics for compile-time safety (e.g., `waitForElement<HTMLButtonElement>(...)`). Complement this with runtime checks (`assertIsElement(...)`) for critical interactions.
-
-##### C. Class-Based Chatbot Implementation
-
-* **Correct Pattern:** Implement provider logic as a `class` that `implements Chatbot`. Use `private` methods for internal helpers.
-
----
-
-### 4. Project Reference
-
-#### 4.1. Critical File Aliases
-
-* **Protocols & Blueprints:**
-  * `@autonomous-validator`: `.cursor/rules/autonomous-validator.mdc` (The master protocol for end-to-end testing).
-  * `@blueprint_full`: `BLUEPRINT_FULL.md` (The long-term architectural vision).
-  * `@contributing`: `CONTRIBUTING.md` (Setup guide for human developers).
-* **Core Code:**
-  * `
+* **Use `

@@ -8,10 +8,10 @@ export default tseslint.config(
   // Base ESLint recommended rules
   eslint.configs.recommended,
 
-  // TypeScript ESLint's "strict" configuration, which forbids `any`
+  // TypeScript ESLint's "strict" configuration
   ...tseslint.configs.strict,
 
-  // Custom rule overrides for this project
+  // Custom project-specific rule overrides
   {
     rules: {
       // Allow @ts-ignore only if a descriptive reason is provided
@@ -27,6 +27,8 @@ export default tseslint.config(
       ],
     },
   },
+
+  // Files to ignore from linting
   {
     ignores: [
       '**/build/**',

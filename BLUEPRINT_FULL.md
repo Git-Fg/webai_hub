@@ -415,7 +415,7 @@ Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor ar
 
 | Use Case | API | Rationale |
 |----------|-----|-----------|
-| **DOM Structural Changes** (elements added/removed) | `MutationObserver` | Event-driven, responds immediately to DOM mutations. More efficient than polling. |
+| **DOM Structural Changes** (elements added/removed) | `MutationObserver` | Event-driven, responds immediately to DOM mutations. **Crucially, this avoids inefficient polling with `setInterval`, which is a primary cause of silent JavaScript context crashes on mobile.** |
 | **Element Visibility** (scrolling, lazy-loading) | `IntersectionObserver` | Most performant for visibility checks. Essential for virtualized lists and lazy-loaded content. |
 | **Layout-Dependent Properties** (animations, layout stabilization) | `requestAnimationFrame` polling | Synchronizes with browser's render loop. Correct tool for waiting on animations to complete. |
 
@@ -621,29 +621,4 @@ Goal: Identify reliable anchor points for each action.
 
     **Note:** This correction is critical and must be the standard for all future integrations. The `callAsyncJavaScript` API handles async operations reliably and avoids race conditions.
 
-2. **Tolerant error handling:** In `extractAndReturnToHub`, prioritize returning useful text even if an error also occurred. Capture both and decide based on response presence/emptiness:
-
-    ```dart
-    String? responseText;
-    Object? error;
-
-    try {
-      // Use callAsyncJavaScript
-      responseText = await bridge.extractFinalResponse(); 
-    } on Object catch (e) {
-      error = e;
-    }
-
-    if (responseText != null && responseText.isNotEmpty) {
-      // Success! Ignore 'error' or log it.
-    } else {
-      // Failure, handle 'error'.
-    }
-    ```
-
-3. **Integrate response observer:** If waiting is needed after sending the prompt, transition to `.observing()` and start a provider-specific response observer; adapt `checkUIState` to detect the provider's end-of-response indicator (e.g., the appearance of a "Copy" button).
-
-#### Phase 4: Final Debugging
-
-1. Use JS logs during development at key steps (e.g., `console.log('Target element:', element.outerHTML)`).
-2. Use DOM inspection tools to capture a snapshot of the DOM when extraction fails and analyze why selectors did not match.
+2. **Tolerant error handling:** In `
