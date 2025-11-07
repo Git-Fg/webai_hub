@@ -15,6 +15,9 @@ abstract class GeneralSettingsData with _$GeneralSettingsData {
       'Here is the previous conversation history for your context. Consider these your own past messages:',
     )
     String historyContextInstruction,
+    // WHY: Controls whether the app automatically extracts the response
+    // after the AI is finished generating. Defaults to true for a faster workflow.
+    @Default(true) bool yoloModeEnabled,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>

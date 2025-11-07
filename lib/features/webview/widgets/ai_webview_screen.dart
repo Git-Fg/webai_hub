@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
@@ -191,11 +192,22 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
 
               switch (event.type) {
                 case BridgeConstants.eventTypeNewResponse:
-                  automationNotifier.moveToRefining(
-                    messageCount: ref.read(conversationProvider).length,
-                  );
+                  // Read the current setting. Default to true if settings haven't loaded yet.
+                  final yoloModeEnabled = ref.read(generalSettingsProvider).value?.yoloModeEnabled ?? true;
+
+                  if (yoloModeEnabled) {
+                    // YOLO MODE: Automatically trigger extraction and let the provider handle state changes.
+                    unawaited(notifier.extractAndReturnToHub());
+                  } else {
+                    // MANUAL MODE: Preserve original behavior, move to refining state and wait for user.
+                    automationNotifier.moveToRefining(
+                      messageCount: ref.read(conversationProvider).length,
+                    );
+                  }
+                  return;
                 case BridgeConstants.eventTypeLoginRequired:
                   automationNotifier.moveToNeedsLogin();
+                  return;
                 case BridgeConstants.eventTypeAutomationFailed:
                   final payload = event.payload ?? 'Unknown error';
                   final errorCode = event.errorCode;
@@ -218,6 +230,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   }
 
                   notifier.onAutomationFailed(errorMessage);
+                  return;
+                default:
+                  // Handle any unexpected event types
+                  debugPrint('[Bridge Handler] Unknown event type: ${event.type}');
+                  return;
               }
             } on Object catch (e) {
               debugPrint('[Bridge Handler] Failed to parse event: $e');

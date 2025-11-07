@@ -64,6 +64,14 @@ class GeneralSettings extends _$GeneralSettings {
     });
   }
 
+  Future<void> toggleYoloMode() async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(
+        yoloModeEnabled: !currentSettings.yoloModeEnabled,
+      );
+    });
+  }
+
   // WHY: Allows users to customize the instruction that frames the conversation history.
   Future<void> updateHistoryContextInstruction(String newInstruction) async {
     await _updateSettings((currentSettings) {

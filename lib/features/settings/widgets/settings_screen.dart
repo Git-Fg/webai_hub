@@ -115,6 +115,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   unawaited(settingsNotifier.toggleAdvancedPrompting());
                 },
               ),
+              SwitchListTile(
+                title: const Text('Enable "YOLO" Mode'),
+                subtitle: const Text(
+                  'Automatically extracts the AI response as soon as it is ready.',
+                ),
+                value: settings.yoloModeEnabled,
+                onChanged: (bool value) {
+                  unawaited(settingsNotifier.toggleYoloMode());
+                },
+              ),
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
