@@ -80,13 +80,11 @@ The workflow is now driven by a structured XML prompt that ensures clarity, elim
     ]]>
   </system>
 
-  <!-- The history provides the full conversational context. -->
+  <!-- The history provides the full conversational context as a single block of text. -->
   <history>
 User: How do I implement a Riverpod provider with keepAlive?
 
 Assistant: To keep a provider's state, you can use the `@Riverpod(keepAlive: true)` annotation. Here is an example...
-
-User: [Additional turns would be added here as flat text]
   </history>
 
   <!-- The user's current, specific request. -->

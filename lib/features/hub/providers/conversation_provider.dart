@@ -55,7 +55,8 @@ class Conversation extends _$Conversation {
     builder.element(
       'system',
       nest: () {
-        builder.cdata(systemPrompt);
+        // Use .text() for automatic XML entity escaping.
+        builder.text(systemPrompt);
       },
     );
     return builder.buildDocument().toXmlString(pretty: true);
@@ -89,6 +90,18 @@ class Conversation extends _$Conversation {
       }
     }
     return buffer.toString().trim();
+  }
+
+  /// Helper to build user_input XML node as a string fragment.
+  String _buildUserInputXml(String userInput) {
+    final builder = XmlBuilder();
+    builder.element(
+      'user_input',
+      nest: () {
+        builder.text(userInput);
+      },
+    );
+    return builder.buildDocument().toXmlString(pretty: true);
   }
 
   void clearConversation() {
@@ -187,7 +200,7 @@ User: $newPrompt
       final promptBuffer = StringBuffer();
 
       // --- Part 1: Initial Instruction ---
-      promptBuffer.writeln(newPrompt);
+      promptBuffer.writeln(_buildUserInputXml(newPrompt));
       if (shouldInjectSystemPrompt) {
         promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
       }
@@ -218,7 +231,7 @@ User: $newPrompt
       // --- Part 3: Repeated Instruction for Focus ---
       // WHY: Duplicate the user prompt and system prompt at the end to ensure the AI model
       // focuses on the most recent user input rather than getting lost in the context.
-      promptBuffer.writeln(newPrompt);
+      promptBuffer.writeln(_buildUserInputXml(newPrompt));
       if (shouldInjectSystemPrompt) {
         promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
       }
@@ -400,9 +413,6 @@ User: $newPrompt
     try {
       log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
       final responseText = await bridge.extractFinalResponse();
-
-      // PREVENT CRASH: Add this check
-      if (!ref.mounted) return;
 
       log('[ConversationProvider] Extraction successful, received ${responseText.length} chars');
 
