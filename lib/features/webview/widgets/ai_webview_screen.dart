@@ -192,18 +192,26 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
 
               switch (event.type) {
                 case BridgeConstants.eventTypeNewResponse:
-                  // Read the current setting. Default to true if settings haven't loaded yet.
-                  final yoloModeEnabled = ref.read(generalSettingsProvider).value?.yoloModeEnabled ?? true;
+                  // WHY: First, ALWAYS transition to the 'refining' state.
+                  // This ensures the application is in a stable, consistent state
+                  // that matches the manual workflow before any further action is taken.
+                  automationNotifier.moveToRefining(
+                    messageCount: ref.read(conversationProvider).length,
+                  );
+
+                  // Now, check if YOLO mode should proceed automatically.
+                  final yoloModeEnabled = ref
+                          .read(generalSettingsProvider)
+                          .value
+                          ?.yoloModeEnabled ??
+                      true;
 
                   if (yoloModeEnabled) {
-                    // YOLO MODE: Automatically trigger extraction and let the provider handle state changes.
+                    // The state is now correctly 'refining', so we can safely
+                    // trigger the automatic extraction.
                     unawaited(notifier.extractAndReturnToHub());
-                  } else {
-                    // MANUAL MODE: Preserve original behavior, move to refining state and wait for user.
-                    automationNotifier.moveToRefining(
-                      messageCount: ref.read(conversationProvider).length,
-                    );
                   }
+                  // If YOLO is off, the app simply remains in the 'refining' state, waiting for the user.
                   return;
                 case BridgeConstants.eventTypeLoginRequired:
                   automationNotifier.moveToNeedsLogin();
@@ -233,7 +241,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   return;
                 default:
                   // Handle any unexpected event types
-                  debugPrint('[Bridge Handler] Unknown event type: ${event.type}');
+                  debugPrint(
+                      '[Bridge Handler] Unknown event type: ${event.type}');
                   return;
               }
             } on Object catch (e) {
