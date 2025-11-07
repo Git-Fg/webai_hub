@@ -1,6 +1,5 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +11,11 @@ void main() {
       (tester) async {
     final spy = ValueNotifier<Offset>(Offset.zero);
 
+    final overlayKey = GlobalKey();
+
+    // WHY: Set a larger screen size to prevent overflow in the test environment
+    await tester.binding.setSurfaceSize(const Size(800, 600));
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -21,25 +25,33 @@ void main() {
           currentTabIndexProvider.overrideWithValue(1),
         ],
         child: MaterialApp(
-          home: Stack(
-            children: [
-              // Render only the overlay contents; avoid WebView tab
-              const CompanionOverlay(),
-              _OverlayPositionSpy(spy: spy),
-            ],
+          home: SizedBox(
+            width: 800,
+            height: 600,
+            child: Stack(
+              children: [
+                // WHY: Use DraggableCompanionOverlay to test the actual drag handling implementation
+                DraggableCompanionOverlay(overlayKey: overlayKey),
+                _OverlayPositionSpy(spy: spy),
+              ],
+            ),
           ),
         ),
       ),
     );
 
+    // WHY: Clean up surface size after test to avoid affecting other tests
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpAndSettle();
 
-    // The drag handle key is defined in the expanded overlay.
-    final handleFinder = find.byKey(const Key('expanded_overlay_drag_handle'));
-    expect(handleFinder, findsOneWidget);
+    // WHY: The drag handle is now in the parent widget's GestureDetector, which wraps the entire overlay.
+    // We can drag on any part of the expanded overlay widget.
+    final overlayFinder = find.byKey(const Key('expanded_overlay'));
+    expect(overlayFinder, findsOneWidget);
 
     // Perform a large drag; the internal logic should clamp within screen bounds.
-    await tester.drag(handleFinder, const Offset(10000, 10000));
+    await tester.drag(overlayFinder, const Offset(10000, 10000));
     await tester.pump();
 
     final state = spy.value;
@@ -49,7 +61,7 @@ void main() {
     expect(state.dy.isFinite, isTrue);
 
     // Now drag negatively beyond bounds and ensure it still remains finite.
-    await tester.drag(handleFinder, const Offset(-20000, -20000));
+    await tester.drag(overlayFinder, const Offset(-20000, -20000));
     await tester.pump();
 
     final state2 = spy.value;

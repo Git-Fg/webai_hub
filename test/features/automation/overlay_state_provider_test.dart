@@ -18,7 +18,7 @@ void main() {
     test('within-bounds delta adjusts position exactly', () {
       final notifier = container.read(overlayManagerProvider.notifier);
 
-      // Start from default Offset(0, -100)
+      // Start from default Offset(0, 150)
       const screenSize = Size(400, 800);
       const widgetSize = Size(100, 100);
 
@@ -30,7 +30,7 @@ void main() {
 
       final state = container.read(overlayManagerProvider);
       expect(state.position.dx, 10);
-      expect(state.position.dy, -80);
+      expect(state.position.dy, 170);
     });
 
     test('exceeding top/left clamps to negative bounds', () {

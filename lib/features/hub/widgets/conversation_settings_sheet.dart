@@ -1,5 +1,6 @@
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ConversationSettingsSheet extends ConsumerStatefulWidget {
@@ -13,34 +14,43 @@ class ConversationSettingsSheet extends ConsumerStatefulWidget {
 class _ConversationSettingsSheetState
     extends ConsumerState<ConversationSettingsSheet> {
   late final TextEditingController _systemPromptController;
-  late double _currentTemperature;
+  late final TextEditingController _thinkingBudgetController;
+
+  // WHY: This data is provider-specific and should not live in the UI.
+  // In a multi-provider setup, this would come from a configuration service.
+  // For now, we keep it here but acknowledge it's a candidate for abstraction.
+  static const List<String> _aiStudioModels = [
+    'Gemini 2.5 Pro',
+    'Gemini Flash Latest',
+    'Gemini Flash-Lite Latest',
+    'Gemini 2.5 Flash',
+    'Gemini 2.5 Flash Lite',
+  ];
 
   @override
   void initState() {
     super.initState();
-    // WHY: We read the settings in initState to initialize local state.
-    // ref.read is safe in ConsumerState.initState without any callback wrapper.
     final settings = ref.read(conversationSettingsProvider);
     _systemPromptController =
         TextEditingController(text: settings.systemPrompt);
-    _currentTemperature = settings.temperature;
+    _thinkingBudgetController = TextEditingController(
+      text: settings.thinkingBudget?.toString() ?? '',
+    );
   }
 
   @override
   void dispose() {
     _systemPromptController.dispose();
+    _thinkingBudgetController.dispose();
     super.dispose();
-  }
-
-  void _applyChanges() {
-    final notifier = ref.read(conversationSettingsProvider.notifier);
-    notifier.updateSystemPrompt(_systemPromptController.text);
-    notifier.updateTemperature(_currentTemperature);
-    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(conversationSettingsProvider);
+    final notifier = ref.read(conversationSettingsProvider.notifier);
+    final textTheme = Theme.of(context).textTheme;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -48,46 +58,112 @@ class _ConversationSettingsSheetState
         16,
         16 + MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Conversation Settings',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _systemPromptController,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'System Prompt',
-              hintText: 'e.g., You are a helpful expert...',
-              border: OutlineInputBorder(),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Conversation Settings',
+              style: textTheme.titleLarge,
             ),
-          ),
-          const SizedBox(height: 24),
-          Text('Temperature: ${_currentTemperature.toStringAsFixed(2)}'),
-          Slider(
-            value: _currentTemperature,
-            divisions: 100,
-            label: _currentTemperature.toStringAsFixed(2),
-            onChanged: (double value) {
-              setState(() {
-                _currentTemperature = value;
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _applyChanges,
-              child: const Text('Apply Changes'),
+            const SizedBox(height: 24),
+            DropdownButtonFormField<String>(
+              initialValue: settings.model,
+              hint: const Text('Default Model'),
+              items: _aiStudioModels.map((model) {
+                return DropdownMenuItem<String>(
+                  value: model,
+                  child: Text(model),
+                );
+              }).toList(),
+              onChanged: notifier.updateModel,
+              decoration: const InputDecoration(
+                labelText: 'AI Model',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextField(
+              controller: _systemPromptController,
+              onChanged: notifier.updateSystemPrompt,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'System Prompt',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSlider(
+              context,
+              'Temperature',
+              settings.temperature,
+              notifier.updateTemperature,
+            ),
+            _buildSlider(
+              context,
+              'Top-P',
+              settings.topP,
+              notifier.updateTopP,
+            ),
+            TextField(
+              controller: _thinkingBudgetController,
+              onChanged: (value) =>
+                  notifier.updateThinkingBudget(int.tryParse(value)),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Thinking Budget (Optional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Tools & Features',
+              style: textTheme.titleSmall,
+            ),
+            SwitchListTile(
+              title: const Text('Enable Web Search'),
+              value: settings.useWebSearch,
+              onChanged: (value) => notifier.toggleUseWebSearch(value: value),
+            ),
+            SwitchListTile(
+              title: const Text('Enable URL Context'),
+              value: settings.urlContext,
+              onChanged: (value) => notifier.toggleUrlContext(value: value),
+            ),
+            SwitchListTile(
+              title: const Text('Disable "Thinking" Feature'),
+              value: settings.disableThinking,
+              onChanged: (value) =>
+                  notifier.toggleDisableThinking(value: value),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildSlider(
+    BuildContext context,
+    String label,
+    double value,
+    ValueChanged<double> onChanged, {
+    int divisions = 100,
+    double max = 1.0,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('$label: ${value.toStringAsFixed(2)}'),
+        Slider(
+          value: value,
+          divisions: divisions,
+          max: max,
+          label: value.toStringAsFixed(2),
+          onChanged: onChanged,
+        ),
+      ],
     );
   }
 }

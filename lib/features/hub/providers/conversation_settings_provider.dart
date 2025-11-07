@@ -19,4 +19,29 @@ class ConversationSettingsNotifier extends _$ConversationSettingsNotifier {
   void updateTemperature(double temp) {
     state = state.copyWith(temperature: temp);
   }
+
+  void updateModel(String? model) {
+    // Use default if null is passed
+    state = state.copyWith(model: model ?? 'Gemini 2.5 Pro');
+  }
+
+  void updateTopP(double topP) {
+    state = state.copyWith(topP: topP);
+  }
+
+  void updateThinkingBudget(int? budget) {
+    state = state.copyWith(thinkingBudget: budget);
+  }
+
+  void toggleDisableThinking({required bool value}) {
+    state = state.copyWith(disableThinking: value);
+  }
+
+  void toggleUseWebSearch({required bool value}) {
+    state = state.copyWith(useWebSearch: value);
+  }
+
+  void toggleUrlContext({required bool value}) {
+    state = state.copyWith(urlContext: value);
+  }
 }

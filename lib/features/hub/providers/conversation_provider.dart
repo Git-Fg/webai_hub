@@ -120,45 +120,42 @@ class Conversation extends _$Conversation {
   String _buildSimplePrompt(String newPrompt, {String? excludeMessageId}) {
     final settings = ref.read(conversationSettingsProvider);
     final systemPrompt = settings.systemPrompt;
-
-    if (state.isEmpty ||
-        state.where((m) => m.status == MessageStatus.success).isEmpty) {
-      return systemPrompt.isNotEmpty
-          ? '$systemPrompt\n\nUser: $newPrompt'
-          : newPrompt;
-    }
-
-    final previousMessages = state.where((m) {
-      if (m.status != MessageStatus.success) return false;
-      if (excludeMessageId != null && m.id == excludeMessageId) return false;
-      return true;
-    }).toList();
-
-    if (previousMessages.isEmpty) {
-      return systemPrompt.isNotEmpty
-          ? '$systemPrompt\n\nUser: $newPrompt'
-          : newPrompt;
-    }
-
     final contextBuffer = StringBuffer();
+
     if (systemPrompt.isNotEmpty) {
       contextBuffer.writeln(systemPrompt);
       contextBuffer.writeln();
     }
-    for (final message in previousMessages) {
-      if (message.isFromUser) {
-        contextBuffer.writeln('User: ${message.text}');
-      } else {
-        contextBuffer.writeln('Assistant: ${message.text}');
+
+    final previousMessages = state.where((m) {
+      return m.status == MessageStatus.success &&
+          (excludeMessageId == null || m.id != excludeMessageId);
+    }).toList();
+
+    if (previousMessages.isEmpty) {
+      // If no history, it's just system prompt + new prompt
+      if (systemPrompt.isNotEmpty) {
+        return '$systemPrompt\n\nUser: $newPrompt';
       }
-      contextBuffer.writeln();
+      return newPrompt;
     }
 
+    // This part is now cleaner
+    for (final message in previousMessages) {
+      final prefix = message.isFromUser ? 'User:' : 'Assistant:';
+      contextBuffer.writeln('$prefix ${message.text}');
+      contextBuffer.writeln(); // Add a blank line between messages
+    }
+
+    // Use a more descriptive intro for clarity
     final fullPrompt = '''
-Context from previous conversation:
+Here is the conversation history for context:
 
 $contextBuffer
-Current message:
+---
+
+Now, please respond to the following:
+
 User: $newPrompt
 ''';
 
@@ -219,6 +216,8 @@ User: $newPrompt
       // Future <files> context would be added here.
 
       // --- Part 3: Repeated Instruction for Focus ---
+      // WHY: Duplicate the user prompt and system prompt at the end to ensure the AI model
+      // focuses on the most recent user input rather than getting lost in the context.
       promptBuffer.writeln(newPrompt);
       if (shouldInjectSystemPrompt) {
         promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
@@ -251,6 +250,31 @@ User: $newPrompt
     } else {
       return _buildSimplePrompt(newPrompt, excludeMessageId: excludeMessageId);
     }
+  }
+
+  /// Builds the automation options map from conversation settings and provider configuration.
+  Map<String, dynamic> _buildAutomationOptions(String promptWithContext) {
+    final conversationSettings = ref.read(conversationSettingsProvider);
+    final providerConfig = ref.read(currentProviderConfigurationProvider);
+
+    final automationOptions = <String, dynamic>{
+      'prompt': promptWithContext,
+      'model': conversationSettings.model,
+      'temperature': conversationSettings.temperature,
+      'topP': conversationSettings.topP,
+      'thinkingBudget': conversationSettings.thinkingBudget,
+      'disableThinking': conversationSettings.disableThinking,
+      'useWebSearch': conversationSettings.useWebSearch,
+      'urlContext': conversationSettings.urlContext,
+    };
+
+    // Conditionally add system prompt based on provider capability
+    if (conversationSettings.systemPrompt.isNotEmpty &&
+        !providerConfig.supportsNativeSystemPrompt) {
+      automationOptions['systemPrompt'] = conversationSettings.systemPrompt;
+    }
+
+    return automationOptions;
   }
 
   Future<void> _orchestrateAutomation(
@@ -316,8 +340,16 @@ User: $newPrompt
         // Ignore cast errors in tests - FakeJavaScriptBridge doesn't extend JavaScriptBridge
       }
 
-      // Start the automation with the full contextual prompt.
-      await bridge.startAutomation(promptWithContext);
+      final automationOptions = _buildAutomationOptions(promptWithContext);
+
+      // DART-SIDE LOGGING FOR VERIFICATION
+      log(
+        '[ConversationProvider LOG] Sending automation options to bridge:',
+        error: automationOptions,
+      );
+
+      // Start the automation with all configuration options.
+      await bridge.startAutomation(automationOptions);
 
       if (ref.mounted) {
         _updateLastMessage(
@@ -358,13 +390,17 @@ User: $newPrompt
 
   // Extract and return to Hub without finalizing automation
   Future<void> extractAndReturnToHub() async {
+    log('[ConversationProvider] extractAndReturnToHub called');
     final bridge = ref.read(javaScriptBridgeProvider);
-    ref.read(isExtractingProvider.notifier).state = true;
+    final automationNotifier = ref.read(automationStateProvider.notifier);
+    automationNotifier.setExtracting(extracting: true);
     // WHY: Clear any previous error message when a new extraction attempt starts.
     ref.read(ephemeralMessageProvider.notifier).clearMessage();
 
     try {
+      log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
       final responseText = await bridge.extractFinalResponse();
+      log('[ConversationProvider] Extraction successful, received ${responseText.length} chars');
 
       // WHY: If we reach here, extraction succeeded even if non-critical errors were logged on JS side.
       // The important thing is that the Promise returned a value.
@@ -391,7 +427,9 @@ User: $newPrompt
     } finally {
       // WHY: This block executes after try OR catch, ensuring loading indicator is always disabled
       if (ref.mounted) {
-        ref.read(isExtractingProvider.notifier).state = false;
+        ref
+            .read(automationStateProvider.notifier)
+            .setExtracting(extracting: false);
       }
     }
   }
@@ -442,8 +480,10 @@ User: $newPrompt
 
       if (!ref.mounted) return;
 
+      final automationOptions = _buildAutomationOptions(promptWithContext);
+
       // WHY: Let startAutomation detect login page again if necessary
-      await bridge.startAutomation(promptWithContext);
+      await bridge.startAutomation(automationOptions);
 
       if (ref.mounted) {
         _updateLastMessage(

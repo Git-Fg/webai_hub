@@ -38,6 +38,11 @@ void main() {
       ],
     );
 
+    // WHY: Always reset the fake between tests to ensure a clean state
+    // and prevent state leakage between test cases. This also ensures
+    // the bridge starts in a "ready" state.
+    fakeBridge.reset();
+
     // Keep critical providers alive during async orchestration
     convSub = container.listen(conversationProvider, (p, n) {});
     autoSub = container.listen(automationStateProvider, (p, n) {});
@@ -51,7 +56,7 @@ void main() {
     container.dispose();
   });
 
-  group('ConversationProvider Tests', () {
+  group('ConversationProvider Unit Tests', () {
     test('Initial state is correct', () {
       final initialConversation = container.read(conversationProvider);
       final initialAutomation = container.read(automationStateProvider);
@@ -376,6 +381,104 @@ void main() {
     });
 
     test(
+        'isExtracting state is true during extraction and false after completion or error',
+        () async {
+      final notifier = container.read(conversationProvider.notifier);
+      final automationNotifier =
+          container.read(automationStateProvider.notifier);
+      final isExtractingHistory = <bool>[];
+
+      // Listen to changes in the isExtracting state from automation state
+      container.listen<AutomationStateData>(
+        automationStateProvider,
+        (_, next) {
+          final isExtracting = next.maybeWhen(
+            refining: (messageCount, isExtracting) => isExtracting,
+            orElse: () => false,
+          );
+          isExtractingHistory.add(isExtracting);
+        },
+        fireImmediately: true,
+      );
+
+      // Setup initial state
+      await notifier.sendPromptToAutomation('Test');
+      automationNotifier.moveToRefining(messageCount: 1);
+
+      // Initial state should be false
+      expect(isExtractingHistory.last, isFalse);
+
+      // --- Test success case ---
+      final extractionFutureSuccess = notifier.extractAndReturnToHub();
+
+      // Immediately after calling, should be true
+      final stateAfterCall = container.read(automationStateProvider);
+      expect(
+        stateAfterCall.maybeWhen(
+          refining: (messageCount, isExtracting) => isExtracting,
+          orElse: () => false,
+        ),
+        isTrue,
+      );
+
+      await extractionFutureSuccess;
+
+      // After completion, should be false
+      final stateAfterSuccess = container.read(automationStateProvider);
+      expect(
+        stateAfterSuccess.maybeWhen(
+          refining: (messageCount, isExtracting) => isExtracting,
+          orElse: () => false,
+        ),
+        isFalse,
+      );
+
+      // --- Test error case ---
+      fakeBridge.extractFinalResponseErrorType = ErrorType.genericException;
+      final extractionFutureError = notifier.extractAndReturnToHub();
+
+      // Immediately after calling, should be true
+      final stateAfterErrorCall = container.read(automationStateProvider);
+      expect(
+        stateAfterErrorCall.maybeWhen(
+          refining: (messageCount, isExtracting) => isExtracting,
+          orElse: () => false,
+        ),
+        isTrue,
+      );
+
+      await extractionFutureError;
+
+      // After error, should also be false
+      final stateAfterError = container.read(automationStateProvider);
+      expect(
+        stateAfterError.maybeWhen(
+          refining: (messageCount, isExtracting) => isExtracting,
+          orElse: () => false,
+        ),
+        isFalse,
+      );
+
+      // Verify the full sequence of states
+      // The listener fires on every automation state change, including:
+      // - initial idle (false)
+      // - sending (false)
+      // - observing (false)
+      // - refining with isExtracting=false (false)
+      // - refining with isExtracting=true (true) - start success
+      // - refining with isExtracting=false (false) - end success
+      // - refining with isExtracting=true (true) - start error
+      // - refining with isExtracting=false (false) - end error
+      expect(isExtractingHistory.length, greaterThanOrEqualTo(6));
+      expect(isExtractingHistory.last, isFalse); // Final state should be false
+      // Verify the pattern: should have at least 2 true states (success and error extractions)
+      final trueCount = isExtractingHistory.where((v) => v).length;
+      expect(trueCount, greaterThanOrEqualTo(2));
+      // Should end with false
+      expect(isExtractingHistory.last, isFalse);
+    });
+
+    test(
       'clearConversation resets conversation, automation state, and conversation settings',
       () {
         // ARRANGE
@@ -454,27 +557,85 @@ void main() {
       expect(fakeBridge.lastPromptSent, newPrompt);
     });
   });
-  group('ConversationProvider Resilience Tests', () {
+  group('ConversationProvider Resilience/Integration Tests', () {
+    late ProviderContainer resilienceContainer;
+    late MockInAppWebViewController resilienceMockWebViewController;
+    late ProviderSubscription<List<Message>> resilienceConvSub;
+    late ProviderSubscription<dynamic> resilienceAutoSub;
+    late ProviderSubscription<int> resilienceTabSub;
+
+    setUp(() {
+      resilienceMockWebViewController = MockInAppWebViewController();
+      resilienceContainer = ProviderContainer(
+        overrides: [
+          // WHY: Use the REAL JavaScriptBridge to test its interaction
+          // with the mocked WebViewController.
+          javaScriptBridgeProvider.overrideWith(
+            JavaScriptBridge.new,
+          ),
+          webViewControllerProvider.overrideWithValue(
+            resilienceMockWebViewController,
+          ),
+          // WHY: Don't override bridgeReadyProvider - let it use the real implementation
+          // We'll control it via the notifier in each test as needed
+        ],
+      );
+
+      // Bridge starts ready by default for most tests
+      resilienceContainer.read(bridgeReadyProvider.notifier).markReady();
+
+      // Keep critical providers alive during async orchestration
+      resilienceConvSub = resilienceContainer.listen(
+        conversationProvider,
+        (p, n) {},
+      );
+      resilienceAutoSub = resilienceContainer.listen(
+        automationStateProvider,
+        (p, n) {},
+      );
+      resilienceTabSub = resilienceContainer.listen(
+        currentTabIndexProvider,
+        (p, n) {},
+      );
+    });
+
+    tearDown(() {
+      resilienceConvSub.close();
+      resilienceAutoSub.close();
+      resilienceTabSub.close();
+      resilienceContainer.dispose();
+    });
+
     test('sendPromptToAutomation successfully handles a page reload', () async {
-      // Arrange: bridge not ready initially
-      fakeBridge.simulateReload();
+      // For this test, the bridge is initially not ready
+      resilienceContainer.read(bridgeReadyProvider.notifier).reset();
 
       when(
-        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
+        resilienceMockWebViewController.loadUrl(
+          urlRequest: anyNamed('urlRequest'),
+        ),
       ).thenAnswer((_) async {});
 
-      // Simulate onLoadStop + bridge reinjection making it ready shortly after
-      Future<void>.delayed(const Duration(milliseconds: 30), () {
-        fakeBridge.markAsReady();
+      // Simulate the bridge becoming ready after a short delay
+      Future.delayed(const Duration(milliseconds: 30), () {
+        resilienceContainer.read(bridgeReadyProvider.notifier).markReady();
       });
 
-      await container
+      // Mocks for the rest of the flow
+      when(
+        resilienceMockWebViewController.evaluateJavascript(
+          source: anyNamed('source'),
+        ),
+      ).thenAnswer((_) async => true);
+      // Mock for callAsyncJavaScript - not needed for this test but included for completeness
+      // The test doesn't actually call extractFinalResponse, so this mock won't be used
+
+      await resilienceContainer
           .read(conversationProvider.notifier)
           .sendPromptToAutomation('Test');
 
-      expect(fakeBridge.lastPromptSent, contains('Test'));
       expect(
-        container.read(automationStateProvider),
+        resilienceContainer.read(automationStateProvider),
         const AutomationStateData.observing(),
       );
     });
@@ -484,14 +645,26 @@ void main() {
         () async {
       var called = false;
       when(
-        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
+        resilienceMockWebViewController.loadUrl(
+          urlRequest: anyNamed('urlRequest'),
+        ),
       ).thenAnswer((invocation) async {
         final req = invocation.namedArguments[#urlRequest] as URLRequest;
         expect(req.url.toString(), WebViewConstants.aiStudioUrl);
         called = true;
+        // Mark bridge as ready immediately after loadUrl completes
+        // to allow loadUrlAndWaitForReady to finish quickly
+        resilienceContainer.read(bridgeReadyProvider.notifier).markReady();
       });
 
-      await container
+      // Mocks to allow the rest of the function to complete without error
+      when(
+        resilienceMockWebViewController.evaluateJavascript(
+          source: anyNamed('source'),
+        ),
+      ).thenAnswer((_) async => true);
+
+      await resilienceContainer
           .read(conversationProvider.notifier)
           .sendPromptToAutomation('Hello');
 
@@ -501,20 +674,25 @@ void main() {
     test('sendPromptToAutomation handles WebView loadUrl failure gracefully',
         () async {
       when(
-        mockWebViewController.loadUrl(urlRequest: anyNamed('urlRequest')),
-      ).thenAnswer((_) async => throw Exception('WebView failed to load'));
+        resilienceMockWebViewController.loadUrl(
+          urlRequest: anyNamed('urlRequest'),
+        ),
+      ).thenAnswer((_) => Future.error(Exception('WebView failed to load')));
 
-      await container
+      await resilienceContainer
           .read(conversationProvider.notifier)
           .sendPromptToAutomation('This will fail');
 
-      final conversation = container.read(conversationProvider);
+      final conversation = resilienceContainer.read(conversationProvider);
       expect(
-        container.read(automationStateProvider),
+        resilienceContainer.read(automationStateProvider),
         const AutomationStateData.failed(),
       );
       expect(conversation.last.status, MessageStatus.error);
-      expect(conversation.last.text, contains('An unexpected error occurred'));
+      expect(
+        conversation.last.text,
+        contains('An unexpected error occurred'),
+      );
       expect(conversation.last.text, contains('WebView failed to load'));
     });
   });

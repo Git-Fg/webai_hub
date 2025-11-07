@@ -1,22 +1,103 @@
 // ts_src/types/chatbot.ts
 
-// Interface describing the core capabilities of a chatbot module.
-// For the MVP, we focus on the essentials only.
+// WHY: Defines a strong type for the options passed from Dart.
+// This improves type safety and autocompletion when implementing a new chatbot.
+export interface AutomationOptions {
+  prompt: string;
+  model?: string;
+  systemPrompt?: string;
+  temperature?: number;
+  topP?: number;
+  thinkingBudget?: number;
+  useWebSearch?: boolean;
+  disableThinking?: boolean;
+  urlContext?: boolean;
+}
+
+/**
+ * Interface describing the core capabilities of a chatbot module.
+ * 
+ * **Best Practices:**
+ * 
+ * - **Selector Strategy:** Follow the Selector Priority Pyramid (see BLUEPRINT_FULL.md §4.10.1):
+ *   - Tier 1: User-facing locators (ARIA roles, accessible names)
+ *   - Tier 2: Stable test hooks (`data-testid`)
+ *   - Tier 3: Structural relationships (`:has()`, `.closest()`)
+ *   - Never: Auto-generated classes, fragile DOM paths
+ * 
+ * - **Waiting Strategies:** Use event-driven APIs instead of polling (see BLUEPRINT_FULL.md §4.10.2):
+ *   - `waitForElement`: For DOM structural changes (uses `MutationObserver`)
+ *   - `waitForVisibleElement`: For visibility checks (uses `IntersectionObserver`)
+ *   - `waitForActionableElement`: For comprehensive actionability validation before interactions
+ * 
+ * - **Actionability Checks:** Always use `waitForActionableElement` before critical interactions
+ *   (clicks, value setting). This performs a 5-point check: Attached, Visible, Stable, Enabled, Unoccluded.
+ * 
+ * - **Mobile Performance:** Follow "Observe Narrowly, Process Lightly" principles (see BLUEPRINT_FULL.md §4.10.4):
+ *   - Observe smallest possible DOM subtree
+ *   - Filter mutations aggressively
+ *   - Disconnect observers immediately after use
+ * 
+ * @see BLUEPRINT_FULL.md §4.10 for comprehensive documentation on selector strategies and waiting patterns
+ */
 export interface Chatbot {
   /**
    * Waits until the chatbot page is fully loaded and ready for automation.
+   * 
+   * **Implementation Notes:**
+   * - Should wait for a stable element that appears only when the page is fully ready
+   * - Use `waitForElement` with selectors following the Priority Pyramid
+   * - Prefer ARIA labels or stable IDs over auto-generated classes
    */
   waitForReady: () => Promise<void>;
 
   /**
+   * Applies all model and run configurations in a single, efficient operation.
+   * This method should handle opening and closing any necessary settings panels.
+   * 
+   * **Implementation Notes:**
+   * - Should minimize panel open/close cycles for performance
+   * - Use `waitForActionableElement` before all interactions (clicks, value setting)
+   * - Handle mobile vs desktop UI differences if applicable
+   * 
+   * @param options The full set of automation options from Dart.
+   */
+  applyAllSettings?: (options: AutomationOptions) => Promise<void>;
+
+  /**
+   * Enters a system prompt or instructions for the AI model.
+   * 
+   * **Implementation Notes:**
+   * - May open a separate dialog/modal
+   * - Use `waitForActionableElement` before interacting with input fields
+   * - Ensure proper cleanup (close dialogs) after setting
+   * 
+   * @param systemPrompt The instructions to provide.
+   */
+  setSystemPrompt?: (systemPrompt: string) => Promise<void>;
+
+  /**
    * Finds the input area, inserts the prompt, and clicks the submit button.
-   * Resolves only after the response generation is complete.
+   * 
+   * **Implementation Notes:**
+   * - Use `waitForActionableElement` for both input field and submit button
+   * - Wait for token count or similar indicator that input was processed
+   * - Handle login page detection and notify Dart appropriately
+   * 
    * @param prompt The message to send.
    */
   sendPrompt: (prompt: string) => Promise<void>;
 
   /**
    * Extracts the cleaned text of the latest model response.
+   * 
+   * **Implementation Notes:**
+   * - Use "reliable-to-uncertain" strategy: find stable button (e.g., "Edit"), traverse up to container
+   * - Wait for response to be finalized (e.g., presence of "Edit" button)
+   * - Use `waitForElementWithin` to scope searches to specific containers
+   * - Handle extraction errors gracefully (return partial results if possible)
+   * 
+   * @returns The extracted response text
    */
   extractResponse: () => Promise<string>;
 

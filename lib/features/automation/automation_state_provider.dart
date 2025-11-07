@@ -12,6 +12,7 @@ sealed class AutomationStateData with _$AutomationStateData {
   const factory AutomationStateData.observing() = _Observing;
   const factory AutomationStateData.refining({
     required int messageCount,
+    @Default(false) bool isExtracting,
   }) = _Refining;
   const factory AutomationStateData.failed() = _Failed;
   const factory AutomationStateData.needsLogin() = _NeedsLogin;
@@ -27,18 +28,21 @@ class AutomationState extends _$AutomationState {
   void moveToObserving() => state = const AutomationStateData.observing();
 
   void moveToRefining({required int messageCount}) =>
-      state = AutomationStateData.refining(messageCount: messageCount);
+      state = AutomationStateData.refining(
+        messageCount: messageCount,
+      );
+
+  void setExtracting({required bool extracting}) {
+    state.mapOrNull(
+      refining: (refiningState) {
+        state = refiningState.copyWith(isExtracting: extracting);
+      },
+    );
+  }
 
   void moveToFailed() => state = const AutomationStateData.failed();
 
   void moveToNeedsLogin() => state = const AutomationStateData.needsLogin();
 
   void returnToIdle() => state = const AutomationStateData.idle();
-}
-
-/// Provider for extraction state during phase 3
-@riverpod
-class IsExtracting extends _$IsExtracting {
-  @override
-  bool build() => false;
 }

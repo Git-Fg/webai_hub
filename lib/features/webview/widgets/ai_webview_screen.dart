@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
@@ -6,6 +7,7 @@ import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/webview_key_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
 import 'package:flutter/material.dart';
@@ -19,9 +21,65 @@ class AiWebviewScreen extends ConsumerStatefulWidget {
   ConsumerState<AiWebviewScreen> createState() => _AiWebviewScreenState();
 }
 
-class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
+class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
+    with WidgetsBindingObserver {
   InAppWebViewController? webViewController;
   double _progress = 0;
+  String? _currentBridgeScript;
+
+  @override
+  void initState() {
+    super.initState();
+    // WHY: Register lifecycle observer to detect app resume and check bridge health
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    // WHY: Unregister lifecycle observer to prevent memory leaks
+    WidgetsBinding.instance.removeObserver(this);
+    // Remove JavaScript handlers to prevent memory leaks
+    webViewController?.removeJavaScriptHandler(
+      handlerName: BridgeConstants.automationHandler,
+    );
+    webViewController?.removeJavaScriptHandler(
+      handlerName: BridgeConstants.readyHandler,
+    );
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // WHY: On app resume, check bridge health and recover if needed
+    // iOS WebViews often become "zombie" contexts after backgrounding
+    if (state == AppLifecycleState.resumed) {
+      // WHY: Fire-and-forget: recovery happens asynchronously, no need to await
+      unawaited(_checkBridgeHealthOnResume());
+    }
+  }
+
+  /// Checks bridge health after app resume and triggers recovery if needed
+  Future<void> _checkBridgeHealthOnResume() async {
+    final controller = webViewController;
+    if (controller == null) return;
+
+    try {
+      final bridge = ref.read(javaScriptBridgeProvider);
+      if (bridge is JavaScriptBridge) {
+        final isAlive = await bridge.checkBridgeHeartbeat();
+        if (!isAlive) {
+          debugPrint(
+            '[AiWebviewScreen] Bridge dead after resume, triggering recovery...',
+          );
+          await _recoverFromDeadBridge(controller);
+        }
+      }
+    } on Object catch (e) {
+      debugPrint(
+        '[AiWebviewScreen] Error checking bridge health on resume: $e',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,13 +157,19 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
   }
 
   Widget _buildWebView(String bridgeScript) {
+    // WHY: Store bridge script for use in recovery methods
+    _currentBridgeScript = bridgeScript;
+    final webViewKey = ref.watch(webViewKeyProvider);
+
     return InAppWebView(
-      key: const ValueKey('ai_webview'),
+      key: ValueKey('ai_webview_$webViewKey'),
       initialUrlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       initialSettings: InAppWebViewSettings(
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
+        // WHY: Security hardening - bridge security configuration should be added
+        // Research shows default bridge behavior is dangerously permissive
       ),
       onWebViewCreated: (controller) {
         webViewController = controller;
@@ -191,10 +255,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         final currentUrl = url?.toString() ?? '';
         if (currentUrl.contains(WebViewConstants.aiStudioDomain) ||
             currentUrl.startsWith('file://')) {
-          await controller.evaluateJavascript(source: bridgeScript);
-          debugPrint(
-            '[AiWebviewScreen] Bridge script (re-)injected on $currentUrl.',
-          );
+          await _injectBridgeScript(controller, bridgeScript);
         }
 
         final bridge = ref.read(javaScriptBridgeProvider);
@@ -202,10 +263,48 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
           await bridge.captureConsoleLogs();
         }
       },
-      onUpdateVisitedHistory: (controller, url, androidIsReload) {
+      onUpdateVisitedHistory: (controller, url, androidIsReload) async {
         final newUrl = url?.toString() ?? '';
         ref.read(currentWebViewUrlProvider.notifier).updateUrl(newUrl);
+
+        // WHY: SPA navigations don't trigger onLoadStop, so we must validate bridge health
+        // and re-inject if needed. This handles client-side routing in modern web apps.
+        if (newUrl.contains(WebViewConstants.aiStudioDomain) ||
+            newUrl.startsWith('file://')) {
+          try {
+            final bridge = ref.read(javaScriptBridgeProvider);
+            if (bridge is JavaScriptBridge) {
+              final isAlive = await bridge.checkBridgeHeartbeat();
+              if (!isAlive) {
+                debugPrint(
+                  '[AiWebviewScreen] Bridge dead after SPA navigation, re-injecting...',
+                );
+                await _injectBridgeScript(controller, _currentBridgeScript);
+              }
+            }
+          } on Object catch (e) {
+            debugPrint(
+              '[AiWebviewScreen] Error checking bridge after SPA navigation: $e',
+            );
+            // WHY: On error, attempt re-injection anyway as defensive measure
+            await _injectBridgeScript(controller, _currentBridgeScript);
+          }
+        }
       },
+      // WHY: Android renderer process crash is fatal - WebView instance becomes unusable
+      // Recovery requires destroying and recreating the entire widget via key change
+      onRenderProcessGone: (controller, details) {
+        debugPrint(
+          '[AiWebviewScreen] Android renderer process crashed: ${details.didCrash}',
+        );
+        // Reset bridge state
+        ref.read(bridgeReadyProvider.notifier).reset();
+        // WHY: Increment key to trigger widget recreation (only way to recover on Android)
+        ref.read(webViewKeyProvider.notifier).incrementKey();
+      },
+      // WHY: iOS content process crashes are handled via lifecycle observer (didChangeAppLifecycleState)
+      // The heartbeat check on app resume will detect and recover from zombie contexts
+      // iOS crashes often manifest as "zombie" contexts that hang on evaluateJavascript calls
       onConsoleMessage: (controller, consoleMessage) {
         debugPrint('[WebView CONSOLE] ${consoleMessage.message}');
       },
@@ -215,5 +314,43 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen> {
         });
       },
     );
+  }
+
+  /// WHY: Centralized bridge injection logic reused by onLoadStop and recovery paths
+  Future<void> _injectBridgeScript(
+    InAppWebViewController controller,
+    String? bridgeScript,
+  ) async {
+    if (bridgeScript == null || bridgeScript.isEmpty) return;
+
+    try {
+      await controller.evaluateJavascript(source: bridgeScript);
+      final currentUrl = await controller.getUrl();
+      debugPrint(
+        '[AiWebviewScreen] Bridge script (re-)injected on ${currentUrl?.toString() ?? 'unknown'}.',
+      );
+    } on Object catch (e) {
+      debugPrint('[AiWebviewScreen] Error injecting bridge script: $e');
+    }
+  }
+
+  /// WHY: Recovery method for dead bridge contexts (called after heartbeat failure)
+  Future<void> _recoverFromDeadBridge(InAppWebViewController controller) async {
+    try {
+      final currentUrl = await controller.getUrl();
+      final urlString = currentUrl?.toString() ?? '';
+
+      // WHY: Only attempt recovery on supported domains
+      if (urlString.contains(WebViewConstants.aiStudioDomain) ||
+          urlString.startsWith('file://')) {
+        // Attempt to re-inject bridge script
+        await _injectBridgeScript(controller, _currentBridgeScript);
+      } else {
+        // WHY: If on unsupported domain, reload to a known good state
+        await controller.reload();
+      }
+    } on Object catch (e) {
+      debugPrint('[AiWebviewScreen] Error during bridge recovery: $e');
+    }
   }
 }

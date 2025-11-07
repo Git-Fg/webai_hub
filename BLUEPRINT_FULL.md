@@ -30,7 +30,7 @@ This stack is prescriptive and optimized for static type-safety and performance.
 
 ### Target File Structure
 
-```
+```text
 lib/
 ├── core/                       # Shared services, base models
 │   ├── database/               # Drift configuration and DAOs
@@ -142,19 +142,71 @@ Users can customize the instruction text that introduces the conversation histor
   - **JSON Structure:** Each selector definition includes a `primary` selector and an ordered array of `fallbacks`.
   - **Management:** The Dart layer is responsible for fetching (with `ETag`), caching locally, and injecting this configuration into the `WebView` on startup.
 
-- **"Defense in Depth" Fallback Strategy:** The TS engine sequentially iterates through selectors (`primary`, then `fallbacks`) until an "actionable" (visible, not-disabled) element is found.
+- **"Defense in Depth" Fallback Strategy:** The TS engine sequentially iterates through selectors (`primary`, then `fallbacks`) until an "actionable" (visible, not-disabled) element is found. See §4.10.1 for the Selector Priority Pyramid that guides selector choice.
 
-- **Optimized `MutationObserver`:** The "Ephemeral Two-Step Observer" strategy is implemented to preserve performance and battery on mobile.
+- **Optimized `MutationObserver`:** The "Observe Narrowly, Process Lightly" strategy is implemented to preserve performance and battery on mobile. See §4.10.4 for detailed mobile performance principles.
 
 - **Shadow DOM Handling:** The engine includes a recursive search function for `open` mode and a "monkey-patching" strategy to attempt to force `open` mode on `closed` roots.
 
+- **Modern Waiting Patterns:** The engine uses event-driven APIs (`MutationObserver`, `IntersectionObserver`) instead of polling. See §4.10.2 for the "Sensor Array" pattern and §4.10.3 for comprehensive actionability checks.
+
 This configuration-driven approach directly supports the README's Multi-Provider Support goal: by relying on a remotely fetched JSON (with ETag-based caching), providers can be added or updated (selectors and behaviors) without requiring a new app release.
+
+**For comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies, see §4.10.**
 
 ### 4.2. JavaScript Bridge (RPC API)
 
 - **Pattern:** The bridge is an asynchronous **RPC (Remote Procedure Call)** API based on `Promise`s and the `JavaScriptHandler`s of `flutter_inappwebview`.
 - **API Contract:** The TypeScript API (`automation_engine.ts`) exposes typed functions (e.g., `startAutomation`). The Dart API (`javascript_bridge.dart`) registers corresponding handlers.
 - **State Communication:** For status updates and errors, the TS engine uses a **unidirectional event stream** to a single Dart handler (`automationBridge`), sending structured `AutomationEvent` objects.
+
+#### 4.2.1. Resilient Bridge Architecture (Four-Layer Defense)
+
+The JavaScript bridge implements a multi-layered defense system to handle the ephemeral nature of WebView JavaScript contexts and recover from crashes, context loss, and silent failures.
+
+##### Layer 1: Defensive Injection
+
+- **Multi-Event Strategy:** Bridge script is injected on multiple lifecycle events:
+  - `onWebViewCreated`: Registers Dart-side handlers **once** (idempotent registration)
+  - `onLoadStop`: Injects script after full-page reloads
+  - `onUpdateVisitedHistory`: Validates bridge health during SPA navigations (where `onLoadStop` doesn't fire)
+- **JavaScript Idempotency:** The bridge script (`automation_engine.ts`) uses a master guard clause (`if (window.__AI_HYBRID_HUB_INITIALIZED__)`) to ensure it can be safely re-injected multiple times without side effects.
+
+##### Layer 2: Proactive Heartbeat Verification
+
+- **Heartbeat Pattern:** The `checkBridgeHeartbeat()` method uses `evaluateJavascript` wrapped in `Future.timeout()` (2 seconds) to detect dead contexts.
+- **Canonical Signal:** A `TimeoutException` is not an error but the **canonical signal of a dead context**. This prevents infinite hangs on "zombie" contexts that appear alive but hang indefinitely.
+- **Integration:** Heartbeat checks are performed:
+  - Before each polling iteration in `waitForBridgeReady()` to detect zombie contexts early
+  - Before critical operations (`startAutomation`, `extractFinalResponse`) to fail fast
+  - After SPA navigations to validate bridge health
+  - On app resume to detect iOS "zombie" contexts after backgrounding
+
+##### Layer 3: Disaster Recovery (Platform-Specific)
+
+- **Android Renderer Process Crashes (`onRenderProcessGone`):**
+  - **Fatal:** The WebView instance becomes unusable and must be destroyed
+  - **Recovery:** Increment `WebViewKeyProvider` to trigger widget recreation via key change
+  - **State Reset:** Bridge readiness state is reset before recreation
+- **iOS Content Process Crashes:**
+  - **Recoverable:** Detected via lifecycle observer (`didChangeAppLifecycleState`) on app resume
+  - **Recovery:** Heartbeat check detects zombie contexts; bridge script is re-injected or page is reloaded
+  - **Pattern:** iOS crashes often manifest as "zombie" contexts that hang on `evaluateJavascript` calls
+
+##### Layer 4: State Externalization
+
+- **Principle:** The JavaScript context (`window` object) is volatile and must **never** be the source of truth for persistent state.
+- **Implementation:** All critical state (session tokens, automation progress) is owned by the Dart layer and persisted via:
+  - `CookieManager` (for session state)
+  - `WebStorageManager` (for application state)
+- **Rehydration:** The JavaScript bridge can "rehydrate" itself from native storage upon initialization if needed.
+
+**Benefits:**
+
+- **Self-Healing:** The bridge automatically detects and recovers from context loss without user intervention
+- **Prevents Hangs:** Heartbeat pattern prevents infinite waits on dead contexts
+- **SPA Support:** Handles modern web apps with client-side routing that don't trigger `onLoadStop`
+- **Platform-Aware:** Uses platform-specific recovery strategies optimized for each OS
 
 ### 4.3. Error Handling & Graceful Degradation
 
@@ -208,9 +260,33 @@ Exception – Providers with native system prompt fields:
 - Configuration (conceptual): mark capability at provider level (e.g., `supportsNativeSystemPrompt: true`). If used, the Dart orchestration must ensure the native field is set before sending the user prompt. How this is achieved (selector, native control, or a provider‑specific helper) is an implementation detail and outside this blueprint’s scope.
 - Rationale: Avoids duplicating or conflicting instructions (native + in‑prompt) and adheres to provider UX when it exists.
 
+### 4.7. Prompt Structure with Duplicated Instruction for Focus
+
+The XML prompt structure intentionally duplicates the user prompt and system prompt at both the beginning and end of the prompt. This is not an oversight but a deliberate design choice with important implications for AI model performance.
+
+**Structure:**
+
+1. **Initial Instruction:** User prompt + system prompt (if applicable)
+2. **Context:** History, files, and other contextual information
+3. **Repeated Instruction:** User prompt + system prompt (if applicable)
+
+**Why Duplication is Necessary:**
+
+- **Recency Bias:** Large language models exhibit strong recency bias, giving disproportionate weight to information appearing at the end of prompts
+- **Focus Maintenance:** When extensive context (history, files) is included, models may lose focus on the actual user request
+- **Mitigation Strategy:** Placing the user's current input at both beginning and end ensures the model maintains focus on the current task while still benefiting from context
+
+**Implementation Details:**
+
+- The duplication occurs in `_buildPromptWithContext` method in `conversation_provider.dart`
+- System prompt is only included if `shouldInjectSystemPrompt` is true (based on provider capabilities)
+- This pattern is applied consistently across all providers that don't support native system prompts
+
+This pattern is a proven technique for maintaining model focus in complex prompting scenarios and should be preserved when extending the prompt system.
+
 ## 5. Data & Persistence
 
-### 4.7. Advanced UI/UX Patterns
+### 4.8. Advanced UI/UX Patterns
 
 To create a fluid and non-obstructive user experience, the application adopts several advanced UI patterns managed by dedicated Riverpod state providers.
 
@@ -245,6 +321,176 @@ To maintain a clean separation between business logic and UI implementation, act
   - When `ConversationProvider` completes an action that should result in a scroll (e.g., successful extraction), it calls a `requestScroll()` method on the notifier, which simply increments the state.
   - The `HubScreen` uses `ref.listen` to watch for changes to this provider's state. When a change is detected, it calls its local `_scrollToBottom()` method, which has access to the `ScrollController`.
   - This pattern effectively decouples the "intent" (scroll needed) from the "implementation" (how to scroll).
+
+### 4.9. Bridge Robustness & Security Patterns
+
+The Flutter-JavaScript bridge is a critical but fragile component. Based on comprehensive research into `flutter_inappwebview` best practices (late 2025), the application implements defensive patterns to prevent documented failure modes.
+
+#### 4.9.1. Mandatory Timeout Protection for `callAsyncJavaScript`
+
+**Problem:** The `callAsyncJavaScript` API can silently hang indefinitely on Android, causing deadlocks and app crashes. This is a documented issue in the flutter_inappwebview library.
+
+**Solution:** All `callAsyncJavaScript` calls **MUST** be wrapped with `Future.timeout()`:
+
+```dart
+final result = await controller.callAsyncJavaScript(
+  functionBody: 'return await window.extractFinalResponse();',
+).timeout(
+  const Duration(seconds: 30),
+  onTimeout: () => throw AutomationError(
+    errorCode: AutomationErrorCode.bridgeTimeout,
+    location: 'extractFinalResponse',
+    message: 'Bridge call timed out after 30 seconds',
+    diagnostics: _getBridgeDiagnostics(),
+  ),
+);
+```
+
+**Implementation:** See `lib/features/webview/bridge/javascript_bridge.dart` in the `extractFinalResponse()` method.
+
+#### 4.9.2. Event-Driven Bridge Readiness Detection
+
+**Problem:** Polling-based bridge readiness detection is unreliable and can miss the actual ready state, leading to race conditions.
+
+**Solution:** Listen for the official `flutterInAppWebViewPlatformReady` event, which fires when the platform is truly ready:
+
+```typescript
+// Listen for the official platform ready event
+document.addEventListener('flutterInAppWebViewPlatformReady', () => {
+  console.log('[Engine] Received flutterInAppWebViewPlatformReady event');
+  signalReady();
+});
+
+// Keep fallback polling for robustness
+trySignalReady();
+```
+
+**Rationale:** Event-driven detection is more reliable than timing-based polling, but the fallback polling mechanism is retained for robustness.
+
+**Implementation:** See `ts_src/automation_engine.ts` for the event listener implementation.
+
+#### 4.9.3. Security Configuration Requirements
+
+**Problem:** The default security posture of the JavaScript bridge is dangerously permissive, allowing any website to access the bridge API.
+
+**Solution:** Bridge security should be configured to whitelist only trusted domains. The exact API varies by flutter_inappwebview version and should be configured when available to restrict bridge access to trusted domains only.
+
+**Reference:** These patterns are based on comprehensive research into flutter_inappwebview communication bridge best practices, citing specific GitHub issues and changelogs documenting failure modes and security vulnerabilities.
+
+### 4.10. Resilient Selector Strategy & Modern Waiting Patterns
+
+The automation engine implements state-of-the-art techniques for reliable DOM interaction, based on comprehensive research into modern web automation best practices. This section documents the core principles and implementation patterns.
+
+#### 4.10.1. The Selector Priority Pyramid
+
+Selectors must be a "contract," not an implementation detail. The most resilient selectors are based on a priority pyramid:
+
+1. **Tier 1: User-Facing Locators** (Highest Priority)
+   - ARIA roles and accessible names (`aria-label`, `role`)
+   - Semantic HTML attributes that form an explicit contract
+   - **Rationale:** These attributes are designed for accessibility and are least likely to change with styling updates
+
+2. **Tier 2: Stable Test Hooks**
+   - `data-testid` attributes (if available)
+   - Stable IDs that are part of the application's public API
+   - **Rationale:** Explicitly designed for testing, forming a contract between developers and automation
+
+3. **Tier 3: Structural Relationships**
+   - Modern CSS selectors like `:has()` for contextual relationships
+   - `.closest()` traversal from stable inner elements to containers
+   - **Rationale:** More resilient than direct paths, but still dependent on DOM structure
+
+4. **Never Use:**
+   - Auto-generated CSS classes (e.g., `.div-a23bc`)
+   - Fragile DOM paths that break with minor layout changes
+   - **Rationale:** These are implementation details that change frequently
+
+**Implementation:** The `ai-studio.ts` chatbot module already follows this pattern, preferring `aria-label` selectors over class names. Future provider integrations should adopt this hierarchy.
+
+#### 4.10.2. The "Sensor Array" Pattern for Asynchronous Waiting
+
+Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor array" of modern browser APIs to synchronize with the application's state:
+
+**Decision Matrix:**
+
+| Use Case | API | Rationale |
+|----------|-----|-----------|
+| **DOM Structural Changes** (elements added/removed) | `MutationObserver` | Event-driven, responds immediately to DOM mutations. More efficient than polling. |
+| **Element Visibility** (scrolling, lazy-loading) | `IntersectionObserver` | Most performant for visibility checks. Essential for virtualized lists and lazy-loaded content. |
+| **Layout-Dependent Properties** (animations, layout stabilization) | `requestAnimationFrame` polling | Synchronizes with browser's render loop. Correct tool for waiting on animations to complete. |
+
+**Implementation:**
+
+- **`waitForElement`** (`ts_src/utils/wait-for-element.ts`): Uses `MutationObserver` as primary strategy, with polling fallback for edge cases
+- **`waitForVisibleElement`** (`ts_src/utils/wait-for-visible-element.ts`): Uses `IntersectionObserver` for viewport visibility detection
+- **`waitForActionableElement`** (`ts_src/utils/wait-for-actionable-element.ts`): Combines `MutationObserver` with comprehensive actionability checks
+
+#### 4.10.3. The 5-Point Actionability Check
+
+An element is not ready for interaction just because it exists. The `waitForActionableElement` utility implements a comprehensive checklist:
+
+1. **Attached**: Element is in the DOM (`element.isConnected`)
+2. **Visible**: Using modern `element.checkVisibility()` API or fallback (`offsetParent !== null`)
+3. **Stable**: No ongoing animations (using `element.getAnimations()` and `animation.finished` promises)
+4. **Enabled**: Check for `disabled`, `aria-disabled`, `inert` attributes (including parent containers)
+5. **Unoccluded**: Use `document.elementFromPoint()` to verify element is actually clickable
+
+**Usage:** All critical interactions in `ai-studio.ts` use `waitForActionableElement` before clicking or setting values. This replaces scattered visibility checks with a unified, comprehensive validation.
+
+#### 4.10.4. Mobile Performance Principles: "Observe Narrowly, Process Lightly"
+
+`MutationObserver` can be a significant drain on CPU and battery if misconfigured. The core principle for mobile is:
+
+##### "Observe Narrowly, Process Lightly"
+
+1. **Observe the Smallest Possible DOM Subtree:**
+   - Prefer specific containers (e.g., `ms-chat-session`) over `document.body`
+   - Example: `automation_engine.ts` observes `ms-chat-session` when available, falling back to `body` only if necessary
+
+2. **Filter Mutations Aggressively:**
+   - Only process mutations that are relevant to the automation goal
+   - Example: `automation_engine.ts` filters mutations to only process those that add button elements
+
+3. **Disconnect Immediately After Purpose is Served:**
+   - Observers should disconnect as soon as their condition is met
+   - Example: `automation_engine.ts` disconnects the observer immediately after detecting the target state
+
+4. **Limit Observation Types:**
+   - Only observe necessary mutation types (`childList`, `attributes`, etc.)
+   - Avoid observing `characterData` or `subtree` when not needed
+
+**Implementation:** The `startObserving()` function in `automation_engine.ts` demonstrates these principles:
+
+- Observes narrowest scope (`ms-chat-session` preferred)
+- Filters mutations before processing (`shouldProcessMutation`)
+- Disconnects immediately when condition met (`stopObserving()`)
+
+#### 4.10.5. Debugging Flakiness Systematically
+
+Intermittent failures should be diagnosed systematically, not by attempting local reproduction.
+
+**Failure Classification:**
+
+1. **Locator Failure**: Selector no longer matches (site changed, selector outdated)
+   - **Diagnosis:** Analyze DOM snapshots from CI runs
+   - **Fix:** Update selector or add fallback to selector priority pyramid
+
+2. **Wait Failure**: Element exists but timing is wrong (race condition)
+   - **Diagnosis:** Check if `waitForActionableElement` is being used, verify timeout values
+   - **Fix:** Increase timeout, add retry logic, or use more appropriate waiting strategy
+
+3. **State Failure**: Application is in unexpected state (CAPTCHA, login required)
+   - **Diagnosis:** Analyze error messages and page state from logs
+   - **Fix:** Implement graceful degradation (see §4.3)
+
+**Process:**
+
+1. **Analyze Artifacts:** Use traces, videos, screenshots from CI runs (not local reproduction)
+2. **Classify Failure:** Determine if it's Locator, Wait, or State issue
+3. **Apply Fix:** Based on classification, apply appropriate solution
+4. **Verify:** Re-run in CI environment, not locally
+
+**Reference:** This methodology is based on industry best practices from leading test automation frameworks (Playwright, Cypress) and modern web automation research.
 
 ### 5.1. Native Conversation Persistence
 
@@ -355,113 +601,49 @@ Goal: Identify reliable anchor points for each action.
 
 #### Phase 3: Orchestration & Communication (Dart)
 
-1. Prefer `callAsyncJavaScript` for stability: To call an async JS function and await its result, avoid `evaluateJavascript` with manual `Promise`s and timeouts. Use `callAsyncJavaScript` so the value is returned reliably via `result.value`.
-2. Tolerant error handling: In `extractAndReturnToHub`, prioritize returning useful text even if an error also occurred. Capture both and decide based on response presence/emptiness.
-3. Integrate response observer: If waiting is needed after sending the prompt, transition to `.observing()` and start a provider-specific response observer; adapt `checkUIState` to detect the provider's end-of-response indicator (e.g., the appearance of a "Copy" button).
+1. **Prefer `callAsyncJavaScript` for stability:** This is the most critical lesson. To call an async JS function and await its result, **do NOT use `evaluateJavascript` with manual `Promise`s and timeouts.** Use `callAsyncJavaScript` instead.
 
-#### Phase 4: Final Debugging
-
-1. Use JS logs during development at key steps (e.g., `console.log('Target element:', element.outerHTML)`).
-2. Use DOM inspection tools to capture a snapshot of the DOM when extraction fails and analyze why selectors did not match.
-
-### Annexe de Blueprint : Guide d'Intégration d'un Nouveau Provider Web
-
-Ce guide récapitule la méthodologie et les leçons apprises lors de l'intégration de Google AI Studio. Suivre ces étapes permettra d'intégrer de nouveaux providers (ChatGPT, Claude, etc.) de manière rapide, robuste et maintenable.
-
-#### Principes Fondamentaux
-
-1. **Simplicité avant tout :** Toujours commencer par les sélecteurs CSS et les opérations JavaScript les plus simples et les plus standards possible.
-2. **Partir du Fiable pour Trouver l'Incertain :** Si un conteneur est difficile à cibler, trouver un élément simple à l'intérieur (comme un bouton) et remonter à son parent (`.closest()`).
-3. **Asynchronisme Explicite :** Ne jamais se fier à des délais fixes (`setTimeout`, `Future.delayed`). Utiliser des mécanismes d'attente active (`waitForElement`) et des retours de communication explicites (`callAsyncJavaScript`).
-4. **Tolérance aux Fautes :** L'automatisation doit être "blindée". Elle doit pouvoir réussir sa mission principale (ex: extraire du texte) même si des erreurs non critiques se produisent sur la page web.
-5. **Injection Universelle :** Le script du bridge doit être présent sur toutes les pages pour survivre aux navigations et aux crashs de rendu. La logique de décision ("Dois-je agir ?") appartient au script lui-même, pas au code d'injection.
-
----
-
-### Processus d'Intégration Étape par Étape
-
-#### Phase 1 : Analyse Manuelle (Navigateur de Bureau)
-
-L'objectif est d'identifier les "points d'ancrage" fiables pour chaque action.
-
-1. **Identifier les Actions Clés :** Pour un nouveau provider, déterminez les 3 actions fondamentales :
-    - **Entrer du texte :** Quel est l'élément `<textarea>` ou `<input>` ?
-    - **Envoyer le prompt :** Quel est le bouton `<button>` de soumission ?
-    - **Extraire la réponse :** Quelle est la méthode la plus stable ? (Voir point 3)
-
-2. **Trouver les Sélecteurs les plus Simples :**
-    - Ouvrez le site du provider dans les outils de développement de Chrome/Firefox.
-    - Identifiez les sélecteurs les plus uniques et les moins susceptibles de changer. Privilégiez les `[aria-label]`, les ID, ou les attributs `data-*` par rapport aux classes CSS génériques (`.div-a23bc`).
-    - Créez un script de validation (similaire à `validation/aistudio_selector_validator.js`) pour tester vos sélecteurs directement dans la console.
-
-3. **Valider la Stratégie d'Extraction :**
-    - **Scénario A (Idéal) :** Utilisez la **Phase 1 du Guide d'Investigation** pour chercher si le contenu de la conversation est dans un objet JavaScript global (`window.appState`, etc.). Si oui, c'est la méthode à privilégier.
-    - **Scénario B (Le plus courant) :** Si les données ne sont pas dans un objet global, adoptez la stratégie **"Partir du Fiable"** :
-        1. Trouvez un bouton unique et stable sur la réponse finalisée (ex: "Copier", "Modifier", "Régénérer").
-        2. Utilisez ce bouton comme point d'ancrage.
-        3. À partir de ce bouton, utilisez `.closest()` pour remonter au conteneur principal du message.
-        4. Une fois le conteneur trouvé, utilisez `.querySelector()` pour trouver l'élément contenant le texte de la réponse.
-        5. Validez cette séquence dans votre script de validation.
-
-#### Phase 2 : Implémentation de la Logique (TypeScript)
-
-1. **Créer le Fichier du Chatbot :** Créez un nouveau fichier dans `ts_src/chatbots/`, par exemple `chatgpt.ts`.
-2. **Implémenter l'Interface `Chatbot` :** Remplissez les trois fonctions requises en utilisant les sélecteurs et la stratégie validés à l'étape précédente.
-    - `waitForReady()`: Attend un élément qui n'apparaît qu'une fois la page entièrement chargée.
-    - `sendPrompt(prompt)`: Implémente la séquence : trouver le champ, le remplir, trouver le bouton, cliquer.
-    - `extractResponse()`: Implémente la stratégie d'extraction validée. **Utilisez la logique de "blindage"** pour séparer l'extraction de valeur des actions de nettoyage (comme fermer un mode édition) avec des `try...catch` permissifs.
-
-3. **Ajouter des Délais Stratégiques :** Incorporez des délais très courts (50-100ms) après des actions qui modifient le DOM (comme un clic qui fait apparaître un `textarea`) pour laisser le temps au framework de la page de se stabiliser.
-
-4. **Mettre à jour `automation_engine.ts` :** Ajoutez le nouveau provider à la liste `SUPPORTED_SITES`.
-
-#### Phase 3 : Orchestration et Communication (Dart)
-
-1. **Utiliser `callAsyncJavaScript` pour la Stabilité :** C'est la leçon finale et la plus importante. Pour appeler une fonction `async` de votre script JS et attendre son résultat, **n'utilisez pas `evaluateJavascript` avec des `Promise`s manuelles et des délais.** Utilisez `callAsyncJavaScript`.
-
-    **Fichier : `lib/features/webview/bridge/javascript_bridge.dart`**
+    **File:** `lib/features/webview/bridge/javascript_bridge.dart`
 
     ```dart
-    // Ancienne méthode fragile
+    // Fragile old method (DO NOT USE)
     // await controller.evaluateJavascript(source: '(async () => { window.res = await func() })()');
     // await Future.delayed(Duration(milliseconds: 100));
     // result = await controller.evaluateJavascript(source: 'window.res');
 
-    // Nouvelle méthode robuste
+    // Robust new method (USE THIS)
     final result = await controller.callAsyncJavaScript(
       functionBody: 'return await window.extractFinalResponse();',
     );
-    // La valeur est directement dans result.value
+    // The value is directly available in result.value
     final String responseText = result.value;
     ```
 
-    *Note : Cette correction cruciale a été faite manuellement par vous et doit être la norme pour toutes les futures intégrations.*
+    **Note:** This correction is critical and must be the standard for all future integrations. The `callAsyncJavaScript` API handles async operations reliably and avoids race conditions.
 
-2. **Gestion d'Erreur Tolérante :** Lors de l'implémentation de `extractAndReturnToHub` pour le nouveau provider, adoptez la structure qui priorise le résultat :
+2. **Tolerant error handling:** In `extractAndReturnToHub`, prioritize returning useful text even if an error also occurred. Capture both and decide based on response presence/emptiness:
 
     ```dart
     String? responseText;
     Object? error;
 
     try {
-      // Utilise callAsyncJavaScript
+      // Use callAsyncJavaScript
       responseText = await bridge.extractFinalResponse(); 
     } on Object catch (e) {
       error = e;
     }
 
     if (responseText != null && responseText.isNotEmpty) {
-      // Succès ! On ignore 'error' ou on le logue.
+      // Success! Ignore 'error' or log it.
     } else {
-      // Échec, on traite 'error'.
+      // Failure, handle 'error'.
     }
     ```
 
-3. **Intégrer le Déclenchement de l'Observateur :** Si le nouveau provider nécessite une attente après l'envoi du prompt, réutilisez le système d'observateur :
-    - Dans `conversation_provider.dart`, après `bridge.startAutomation()`, passez à l'état `.observing()` et appelez `bridge.startResponseObserver()`.
-    - Dans le script JS (`automation_engine.ts`), adaptez la logique de `checkUIState` pour détecter l'indicateur de fin de réponse du nouveau provider (par exemple, l'apparition d'un bouton "Copier").
+3. **Integrate response observer:** If waiting is needed after sending the prompt, transition to `.observing()` and start a provider-specific response observer; adapt `checkUIState` to detect the provider's end-of-response indicator (e.g., the appearance of a "Copy" button).
 
-#### Phase 4 : Débogage Final
+#### Phase 4: Final Debugging
 
-1. **Utiliser les Logs JS :** Gardez les logs JS (`console.log`) sur les étapes clés pendant le développement. Le log `console.log('Target element:', element.outerHTML)` est particulièrement puissant.
-2. **Utiliser l'Inspecteur de DOM :** Si une extraction échoue, utilisez le bouton "Inspect DOM" pour obtenir une "photographie" de l'état de la page au moment de l'échec et comprendre pourquoi les sélecteurs ne correspondent pas.
+1. Use JS logs during development at key steps (e.g., `console.log('Target element:', element.outerHTML)`).
+2. Use DOM inspection tools to capture a snapshot of the DOM when extraction fails and analyze why selectors did not match.

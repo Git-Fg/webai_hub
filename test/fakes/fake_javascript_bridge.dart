@@ -12,6 +12,7 @@ enum ErrorType {
 class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // For verifying that methods were called
   String? lastPromptSent;
+  Map<String, dynamic>? lastOptionsSent;
   bool wasExtractCalled = false;
 
   // To simulate errors — separated per method
@@ -52,9 +53,15 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
 
   @override
   Future<void> loadUrlAndWaitForReady(URLRequest urlRequest) async {
-    // Simulate loading a URL: reset readiness state and wait for it to be ready
-    simulateReload();
-    await waitForBridgeReady();
+    // WHY: In a test environment, this action should be considered instantaneous and successful.
+    // The previous implementation created a deadlock by waiting for a completer
+    // that it never completed. This version simply resolves immediately.
+    // For tests that need to check the waiting logic, `simulateReload()` can be
+    // called explicitly before the provider action.
+    if (!_readyCompleter.isCompleted) {
+      _readyCompleter.complete();
+    }
+    await Future<void>.delayed(Duration.zero);
   }
 
   @override
@@ -70,7 +77,7 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
-  Future<void> startAutomation(String prompt) async {
+  Future<void> startAutomation(Map<String, dynamic> options) async {
     // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
@@ -82,11 +89,12 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
           errorCode: AutomationErrorCode.automationExecutionFailed,
           location: 'startAutomation',
           message: 'Fake automation execution failed for testing',
-          diagnostics: {'prompt': prompt},
+          diagnostics: {'options': options},
         );
       case ErrorType.none:
-        // Record the prompt for verification
-        lastPromptSent = prompt;
+        // Record the options for verification
+        lastOptionsSent = options;
+        lastPromptSent = options['prompt'] as String?;
     }
   }
 
@@ -128,6 +136,7 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // Utility method to reset state between tests
   void reset() {
     lastPromptSent = null;
+    lastOptionsSent = null;
     wasExtractCalled = false;
     startAutomationErrorType = ErrorType.none;
     extractFinalResponseErrorType = ErrorType.none;
@@ -135,5 +144,11 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
         'This is a fake AI response from the test bridge.';
     // Reset readiness to completed by default to avoid hanging tests
     _readyCompleter = Completer<void>()..complete();
+  }
+
+  @override
+  Future<bool> checkBridgeHeartbeat() async {
+    // WHY: Fake bridge always reports as alive for testing
+    return true;
   }
 }

@@ -4,184 +4,310 @@ Your primary mission is to assist in the development of the AI Hybrid Hub, a Flu
 
 **Core Philosophy:** Prioritize simplicity, robustness, and maintainability. The code is the single source of truth; your contributions must be clear and self-documenting.
 
-**Current Phase:** MVP-1.0. Focus on validating the core "Assist & Validate" workflow for the Google AI Studio provider. Refer to `@blueprint_mvp` for scope limitations.
+---
+
+### 1. The Two Core Workflows
+
+Your work on this project is divided into two distinct, high-level workflows. Always identify which workflow you are in.
+
+#### **Workflow A: Code Development & Modification**
+
+This workflow applies when you are writing or changing feature code (e.g., adding a new setting, refactoring a provider).
+
+1. **Understand:** Consult `@blueprint_full` for architecture and `@conversation_provider` or `@automation_engine` for existing patterns.
+2. **Modify:** Write clean, self-documenting code. Adhere to best practices in Section 3.
+3. **Verify:** Before committing, you are responsible for ensuring all static analysis and code generation checks pass by running a single command:
+    * Run `npm run validate` to check both Dart and TypeScript code and run code generation.
+    * See [Available Commands Reference](#2-available-commands-reference) for detailed command information.
+4. **Commit:** After verification succeeds, you MUST commit changes to local repository. This creates an atomic checkpoint. Follow **Version Control Protocol** defined below.
 
 ---
 
-### 1. The "Golden Rules": Non-Negotiable Workflow Commands
+##### Version Control Protocol (VCP)
 
-These are the three most critical commands. Forgetting them is the most common source of errors.
+**Goal:** To create an atomic, traceable history of changes, allowing for easy rollbacks and clear understanding of development process.
 
-| Command                                                              | When to Run                                     | Why It's Critical                                                                                                   |
-| :------------------------------------------------------------------- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| `npm run build`                                                      | After **ANY** modification in `ts_src/**`.      | The app loads the compiled `assets/js/bridge.js`, not the source `.ts` files. Without this, your changes have no effect. |
-| `flutter pub run build_runner build --delete-conflicting-outputs`    | After **ANY** modification to `@riverpod` or `@freezed` annotations. | Providers and models rely on generated files (`*.g.dart`, `*.freezed.dart`). Stale code will cause compilation or runtime errors. |
-| `flutter test`                                                       | Before **ANY** commit.                          | Ensures your changes have not introduced regressions. All new logic must be covered by unit tests.                  |
+**1. When to Commit:**
 
----
+You MUST commit after every logical, self-contained unit of work is completed and validated. Examples include:
 
-### 2. The Development Cycle: Understand → Modify → Verify
+* After successfully fixing a bug during autonomous validation.
+* After implementing a new feature or method.
+* After a significant refactoring.
+* After updating documentation files.
 
-Follow this systematic cycle for every task.
+**2. How to Commit:**
 
-#### 2.1. Phase 1: Understand
+Use structured, conventional commit messages. This is not optional.
 
-1. **Consult Blueprints:** Always start by reviewing `@blueprint_mvp` (current scope) and `@blueprint_full` (future vision).
-2. **Explore the Codebase:** Use the file structure reference (Section 5.2) and aliases (Section 5.1) to navigate the project.
-3. **Verify Documentation:** When using external libraries (Riverpod, InAppWebView), **ALWAYS** use `context7` to check the latest official documentation. Do not guess or rely on old knowledge.
+First, stage all changes:
 
-#### 2.2. Phase 2: Modify
+```bash
+git add .
+```
 
-1. **Adhere to Golden Rules:** Run the build commands from Section 1 as required.
-2. **Maintain Code Quality:** Follow the code quality and commenting philosophy (Section 4.1).
-3. **Avoid Anti-Patterns:** Review the project-specific anti-patterns (Section 4) to ensure you are writing robust and maintainable code.
+Then, commit with a message following this exact format: `type(scope): summary`
 
-#### 2.3. Phase 3: Verify
+* **`type`**: `feat`, `fix`, `refactor`, `docs`, `chore`, `style`, `test`.
+* **`scope`**: The part of app affected (e.g., `hub`, `webview`, `aistudio`, `bridge`, `docs`, `ci` ...).
+* **`summary`**: A concise, present-tense description of change.
 
-1. **Run Unit Tests:** Use `flutter test` or the "Flutter Tests (Agent)" VS Code launch configuration.
-2. **Perform Manual Checks:** For UI and workflow validation, use `mobile-mcp`.
-    * Launch the app on a specific device with `flutter run -d <device_id>`.
-    * **CRITICAL:** After launching the app via command line, **always wait at least 30 seconds** for the application to fully initialize and stabilize before interacting with it.
+**Examples:**
 
----
+```bash
+git commit -m "fix(webview): Correct bridge timeout handling on Android"
 
-### 3. The Debugging Protocol: "Observe → Diagnose → Fix"
+git commit -m "feat(hub): Implement ephemeral error messages via new provider"
 
-When a task requires verification or you encounter a bug, you **MUST** follow this protocol. Do not guess the cause of a problem; use the tools to prove it.
+git commit -m "refactor(aistudio): Consolidate settings logic into applyAllSettings"
 
-#### 3.1. Step 1: Observe the Behavior (`mobile-mcp`)
+git commit -m "docs(agents): Add Version Control Protocol with never-push rule"
+```
 
-Before diagnosing, you must first understand **what** is happening.
+**3. 🛑 ABSOLUTE CONSTRAINT: NEVER PUSH**
 
-* **To see the UI:** Use `mobile_take_screenshot`. This provides essential visual context.
-* **To confirm UI elements:** Use `mobile_list_elements_on_screen` to verify if a widget is present and accessible.
-* **To test a workflow:** Use `mobile_tap_on_screen` or `mobile_type_keys` to replicate the user journey that triggers the bug.
-
-#### 3.2. Step 2: Diagnose the Root Cause (`dart-mcp` + Logs)
-
-After observing the symptom, find the **why**. Your diagnostic process must follow this priority:
-
-1. **Check for Crashes and Runtime Errors:**
-    * **Tool:** `dart-mcp`
-    * **Command:** `get_runtime_errors`
-    * **When:** Always run this first. A runtime exception is the most likely culprit.
-
-2. **Inspect Application State (Riverpod):**
-    * **Tool:** `dart-mcp`
-    * **When:** If the UI looks correct but the data is wrong or the app is stuck.
-    * **Action:** Investigate the state of key providers: `automationStateProvider`, `conversationProvider`, `currentTabIndexProvider`.
-
-3. **Analyze the Widget Tree:**
-    * **Tool:** `dart-mcp`
-    * **Command:** `get_widget_tree`
-    * **When:** If a widget is visually missing or laid out incorrectly.
-
-4. **Check the WebView Bridge:**
-    * **When:** The native UI seems correct, but the WebView is not responding.
-    * **Action 1:** Review **WebView Console Logs** (`onConsoleMessage` output). Look for JavaScript errors.
-    * **Action 2:** Use `get_runtime_errors` (`dart-mcp`) to check for Dart-side exceptions from the `JavaScriptBridge`.
-
-#### 3.3. Step 3: Fix and Verify
-
-1. **Propose the Fix:** Based on your diagnosis, implement the code change.
-2. **Verify the Fix:**
-    * Run `npm run build` and/or `build_runner`.
-    * Run `flutter test` to catch regressions.
-    * Use `mobile-mcp` to re-run the exact workflow and use `mobile_take_screenshot` to provide visual proof that the bug is resolved.
-
-#### 3.4. Practical Example: Debugging a Disabled Button
-
-**Scenario:** The "Extract & View Hub" button remains disabled indefinitely.
-
-1. **OBSERVE:** Use `mobile_take_screenshot` to confirm the disabled button visually.
-2. **DIAGNOSE:**
-    * Run `get_runtime_errors` (`dart-mcp`). **Result:** No errors.
-    * **Hypothesis:** The state controlling the button is incorrect.
-    * **Action:** Inspect `automationStateProvider`. **Result:** It is stuck in `.refining(isExtracting: true)`.
-    * **Analysis:** The `isExtracting` flag is never reset to `false` on an error path in `extractAndReturnToHub`.
-3. **FIX & VERIFY:**
-    * **Action:** Propose a code change to `conversation_provider.dart` that adds a `finally` block to ensure the flag is always reset.
-    * **Action:** Re-run the workflow with `mobile-mcp` and provide a final `mobile_take_screenshot` showing the button is correctly enabled.
+You MUST NEVER run `git push`. Your role is to build a clean, logical commit history on the local branch. The human user is solely responsible for reviewing, squashing (if necessary), and pushing changes to the remote repository. This is a critical safety boundary.
 
 ---
 
-### 4. Technical Best Practices & Anti-Patterns
+##### Sub-Workflow: TypeScript Modification Protocol
 
-#### 4.1. Code Quality & Commenting
+When modifying any file in `ts_src/**`, you MUST follow this strict, four-step protocol.
 
-* **Guiding Principle:** The code is the single source of truth. It should be so clear that it requires minimal comments.
-* **The Golden Rule:** Comments must explain **"Why,"** not "What." Use `// WHY:` for strategic decisions and `// TIMING:` for justifying delays.
+**Step 1: Analyze Types First**
 
-    ```dart
-    // WHY: Truncate the conversation to the edited message to maintain
-    // context consistency for the AI on the next prompt submission.
-    final truncatedConversation = state.sublist(0, messageIndex + 1);
-    ```
+Before writing code, read the relevant type definitions (`ts_src/types/**`) to understand the existing contracts.
 
+**Step 2: Modify Types Before Logic**
+
+If a change is required, update the type definition file (`.ts` or `.d.ts`) **FIRST**.
+
+**Step 3: Implement Logic Changes**
+
+Modify the implementation logic, adhering to the standards in Section 3.4.
+
+**Step 4: Verify and Build**
+
+This is a mandatory verification process, now consolidated into a single command.
+
+```bash
+npm run validate:ts
+```
+
+This single command will automatically handle linting, static type checking, and building the asset bundle. You MUST resolve all errors it reports.
+    * See [Available Commands Reference](#2-available-commands-reference) for detailed command information.
+
+#### **Workflow B: Autonomous Feature Validation**
+
+This workflow applies when you need to perform a full, end-to-end "manual" test of a provider's integration. This is a fully automated process.
+
+1. **Initiate:** Invoke the autonomous validation protocol by tagging the rule with the target provider ID.
+    * **Example:** `@autonomous-validator aistudio`
+2. **Execute:** The `@autonomous-validator` rule is the **single source of truth** for this entire process. It will guide you through:
+    * Analyzing the codebase to generate a test plan.
+    * Using the `run_and_log.sh` and `terminate_run.sh` scripts to manage the test environment.
+    * Executing the test plan.
+    * Diagnosing and attempting to fix any failures by analyzing `reports/run.log`.
+    * Generating a final report with results and suggestions.
+3. **Do Not Deviate:** You must follow the `@autonomous-validator` protocol exactly. It has superseded all previous manual debugging instructions.
+
+---
+
+### 2. Available Commands Reference
+
+This section provides a comprehensive reference of all available commands in the project, when to use them, and how they fit into the development workflow.
+
+#### 2.1. Command Overview
+
+| Command | Purpose | When to Use | Prerequisites |
+|---------|---------|-------------|--------------|
+| `npm run build` | Build TypeScript to JavaScript bundle | After TypeScript changes when you only need to rebuild | `npm install` |
+| `npm run lint` | Run ESLint on TypeScript files | To check code style and potential issues | `npm install` |
+| `npm run validate:ts` | Full TypeScript validation (lint + type check + build) | After any TypeScript changes | `npm install` |
+| `npm run validate` | Complete validation for both TypeScript and Dart | Before committing any changes | `npm install`, `flutter pub get` |
+| `npm run test:ci` | Full CI pipeline (validation + Flutter tests) | Before creating PR or for final validation | `npm install`, `flutter pub get` |
+| `flutter analyze` | Dart static analysis | To check Dart code for issues | `flutter pub get` |
+| `flutter test` | Run Flutter unit tests | To verify test suite passes | `flutter pub get` |
+| `flutter pub run build_runner build --delete-conflicting-outputs` | Generate Dart code | After modifying Riverpod providers or Freezed models | `flutter pub get` |
+
+#### 2.2. Command Usage Flowchart
+
+```
+Start
+ │
+ ├─ Did you modify TypeScript files?
+ │   ├─ Yes → Run `npm run validate:ts`
+ │   │   ├─ Need to run tests? → Run `npm run test:ci`
+ │   │   └─ Done
+ │   └─ No → Continue
+ │
+ ├─ Did you modify Dart files?
+ │   ├─ Yes → Run `flutter analyze`
+ │   │   ├─ Modified providers/models? → Run `flutter pub run build_runner build --delete-conflicting-outputs`
+ │   │   ├─ Need to run tests? → Run `flutter test`
+ │   │   └─ Done
+ │   └─ No → Continue
+ │
+ ├─ Are you committing changes?
+ │   ├─ Yes → Run `npm run validate`
+ │   └─ No → Done
+ │
+ └─ Are you creating a PR?
+     ├─ Yes → Run `npm run test:ci`
+     └─ No → Done
+```
+
+#### 2.3. Command Details
+
+##### TypeScript Commands
+
+**`npm run build`**
+
+* Compiles TypeScript in `ts_src/` to `assets/js/bridge.js`
+* Use when you only need to rebuild without linting or type checking
+* Faster than full validation but skips important checks
+
+**`npm run lint`**
+
+* Runs ESLint on all TypeScript files
+* Checks for code style issues and potential problems
+* Use for quick style checks without full validation
+
+**`npm run validate:ts`**
+
+* Runs TypeScript linting, type checking, and building in sequence
+* The recommended command after any TypeScript changes
+* Ensures code quality before committing
+
+##### Combined Commands
+
+**`npm run validate`**
+
+* Runs complete validation for both TypeScript and Dart
+* Includes: `npm run validate:ts`, `flutter analyze`, and code generation
+* The primary command to run before committing any changes
+* Ensures consistency across the entire codebase
+
+**`npm run test:ci`**
+
+* Runs full CI pipeline: validation + Flutter tests
+* Use before creating pull requests or for final validation
+* Ensures all tests pass and code is properly validated
+
+##### Dart Commands
+
+**`flutter analyze`**
+
+* Runs static analysis on Dart code
+* Checks for potential issues and style violations
+* Use after Dart changes when not running full validation
+
+**`flutter test`**
+
+* Runs the Flutter test suite
+* Verifies all unit and widget tests pass
+* Use after making changes that might affect test behavior
+
+**`flutter pub run build_runner build --delete-conflicting-outputs`**
+
+* Generates Dart code for Riverpod providers and Freezed models
+* Required after modifying any files with `@riverpod` or `@freezed` annotations
+* Use with `--delete-conflicting-outputs` to avoid conflicts
+
+---
+
+### 3. Technical Best Practices & Anti-Patterns (The Unchanging Rules)
+
+These are the fundamental principles of quality code in this project. They apply to all development work.
+
+#### 3.1. Code Quality & Commenting
+
+* **Guiding Principle:** Comments must explain **"Why,"** not "What." Use `// WHY:` for strategic decisions and `// TIMING:` for justifying non-obvious delays.
 * **Zero-Tolerance for Debugging Artifacts:** Before any commit, remove all `print()`, `debugPrint()`, `console.log()`, and commented-out code blocks.
 
-#### 4.2. State Management (Riverpod 3.0+)
+#### 3.1.1. Color Opacity Best Practices (Flutter 3.27+)
 
-* **Use Modern Notifiers:** **ALWAYS** use code-generated `@riverpod` `Notifier` (for sync state) or `AsyncNotifier` (for async state). **NEVER** use legacy `StateNotifier` or `ChangeNotifier`.
+**Context:** The `withOpacity()` method is **deprecated** as of Flutter 3.27.0 due to a loss of precision during its internal float-to-integer conversion.
+
+* ❌ **NEVER:** Use the deprecated `withOpacity()` method.
+  * `myColor.withOpacity(0.5); // Deprecated & lossy`
+
+* ✅ **ALWAYS:** Use the recommended `withValues(alpha: ...)` method for adjusting color transparency. It works directly with floating-point alpha values, ensuring maximum precision and compatibility with modern color systems.
+  * `myColor.withValues(alpha: 0.5); // Correct & precise`
+
+* **Note on `withAlpha(int)`:** The `withAlpha(int alpha)` method remains valid and is not deprecated. Use it only for specific cases that require direct 8-bit integer manipulation (0-255).
+
+#### 3.2. State Management (Riverpod 3.0+)
+
+* **Use Modern Notifiers:** **ALWAYS** use code-generated `@riverpod` notifiers. **NEVER** use legacy `StateNotifier` or `ChangeNotifier`.
 * **Check `ref.mounted` After `await`:** **ALWAYS** add `if (!ref.mounted) return;` after any `await` call in a provider method to prevent "use after dispose" errors.
-* **Handle Provider Errors:** Catch `ProviderException` and unwrap the original error from `e.exception` to handle failures correctly.
-* **Await Concurrently:** Use Dart 3's record pattern for parallel awaits: `final (user, settings) = await (fetchUser(), fetchSettings()).wait;`.
-* **Use `unawaited`:** Wrap fire-and-forget futures with `unawaited()` to satisfy the linter and signal intent.
 * **Critical Anti-Pattern: `TabController` for Business Logic:**
   * ❌ **NEVER:** `ref.read(tabControllerProvider)?.animateTo(1);`
   * ✅ **ALWAYS:** `ref.read(currentTabIndexProvider.notifier).changeTo(index);`
-  * **Why:** `TabController` is a UI concern and cannot be safely accessed from business logic providers. `currentTabIndexProvider` is the single source of truth for navigation.
+  * **Why:** `TabController` is a UI concern. `currentTabIndexProvider` is the single source of truth for navigation state.
 
-#### 4.3. Hybrid Development (Timing & Delays)
+#### 3.3. Hybrid Development (Timing & Delays)
 
-Delays are a pragmatic tool for hybrid apps but must be used judiciously.
+* **Diagnose First:** Before adding a `Future.delayed`, always investigate alternatives (callbacks, `Promise`, `MutationObserver`).
+* **Justify and Document:** Delays are a last resort. If one is necessary, it **MUST** be documented with a `// TIMING:` comment explaining the justification and the date.
 
-* **Diagnose First:** Before adding a delay, always investigate alternatives: Is there a callback? A `Promise`? A `MutationObserver`?
-* **Legitimate Use Cases:** Delays are acceptable for post-action stabilization (50-300ms after a `.click()`), waiting for opaque animations, or throttling.
-* **Protocol for Modifying Delays:**
-    1. **Diagnose:** Understand precisely why the current delay is insufficient.
-    2. **Document:** Add or update a `// TIMING:` comment with the justification and date.
-    3. **Adjust Minimally:** Increase the delay only by the amount required.
-    4. **Re-evaluate:** Check if a more reliable method has become available.
+**Modern Waiting Patterns (TypeScript/JavaScript):**
 
-#### 4.4. General Dart/Flutter Best Practices
+The automation engine uses event-driven APIs instead of polling. Follow these patterns:
 
-* **Use Modern `.withValues(alpha: ...)` for Color Alpha:**
-  * ❌ **NEVER:** `Colors.black.withOpacity(0.1);`
-  * ✅ **ALWAYS:** `Colors.black.withValues(alpha: 0.1);`
-  * **Why:** As of late 2024, `.withOpacity()` is deprecated and causes precision loss. `.withValues()` is the modern, accurate method.
+* **`waitForElement`**: Use for DOM structural changes (elements being added/removed). Uses `MutationObserver` as primary strategy.
+* **`waitForVisibleElement`**: Use for visibility checks, especially for lazy-loaded content and virtualized lists. Uses `IntersectionObserver`.
+* **`waitForActionableElement`**: Use before ALL critical interactions (clicks, value setting). Performs comprehensive 5-point check:
+  1. Attached (in DOM)
+  2. Visible (checkVisibility API or offsetParent)
+  3. Stable (no ongoing animations)
+  4. Enabled (not disabled/inert)
+  5. Unoccluded (not covered by another element)
+
+**Mobile Performance Checklist:**
+
+When using `MutationObserver` or other observers:
+
+* ✅ Observe the smallest possible DOM subtree (prefer specific containers over `document.body`)
+* ✅ Filter mutations aggressively (only process relevant changes)
+* ✅ Disconnect observers immediately after purpose is served
+* ✅ Limit observation types (only observe `childList` if that's all you need)
+* ❌ Never observe `document.body` with `subtree: true` without filtering
+* ❌ Never leave observers connected after condition is met
+
+**Actionability vs Simple Waiting:**
+
+* **Use `waitForElement`**: When you just need an element to exist in the DOM
+* **Use `waitForVisibleElement`**: When you need an element to be visible in the viewport (scrolling, lazy-loading)
+* **Use `waitForActionableElement`**: When you're about to interact with an element (click, set value, etc.)
+
+**Reference:** See `BLUEPRINT_FULL.md` §4.10 for comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies.
+
+#### 3.4. TypeScript Quality Standards
+
+These standards are enforced during Step 4A of the modification protocol.
+
+##### A. Statically Typing the `window` Object
+
+* **Correct Pattern:** Declare custom global properties in `ts_src/types/global.d.ts`. Never use `(window as any)`.
+
+##### B. Type-Safe DOM Element Selection
+
+* **Correct Pattern:** Use generics for compile-time safety (e.g., `waitForElement<HTMLButtonElement>(...)`). Complement this with runtime checks (`assertIsElement(...)`) for critical interactions.
+
+##### C. Class-Based Chatbot Implementation
+
+* **Correct Pattern:** Implement provider logic as a `class` that `implements Chatbot`. Use `private` methods for internal helpers.
 
 ---
 
-### 5. Project Reference
+### 4. Project Reference
 
-#### 5.1. Critical File Aliases
+#### 4.1. Critical File Aliases
 
-* `@blueprint_mvp`: `BLUEPRINT_MVP.md` (Current scope & architecture)
-* `@blueprint_full`: `BLUEPRINT_FULL.md` (Future vision & v2.0 architecture)
-* `@automation_engine`: `ts_src/automation_engine.ts` (JS automation logic)
-* `@conversation_provider`: `lib/features/hub/providers/conversation_provider.dart` (Dart state orchestration)
-* `@webview_screen`: `lib/features/webview/widgets/ai_webview_screen.dart` (WebView implementation)
-* `@contributing`: `CONTRIBUTING.md` (Guide for human developers)
-
-#### 5.2. Critical File Structure
-
-```text
-lib/features/
-├── hub          # Native chat UI
-├── webview      # WebView + JS bridge
-└── automation   # Workflow + overlay
-
-ts_src/
-└── automation_engine.ts  # JS engine (hardcoded selectors for MVP)
-```
-
-#### 5.3. Documentation & Verification Tools
-
-* **`context7` (`mcp_context7_get-library-docs`):** **ALWAYS prefer this first** for up-to-date library documentation (Riverpod, InAppWebView, Freezed, etc.).
-* **`web_search`:** Use for libraries not in context7, blog posts, or community discussions.
-
-#### 5.4. Project Environment
-
-* **Project Root:** `/Users/felix/Documents/Flutter/WebAI_Hub/`
-* **Editor Hooks:** See `.vscode/settings.json` and `.vscode/launch.json`.
+* **Protocols & Blueprints:**
+  * `@autonomous-validator`: `.cursor/rules/autonomous-validator.mdc` (The master protocol for end-to-end testing).
+  * `@blueprint_full`: `BLUEPRINT_FULL.md` (The long-term architectural vision).
+  * `@contributing`: `CONTRIBUTING.md` (Setup guide for human developers).
+* **Core Code:**
+  * `

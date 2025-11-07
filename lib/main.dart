@@ -108,7 +108,26 @@ class _MainScreenState extends ConsumerState<MainScreen>
               AiWebviewScreen(),
             ],
           ),
-          _DraggableCompanionOverlay(overlayKey: _overlayKey),
+          // WHY: Moved Positioned here to be a direct child of Stack, fixing the layout error.
+          // The positioning logic is now handled at the Stack level.
+          Builder(
+            builder: (context) {
+              final overlayState = ref.watch(overlayManagerProvider);
+              final screenSize = MediaQuery.of(context).size;
+              final overlayBox = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+              final overlaySize = overlayBox?.size ?? const Size(300, 150);
+
+              final position = overlayState.position;
+              final top = (screenSize.height / 2) + position.dy - (overlaySize.height / 2);
+              final left = (screenSize.width / 2) + position.dx - (overlaySize.width / 2);
+
+              return Positioned(
+                top: top,
+                left: left,
+                child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+              );
+            },
+          ),
         ],
       ),
       bottomNavigationBar: TabBar(
@@ -131,9 +150,10 @@ class _MainScreenState extends ConsumerState<MainScreen>
   }
 }
 
-class _DraggableCompanionOverlay extends ConsumerWidget {
-  const _DraggableCompanionOverlay({
+class DraggableCompanionOverlay extends ConsumerWidget {
+  const DraggableCompanionOverlay({
     required this.overlayKey,
+    super.key,
   });
 
   final GlobalKey overlayKey;
@@ -142,40 +162,32 @@ class _DraggableCompanionOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final currentTabIndex = ref.watch(currentTabIndexProvider);
-    final overlayState = ref.watch(overlayManagerProvider);
     final shouldShow =
         status != const AutomationStateData.idle() && currentTabIndex == 1;
 
     final screenSize = MediaQuery.of(context).size;
+    final overlayBox =
+        overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlaySize =
+        overlayBox?.size ?? const Size(300, 150); // Fallback size
 
-    return Positioned(
-      child: AnimatedOpacity(
-        opacity: shouldShow ? 1.0 : 0.0,
-        duration: kShortAnimationDuration,
-        child: IgnorePointer(
-          ignoring: !shouldShow,
-          child: Transform.translate(
-            offset: overlayState.position,
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                final overlayBox =
-                    overlayKey.currentContext?.findRenderObject() as RenderBox?;
-                if (overlayBox == null) return;
-                final widgetSize = overlayBox.size;
-                ref.read(overlayManagerProvider.notifier).updateClampedPosition(
-                      details.delta,
-                      screenSize,
-                      widgetSize,
-                    );
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(kDefaultPadding),
-                child: SizedBox(
-                  key: overlayKey,
-                  child: const CompanionOverlay(),
-                ),
-              ),
-            ),
+    return AnimatedOpacity(
+      opacity: shouldShow ? 1.0 : 0.0,
+      duration: kShortAnimationDuration,
+      child: IgnorePointer(
+        ignoring: !shouldShow,
+        // WHY: The Positioned widget was removed from here. The GestureDetector is now the root.
+        child: GestureDetector(
+          onPanUpdate: (details) {
+            ref.read(overlayManagerProvider.notifier).updateClampedPosition(
+                  details.delta,
+                  screenSize,
+                  overlaySize,
+                );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(kDefaultPadding),
+            child: CompanionOverlay(overlayKey: overlayKey),
           ),
         ),
       ),

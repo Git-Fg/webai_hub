@@ -16,7 +16,8 @@ const Duration _bridgeInitializationDelay = Duration(milliseconds: 300);
 const int _bridgeReadyMaxAttempts = 200;
 const Duration _bridgeReadyCheckDelay = Duration(milliseconds: 100);
 const int _bridgeReadyTimeoutSeconds = 20;
-const int _promptPreviewLength = 50;
+const Duration _callAsyncJavaScriptTimeout = Duration(seconds: 30);
+const Duration _heartbeatTimeout = Duration(seconds: 2);
 
 @Riverpod(keepAlive: true)
 class WebViewController extends _$WebViewController {
@@ -95,6 +96,40 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       'webViewControllerExists': controller != null,
       'timestamp': DateTime.now().toIso8601String(),
     };
+  }
+
+  /// WHY: Heartbeat check with timeout is the only reliable way to detect dead contexts.
+  /// A simple evaluateJavascript call will hang indefinitely on a crashed ("zombie") context.
+  /// A TimeoutException is the canonical signal of a dead context, not an error condition.
+  /// This method returns true if the bridge is alive, false if dead (timeout).
+  @override
+  Future<bool> checkBridgeHeartbeat() async {
+    try {
+      await _waitForWebViewToBeCreated();
+      final controller = _controller;
+
+      // WHY: Simple probe that checks if bridge initialization flag exists
+      // Wrap in timeout to detect hung contexts
+      await controller
+          .evaluateJavascript(
+            source:
+                "typeof window.__AI_HYBRID_HUB_INITIALIZED__ !== 'undefined'",
+          )
+          .timeout(
+            _heartbeatTimeout,
+          );
+      return true;
+    } on TimeoutException {
+      // WHY: TimeoutException is the canonical signal of a dead context
+      debugPrint(
+        '[JavaScriptBridge] Heartbeat timeout - bridge context is dead',
+      );
+      return false;
+    } on Object catch (e) {
+      // WHY: Other errors (e.g., controller disposed) also indicate dead context
+      debugPrint('[JavaScriptBridge] Heartbeat check failed: $e');
+      return false;
+    }
   }
 
   Future<void> _waitForWebViewToBeCreated() async {
@@ -184,6 +219,22 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
+      // WHY: Check heartbeat before each polling iteration to detect zombie contexts
+      // This prevents infinite hangs when the context is dead but provider flag hasn't updated
+      final isAlive = await checkBridgeHeartbeat();
+      if (!isAlive) {
+        ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+              AutomationErrorCode.bridgeTimeout.name,
+              'waitForBridgeReady',
+            );
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeTimeout,
+          location: 'waitForBridgeReady',
+          message: 'Bridge context is dead (heartbeat failed).',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
       final isReady = ref.read(bridgeReadyProvider);
       if (isReady) {
         return;
@@ -206,9 +257,21 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
-  Future<void> startAutomation(String prompt) async {
+  Future<void> startAutomation(Map<String, dynamic> options) async {
     try {
       await _waitForWebViewToBeCreated();
+
+      // WHY: Check heartbeat before critical operations to detect dead contexts early
+      final isAlive = await checkBridgeHeartbeat();
+      if (!isAlive) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeTimeout,
+          location: 'startAutomation',
+          message:
+              'Bridge context is dead (heartbeat failed). Cannot start automation.',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
 
       final controller = _controller;
 
@@ -277,10 +340,11 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
-      final encodedPrompt = jsonEncode(prompt);
+      // Pass the options map directly. It will be automatically JSON encoded.
+      final encodedOptions = jsonEncode(options);
       try {
         await controller.evaluateJavascript(
-          source: 'window.startAutomation($encodedPrompt);',
+          source: 'window.startAutomation($encodedOptions);',
         );
       } on Object catch (e, stackTrace) {
         throw AutomationError(
@@ -289,10 +353,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           message: 'Failed to execute automation script',
           diagnostics: {
             ..._getBridgeDiagnostics(),
-            'promptLength': prompt.length,
-            'promptPreview': prompt.length > _promptPreviewLength
-                ? '${prompt.substring(0, _promptPreviewLength)}...'
-                : prompt,
+            'options': options,
           },
           originalError: e,
           stackTrace: stackTrace,
@@ -390,19 +451,52 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
   @override
   Future<String> extractFinalResponse() async {
+    debugPrint('[JavaScriptBridge] extractFinalResponse called');
     try {
       // WHY: Ensure bridge is ready before extraction to avoid race conditions
+      debugPrint('[JavaScriptBridge] Waiting for bridge ready...');
       await waitForBridgeReady();
+      debugPrint('[JavaScriptBridge] Bridge ready, proceeding with extraction');
+
+      // WHY: Final heartbeat check before extraction to ensure context is still alive
+      final isAlive = await checkBridgeHeartbeat();
+      if (!isAlive) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeTimeout,
+          location: 'extractFinalResponse',
+          message: 'Bridge context died during extraction (heartbeat failed).',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
 
       final controller = _controller;
 
       // WHY: callAsyncJavaScript natively handles Promises, eliminating race conditions
+      // WHY: Wrap with timeout to prevent silent hangs/deadlocks documented in flutter_inappwebview
+      // Research shows callAsyncJavaScript can hang indefinitely on Android, causing app crashes
+      debugPrint(
+        '[JavaScriptBridge] Calling extractFinalResponse in WebView...',
+      );
       final result = await controller.callAsyncJavaScript(
         functionBody: '''
           // The function passed here is awaited by the WebView.
           // We return the result of our async function directly.
           return await window.extractFinalResponse();
         ''',
+      ).timeout(
+        _callAsyncJavaScriptTimeout,
+        onTimeout: () {
+          throw AutomationError(
+            errorCode: AutomationErrorCode.bridgeTimeout,
+            location: 'extractFinalResponse',
+            message:
+                'Bridge call timed out after ${_callAsyncJavaScriptTimeout.inSeconds} seconds',
+            diagnostics: _getBridgeDiagnostics(),
+          );
+        },
+      );
+      debugPrint(
+        '[JavaScriptBridge] Extraction call completed, result: ${result?.value != null ? "success (${(result?.value as String?)?.length ?? 0} chars)" : "null"}',
       );
 
       // callAsyncJavaScript can return an InAppWebViewJavaScriptResult object.

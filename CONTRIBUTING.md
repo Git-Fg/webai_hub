@@ -22,10 +22,9 @@ Welcome! Please read `AGENTS.md` first — it is the single source of truth for 
 
 1. `flutter pub get`
 2. `npm install`
-3. Make changes
-4. TypeScript? → `npm run build`
-5. Generated code? → `flutter pub run build_runner build --delete-conflicting-outputs`
-6. `flutter test`
+3. Make changes.
+4. Run `npm run validate` to ensure all code is clean and generated assets are up-to-date.
+5. Run `flutter test` to check for regressions.
 
 For deeper context (debugging workflow, timing rules, selectors guidance), see `AGENTS.md`.
 

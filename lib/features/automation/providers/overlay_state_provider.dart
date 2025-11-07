@@ -8,8 +8,9 @@ part 'overlay_state_provider.g.dart';
 @freezed
 abstract class OverlayState with _$OverlayState {
   const factory OverlayState({
-    // WHY: Default position is near the bottom-center of the screen.
-    @Default(Offset(0, -100)) Offset position,
+    // WHY: Default position is now in the lower-middle of the screen,
+    // which is a more intuitive starting point for a companion overlay.
+    @Default(Offset(0, 150)) Offset position,
     @Default(false) bool isMinimized,
   }) = _OverlayState;
 }
@@ -48,7 +49,9 @@ class OverlayManager extends _$OverlayManager {
     state = state.copyWith(isMinimized: !state.isMinimized);
   }
 
+  // WHY: Resets to the initial default state. This provides an escape hatch
+  // for the user if they drag the overlay off-screen.
   void resetPosition() {
-    state = state.copyWith(position: const Offset(0, -100));
+    state = state.copyWith(position: const Offset(0, 150));
   }
 }

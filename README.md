@@ -28,6 +28,54 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 - ✅ **JavaScript Automation Engine** - A powerful TypeScript-based engine pilots web interfaces, handling logins, prompt submissions, and response extractions.
 - ❤️ **Free and Open-Source** - Released under the GNU license.
 
+### 🤖 AI Development Workflow
+
+This project is not only *about* AI; it is actively developed and validated *with* AI agents. Our methodology is formalized through a hierarchy of documents that create a robust, predictable, and autonomous development loop.
+
+This system is designed to be self-contained, providing any compatible AI agent with all the necessary rules and context to be an effective contributor.
+
+#### 1. The Agent Manifesto (`AGENTS.md`)
+
+- **Purpose:** The foundational "constitution" for any AI agent working on this project. It is the highest-level source of truth for behavior and quality standards.
+
+- **Content:** It defines:
+
+  - **Core Philosophy:** Prioritizing simplicity, robustness, and maintainability.
+
+  - **High-Level Workflows:** Distinguishes between "Code Development" and "Autonomous Feature Validation."
+
+  - **Technical Best Practices:** Enforces strict rules for state management (Riverpod 3.0+), hybrid development (timing, delays), and code quality.
+
+  - **Critical Anti-Patterns:** Explicitly forbids common but problematic coding patterns.
+
+#### 2. Task-Specific Protocols (`.cursor/rules/`)
+
+- **Purpose:** These are specialized, executable protocols for complex, automated tasks. While `AGENTS.md` defines the *what* (e.g., "validate a feature"), these rules define the precise, step-by-step *how*.
+
+- **Example (`autonomous-validator.mdc`):** This rule codifies the entire end-to-end validation process. When invoked (e.g., via `@autonomous-validator`), the agent initiates a "Write > Execute > Write" cycle:
+
+  1. **Analyze:** It reads the TypeScript provider code to generate a test plan.
+
+  2. **Execute:** It runs the app, executes tests using `mobile-mcp` commands, and logs all output.
+
+  3. **Correct:** If a test fails, it analyzes the log, attempts a code fix, rebuilds, and re-runs the test.
+
+  4. **Report:** It generates a final report based on the results.
+
+#### 3. The Operational Source of Truth (`reports/`)
+
+- **Purpose:** This directory is the I/O interface for all automated processes. It serves as the agent's working memory and the definitive record of its actions.
+
+- **Key Artifacts:**
+
+  - `run.log`: The **single source of truth for process output**. The agent reads this log to determine the success or failure of its actions.
+
+  - `aistudio_state_*.json`: A structured log of the validation session, including the test plan, results, and any fix attempts. This file is written to and updated by the agent throughout the process.
+
+  - `run_and_log.sh` & `terminate_run.sh`: Scripts that provide a hermetic environment for each test run, ensuring clean setup and teardown.
+
+This structured approach transforms the AI from a simple code generator into an autonomous partner capable of executing complex, stateful tasks with a clear feedback loop.
+
 ### 📊 Project Status & Roadmap
 
 This project is under active development.
@@ -84,21 +132,14 @@ This project is under active development.
     npm install
     ```
 
-3. **Build the JavaScript bridge:**
-    *This command is mandatory after any change in the `ts_src/` directory.*
+3. **Validate and Build:**
+    *This command is mandatory after making changes to Dart or TypeScript code.*
 
     ```bash
-    npm run build
+    npm run validate
     ```
 
-4. **Generate Dart code:**
-    *Run this after modifying Riverpod providers or Freezed models.*
-
-    ```bash
-    flutter pub run build_runner build --delete-conflicting-outputs
-    ```
-
-5. **Run the application:**
+4. **Run the application:**
 
     ```bash
     flutter run

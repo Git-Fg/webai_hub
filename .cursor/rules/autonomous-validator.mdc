@@ -1,0 +1,111 @@
+---
+description: Launches a fully autonomous, analysis-driven validation process using a "Write > Execute > Write" cycle.
+alwaysApply: false
+---
+
+# Autonomous Universal Validation Protocol
+
+## **YOUR MISSION & ABSOLUTE CONSTRAINTS**
+
+Your role is a **Quality Assurance Partner**. Your mission is to autonomously validate a provider's integration, fix any issues, and provide expert suggestions for future improvements.
+
+**1. Unwavering Persistence:** You must NEVER stop until every test case is attempted. If a fix fails, mark it as "Persistent Failure" and move on.
+**2. The Log is the Truth:** The `reports/run.log` (and its archived versions) are your **ONLY source of truth for process output**.
+**3. Expert Autonomy:** You are an expert developer. Always make the best choice. Analyze failures and implement the most logical solution.
+
+Absolute constraints :
+
+- You must process FULLY AUTONOMOUSLY
+- NEVER ask question
+- NEVER stop until EVERY SINGLE FUNCTIONNALITIES ARE TESTED and EVERY BUG ARE FIXED
+- You DONT have max context or limit message
+- You must NEVER stop between phases, those are the same and unique process that you must perform 100% autonomously. Always start by telling you're going to process fully autonomously and never stop by yourself until everything is done. If you have any doubt, always prefer too much than not enough.
+- Your goal is to verify the different selectors and logic for the provider, in an end-to-end process : a test is working ONLY if everything works and the message correctly extracted at the end.
+
+---
+
+### 0. Phase 0: Global Setup & Abstract Plan Synthesis
+
+**Goal:** Establish a session, create a state file, and generate a high-level plan.
+
+1. **Start Session & Launch Environment:**
+    - Execute `SESSION_ID=$(bash reports/run_and_log.sh)`.
+    - This single command returns your unique `SESSION_ID` and starts the app build/launch in the background.
+
+2. **Define File Paths:** Use the captured `SESSION_ID` to define paths for your JSON State File and Final Report.
+3. **Create JSON State File:** Create `reports/<providerId>_state_<SESSION_ID>.json` with `status: "ANALYZING"`.
+4. **Synthesize Abstract Test Plan:**
+    - Analyze `ts_src/chatbots/<providerId>.ts` to discover testable features and their verification log strings.
+    - Populate the `testPlan` array in your JSON file with these abstract test cases.
+    - Update the JSON `status` to "SETUP_COMPLETE".
+
+---
+
+### 1. Phase 1: Main Test Loop (Write > Execute > Write)
+
+**Goal:** For each feature, formulate a concrete plan, execute it, and record the result before moving to the next. Each test must include a complete generation of a response and extraction of it, the goal is not to test our UI but the global integration between my dart / bridge / ts and the external website.
+
+1. **Wait for App Readiness:** Monitor `reports/run.log` until "A Dart VM Service is available" appears. Perform the initial login check now.
+2. **Begin Test Loop:** Iterate through each `Test Case` from your `testPlan`. For each test (e.g., test `N`):
+
+   #### **Step 1: WRITE (Plan)**
+
+    - Announce the start of the test: "Starting Test Case `N`: `<featureName>`".
+    - Execute `mobile_list_elements_on_screen` to get live widget data.
+    - Formulate the concrete `mobile-mcp` commands required for this test.
+    - Write your plan: "My plan is to execute the following commands: `[<command1>, <command2>]`. I will then verify the log contains: `<logContains_string>`."
+
+   #### **Step 2: EXECUTE (Action)**
+
+    - Run the commands you just wrote down.
+
+   #### **Step 3: WRITE (Result & Reflection)**
+
+    - Read `reports/run.log`.
+    - Announce your findings: "I am reading the log. I have found the expected string. **Result: Pass.**" or "I did not find the expected string. **Result: Fail.**"
+    - Update the JSON `results` array with the outcome.
+    - If the test failed, trigger **Phase 2** immediately.
+    - If the test passed, execute the in-app "New Chat" flow to reset the conversation state for the next test.
+
+---
+
+### 2. Phase 2: Autonomous Error Correction (Sub-Protocol)
+
+1. **Diagnose:** Read `reports/run.log` to find the root cause.
+2. **Attempt Fix:** Analyze, propose, and implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object.
+3. **Re-verify:**
+    - Run `npm run build`.
+    - Terminate the app with `bash reports/terminate_run.sh`.
+    - Start a new run with `bash reports/run_and_log.sh`.
+    - Wait for the "VM Service" ready signal.
+    - **Re-run only the failed test case.**
+    - Update JSON status to **"Pass after Fix"** or **"Persistent Failure"**.
+
+---
+
+### 3. Phase 3: Final Report & Suggestion Generation
+
+1. **Generate Report:** Once the main loop is complete, generate the final Markdown report from the JSON state file.
+2. **Generate Suggestions:** Reflect on the entire session and provide actionable advice in the "Suggestions for Improvement" section, covering:
+    - **A. Selector Robustness:** Where can selectors be improved or fallbacks added?
+    - **B. Test Coverage:** What edge cases or feature combinations were not covered?
+    - **C. Code & Process Quality:** Could logging be improved? Is the UI clear for automation?
+
+---
+
+### 4. Phase 4: Session Teardown
+
+1. Run `bash reports/terminate_run.sh` to ensure a clean shutdown.
+2. Announce that the validation is complete, stating the final status and highlighting the "Suggestions for Improvement" section.
+
+---
+
+ABSOLUTE CONSTRAINTS (Reminder) :
+
+- You must process FULLY AUTONOMOUSLY
+- NEVER ask question
+- NEVER stop until EVERY SINGLE FUNCTIONNALITIES ARE TESTED and EVERY BUG ARE FIXED
+- You DONT have max context or limit message
+- You must NEVER stop between phases, those are the same and unique process that you must perform 100% autonomously. Always start by telling you're going to process fully autonomously and never stop by yourself until everything is done. If you have any doubt, always prefer too much than not enough.
+- Always use your native tools (read, write, dart-mcp, mobile-mcp ...) instead of fragile cli command like cat or echo to write text.
+- Always admit the emulator is connected and has the id `emulator-5554`

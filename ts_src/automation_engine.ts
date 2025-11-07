@@ -1,29 +1,19 @@
 // ts_src/automation_engine.ts
-import { Chatbot } from './types/chatbot';
-import { aiStudioChatbot } from './chatbots';
+import { Chatbot, AutomationOptions } from './types/chatbot';
+import { AiStudioChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
 import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
 
 const BRIDGE_READY_RETRY_ATTEMPTS = 100;
 const BRIDGE_READY_RETRY_DELAY_MS = 300;
 const UI_STATE_DEBOUNCE_DELAY_MS = 250;
-const MIN_EDIT_BUTTONS_FOR_NOTIFICATION = 2;
 const INITIAL_PROCESSED_FOOTERS_COUNT = 0;
 const BUTTON_TEXT_PREVIEW_LENGTH = 100;
 
-interface WindowWithFlutterInAppWebView extends Window {
-  flutter_inappwebview?: {
-    callHandler(handlerName: string, ...args: unknown[]): void;
-  };
-  startAutomation?: (prompt: string) => Promise<void>;
-  extractFinalResponse?: () => Promise<string>;
-}
-
 function signalReady() {
-  const windowWithFlutter = window as WindowWithFlutterInAppWebView;
-  if (windowWithFlutter.flutter_inappwebview) {
+  if (window.flutter_inappwebview) {
     try {
-      windowWithFlutter.flutter_inappwebview.callHandler(READY_HANDLER);
+      window.flutter_inappwebview.callHandler(READY_HANDLER);
       console.log('[Engine] Bridge ready signal sent to Flutter.');
     } catch (e) {
       console.warn('[Engine] Failed to send bridge ready signal:', e);
@@ -31,14 +21,21 @@ function signalReady() {
   }
 }
 
+// WHY: Listen for the official platform ready event - this is the most reliable signal
+// that the bridge is initialized, as documented in flutter_inappwebview research
+// The event fires when the platform is truly ready, avoiding race conditions
+document.addEventListener('flutterInAppWebViewPlatformReady', () => {
+  console.log('[Engine] Received flutterInAppWebViewPlatformReady event');
+  signalReady();
+});
+
 function trySignalReady(retries = BRIDGE_READY_RETRY_ATTEMPTS, delay = BRIDGE_READY_RETRY_DELAY_MS) {
   if (retries <= 0) {
     console.warn('[Engine] Max retries reached for bridge ready signal.');
     return;
   }
   
-  const windowWithFlutter = window as WindowWithFlutterInAppWebView;
-  if (windowWithFlutter.flutter_inappwebview) {
+  if (window.flutter_inappwebview) {
     signalReady();
   } else {
     setTimeout(() => trySignalReady(retries - 1, delay), delay);
@@ -46,31 +43,32 @@ function trySignalReady(retries = BRIDGE_READY_RETRY_ATTEMPTS, delay = BRIDGE_RE
 }
 
 // WHY: Make injection idempotent - check if script already initialized to avoid redefining functions
-if ((window as any).__AI_HYBRID_HUB_INITIALIZED__) {
+if (window.__AI_HYBRID_HUB_INITIALIZED__) {
   console.log('[Engine] Bridge script already initialized. Checking if functions exist...');
   
   const functionsExist = 
-    typeof (window as any).startAutomation !== 'undefined' &&
-    typeof (window as any).extractFinalResponse !== 'undefined' &&
-    typeof (window as any).inspectDOMForSelectors !== 'undefined';
+    typeof window.startAutomation !== 'undefined' &&
+    typeof window.extractFinalResponse !== 'undefined' &&
+    typeof window.inspectDOMForSelectors !== 'undefined';
   
   if (functionsExist) {
     console.log('[Engine] Functions exist, signaling ready.');
     trySignalReady();
   } else {
     console.warn('[Engine] Flag set but functions missing! Force re-initialization.');
-    delete (window as any).__AI_HYBRID_HUB_INITIALIZED__;
+    delete window.__AI_HYBRID_HUB_INITIALIZED__;
   }
 }
 
-if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
-  (window as any).__AI_HYBRID_HUB_INITIALIZED__ = true;
+if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
+  window.__AI_HYBRID_HUB_INITIALIZED__ = true;
 
   // Initialize global counter for tracking processed response footers
-  (window as any).__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
+  // @ts-expect-error - Internal counter not part of public Window interface
+  window.__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
 
   const SUPPORTED_SITES = {
-    'https://aistudio.google.com': aiStudioChatbot,
+    'https://aistudio.google.com': new AiStudioChatbot(),
     // Future: Add other sites here
     // 'https://chatgpt.com/': chatGptChatbot,
     // 'https://claude.ai/': claudeChatbot,
@@ -91,26 +89,71 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   }
 
   // Global function called by Dart to start automation
-  (window as any).startAutomation = async function(prompt: string): Promise<void> {
+  window.startAutomation = async function(options: AutomationOptions): Promise<void> {
+    console.log('[Engine LOG] Received automation options:', JSON.stringify(options, null, 2));
     const chatbot = getChatbot();
     if (!chatbot) {
       notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: 'This site is not supported.' });
       return;
     }
 
+    const startTime = Date.now();
+    let currentPhase = 'Initialization';
+    
     try {
-      console.log('[Engine] Waiting for chatbot page to be ready...');
+      currentPhase = 'Phase 1: Waiting for UI to be ready';
+      console.log(`[Engine LOG] ${currentPhase}...`);
       await chatbot.waitForReady();
-      console.log('[Engine] Page is ready. Sending prompt...');
-      await chatbot.sendPrompt(prompt);
-      console.log('[Engine] Prompt sent. Observation will be handled by Dart.');
+      
+      currentPhase = 'Phase 2: Applying configurations';
+      console.log(`[Engine LOG] ${currentPhase}...`);
+      // WHY: System prompt often involves a separate dialog; handle it first
+      if (options.systemPrompt && chatbot.setSystemPrompt) {
+        console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
+        await chatbot.setSystemPrompt(options.systemPrompt);
+      }
+      // Apply all other settings atomically via unified method
+      if (chatbot.applyAllSettings) {
+        await chatbot.applyAllSettings(options);
+      }
+
+      currentPhase = 'Phase 3: Sending prompt';
+      console.log(`[Engine LOG] ${currentPhase}...`);
+      await chatbot.sendPrompt(options.prompt);
+      
+      const elapsedTime = Date.now() - startTime;
+      console.log(`[Engine LOG] All steps completed successfully in ${elapsedTime}ms.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const elapsedTime = Date.now() - startTime;
+      const pageState = {
+        url: window.location.href,
+        readyState: document.readyState,
+        visibleElements: document.querySelectorAll('*').length,
+      };
+      
+      console.error(`[Engine LOG] Automation failed in ${currentPhase} after ${elapsedTime}ms!`, error);
+      
+      const diagnostics: Record<string, unknown> = {
+        phase: currentPhase,
+        elapsedTimeMs: elapsedTime,
+        url: pageState.url,
+        readyState: pageState.readyState,
+        visibleElements: pageState.visibleElements,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // Extract selector context from error message if available
+      if (errorMessage.includes('Selector') || errorMessage.includes('selector')) {
+        diagnostics.selectorContext = 'Error message contains selector information';
+      }
+      
       notifyDart({
         type: EVENT_TYPE_AUTOMATION_FAILED,
         errorCode: 'AUTOMATION_EXECUTION_FAILED',
         location: 'startAutomation',
         payload: errorMessage,
+        diagnostics: diagnostics,
       });
       // WHY: Re-throw error so the Future in Dart also fails
       throw error;
@@ -118,24 +161,75 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   };
 
   // Global function called by Dart to extract the response
-  (window as any).extractFinalResponse = async function(): Promise<string> {
+  window.extractFinalResponse = async function(): Promise<string> {
+    console.log('[Engine LOG] extractFinalResponse called');
     const chatbot = getChatbot();
     if (!chatbot) {
       const errorMsg = 'This site is not supported for extraction.';
+      console.error('[Engine LOG] No chatbot found for extraction');
       notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: errorMsg });
       throw new Error(errorMsg);
     }
 
+    const startTime = Date.now();
+    console.log(`[Engine LOG] Starting extraction with chatbot: ${chatbot.constructor.name}`);
+    
     try {
-      return await chatbot.extractResponse();
+      // ENHANCED LOGGING: Log DOM state before extraction
+      console.log('[Engine LOG] [ENHANCED] DOM state before extraction:', {
+        url: window.location.href,
+        readyState: document.readyState,
+        title: document.title,
+        timestamp: new Date().toISOString()
+      });
+      
+      const result = await chatbot.extractResponse();
+      const elapsedTime = Date.now() - startTime;
+      console.log(`[Engine LOG] Extraction completed successfully in ${elapsedTime}ms, extracted ${result.length} chars`);
+      
+      // ENHANCED LOGGING: Log extraction result details
+      console.log('[Engine LOG] [ENHANCED] Extraction result details:', {
+        success: true,
+        resultLength: result.length,
+        resultPreview: result.substring(0, 100) + (result.length > 100 ? '...' : ''),
+        elapsedTime: elapsedTime
+      });
+      
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const elapsedTime = Date.now() - startTime;
+      
+      // ENHANCED LOGGING: Log detailed error information
+      console.error('[Engine LOG] [ENHANCED] Extraction failed with details:', {
+        success: false,
+        errorMessage: errorMessage,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        elapsedTime: elapsedTime,
+        timestamp: new Date().toISOString(),
+        // Log DOM state at time of error
+        domState: {
+          url: window.location.href,
+          readyState: document.readyState,
+          title: document.title,
+          // Check for edit buttons
+          editButtons: document.querySelectorAll('button[aria-label="Edit"]').length,
+          // Check for textareas
+          textareas: document.querySelectorAll('textarea, [contenteditable="true"]').length
+        }
+      });
+      
+      // Enhanced error with more context
+      const enhancedErrorMessage = `Extraction failed: ${errorMessage} (Type: ${error instanceof Error ? error.constructor.name : typeof error}, Time: ${elapsedTime}ms)`;
+      console.error(`[Engine LOG] ${enhancedErrorMessage}`);
+      
+      // Notify Dart with enhanced error information
       notifyDart({
         type: EVENT_TYPE_AUTOMATION_FAILED,
-        errorCode: 'RESPONSE_EXTRACTION_FAILED',
-        location: 'extractFinalResponse',
-        payload: errorMessage,
+        errorCode: 'EXTRACTION_FAILED',
+        payload: enhancedErrorMessage
       });
+      
       throw error;
     }
   };
@@ -153,14 +247,14 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
           if (found) return found;
         }
       }
-    } catch (e) {
+    } catch {
       // Closed shadow DOM or other error
     }
     return null;
   }
 
   // WHY: Declare inspectDOMForSelectors directly on window for Dart to diagnose the DOM
-  (window as any).inspectDOMForSelectors = function(): Record<string, unknown> {
+  window.inspectDOMForSelectors = function(): Record<string, unknown> {
     const result: Record<string, unknown> = {
       inputs: [],
       buttons: [],
@@ -193,7 +287,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
         if (!inputMatches[selector]) {
           inputMatches[`${selector} (shadow)`] = findInShadowDOM(selector);
         }
-      } catch (e) {
+      } catch {
         inputMatches[selector] = null;
       }
     }
@@ -215,7 +309,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
         if (!buttonMatches[selector]) {
           buttonMatches[`${selector} (shadow)`] = findInShadowDOM(selector);
         }
-      } catch (e) {
+      } catch {
         buttonMatches[selector] = null;
       }
     }
@@ -261,6 +355,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   let debounceTimer: number | null = null;
 
   // WHY: Function that checks current page state with debouncing
+  // WHY: Focus on the last chat turn instead of counting all Edit buttons for robustness
   function checkUIState() {
     if (debounceTimer) {
       clearTimeout(debounceTimer);
@@ -268,30 +363,105 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
 
     // WHY: Launch new timer. If no new mutation arrives for 250ms, execute the check.
     debounceTimer = window.setTimeout(() => {
-      const editButtons = document.querySelectorAll('button[aria-label="Edit"]');
+      // WHY: Use the same chat turn selector as ai-studio.ts for consistency
+      const CHAT_TURN_SELECTOR = '[id^="turn-"], ms-chat-turn';
+      const EDIT_BUTTON_SELECTOR = 'button[aria-label="Edit"]';
       
-      // WHY: Notify Dart only if we have at least 2 conversation turns (first + new response)
-      // meaning at least 2 "Edit" buttons (one for each previous response).
-      if (editButtons.length >= MIN_EDIT_BUTTONS_FOR_NOTIFICATION) {
-        console.log(`[Observer] Detected ${editButtons.length} 'Edit' buttons. Notifying Dart that UI is ready for refinement.`);
+      const allTurns = document.querySelectorAll(CHAT_TURN_SELECTOR);
+      if (allTurns.length === 0) {
+        return;
+      }
+
+      const lastTurn = allTurns[allTurns.length - 1] as HTMLElement;
+      
+      // Check if the last turn has an Edit button
+      const editButton = lastTurn.querySelector(EDIT_BUTTON_SELECTOR) as HTMLButtonElement | null;
+      if (!editButton) {
+        return;
+      }
+
+      // Check if the last turn is NOT in edit mode (no edit textarea within the turn, excluding prompt input textareas)
+      // WHY: Exclude prompt input textareas - only check for edit-mode textareas within the turn
+      // Prompt input is always present and would cause false positives
+      const editTextareas = Array.from(lastTurn.querySelectorAll('textarea, [contenteditable="true"]')).filter(el => {
+        // Exclude textareas that are within the prompt input container
+        return el.closest('ms-chunk-input') === null;
+      });
+      const isNotEditing = editTextareas.length === 0;
+
+      // Check if Edit button is actionable (visible and enabled)
+      const editButtonVisible = editButton.offsetParent !== null;
+      const editButtonEnabled = !editButton.disabled && !editButton.hasAttribute('inert');
+
+      if (isNotEditing && editButtonVisible && editButtonEnabled) {
+        console.log(`[Observer] Detected finalized response in the last chat turn. Notifying Dart that UI is ready for refinement.`);
         notifyDart({ type: EVENT_TYPE_NEW_RESPONSE });
         stopObserving();
       }
     }, UI_STATE_DEBOUNCE_DELAY_MS);
   }
 
+  // WHY: Filter mutations to ignore irrelevant changes (mobile performance optimization)
+  // WHY: Only process mutations that might affect Edit button visibility
+  function shouldProcessMutation(mutation: MutationRecord): boolean {
+    // WHY: Only care about childList changes (elements being added/removed)
+    if (mutation.type !== 'childList') {
+      return false;
+    }
+    
+    // WHY: Filter out mutations that don't add nodes (removals are less relevant)
+    if (mutation.addedNodes.length === 0) {
+      return false;
+    }
+    
+    // WHY: Check if any added node might contain an Edit button
+    for (let i = 0; i < mutation.addedNodes.length; i++) {
+      const node = mutation.addedNodes[i];
+      if (node && node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as Element;
+        // WHY: If the added element is or contains a button, it's relevant
+        if (element.tagName === 'BUTTON' || element.querySelector('button')) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
   // WHY: Start DOM observation, ensuring no multiple observers at the same time
+  // WHY: Observe narrowest possible scope for mobile performance ("Observe Narrowly, Process Lightly")
   function startObserving() {
     if (responseObserver) {
       stopObserving();
     }
     
-    const targetNode = document.querySelector('ms-chat-session') || document.body;
+    // WHY: Prefer the most specific container (ms-chat-session) over document.body
+    // This minimizes the DOM subtree being observed, reducing CPU and battery drain on mobile
+    let targetNode = document.querySelector('ms-chat-session');
+    if (!targetNode) {
+      console.warn('[Observer] Specific container (ms-chat-session) not found, falling back to body');
+      targetNode = document.body;
+    }
 
-    responseObserver = new MutationObserver(checkUIState);
-    responseObserver.observe(targetNode, { childList: true, subtree: true });
+    // WHY: Use MutationObserver callback that filters mutations before processing
+    // This reduces unnecessary debounce timer resets and improves mobile performance
+    responseObserver = new MutationObserver((mutations) => {
+      // WHY: Filter mutations to only process relevant ones
+      const relevantMutations = mutations.filter(shouldProcessMutation);
+      if (relevantMutations.length > 0) {
+        checkUIState();
+      }
+    });
+    
+    // WHY: Only observe childList changes (structural changes), not attributes
+    // This further reduces observer overhead on mobile devices
+    responseObserver.observe(targetNode, { 
+      childList: true, 
+      subtree: true 
+    });
 
-    console.log('[Observer] Started observing DOM for new responses.');
+    console.log(`[Observer] Started observing DOM for new responses (target: ${targetNode.tagName}${targetNode.id ? '#' + targetNode.id : ''}).`);
   }
 
   function stopObserving() {
@@ -307,7 +477,7 @@ if (!(window as any).__AI_HYBRID_HUB_INITIALIZED__) {
   }
 
   // WHY: Expose global function for Dart to start observation
-  (window as any).startResponseObserver = startObserving;
+  window.startResponseObserver = startObserving;
 
   console.log('[Engine] Bridge script injected. Waiting for flutter_inappwebview...');
 
