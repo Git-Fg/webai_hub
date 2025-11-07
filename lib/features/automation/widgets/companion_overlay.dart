@@ -7,6 +7,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart'
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 
 class CompanionOverlay extends ConsumerWidget {
   const CompanionOverlay({
@@ -134,7 +135,7 @@ class CompanionOverlay extends ConsumerWidget {
               ),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: kSmallPadding),
-                height: 40,
+                height: 32, // Reduced height for a slimmer profile
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -186,7 +187,8 @@ class CompanionOverlay extends ConsumerWidget {
             Container(
               padding: status.maybeWhen(
                 idle: () => EdgeInsets.zero,
-                orElse: () => const EdgeInsets.all(kDefaultPadding),
+                // Reduced padding for a more compact look
+                orElse: () => const EdgeInsets.all(kMediumSpacing),
               ),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -263,6 +265,7 @@ class CompanionOverlay extends ConsumerWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
             foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
         // Secondary: Done
@@ -278,6 +281,7 @@ class CompanionOverlay extends ConsumerWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,
             foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
       ],
@@ -326,7 +330,7 @@ class CompanionOverlay extends ConsumerWidget {
                         size: kDefaultIconSize,
                       ),
               ),
-              const SizedBox(width: kMediumSpacing),
+              const Gap(kMediumSpacing),
               Flexible(
                 child: Semantics(
                   liveRegion: true,
@@ -344,7 +348,7 @@ class CompanionOverlay extends ConsumerWidget {
           ),
         ),
         if (actionButton != null) ...[
-          const SizedBox(height: kMediumSpacing),
+          const Gap(kMediumSpacing),
           actionButton,
         ],
       ],

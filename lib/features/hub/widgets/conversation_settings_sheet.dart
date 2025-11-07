@@ -2,6 +2,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provi
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 
 class ConversationSettingsSheet extends ConsumerStatefulWidget {
   const ConversationSettingsSheet({super.key});
@@ -67,7 +68,7 @@ class _ConversationSettingsSheetState
               'Conversation Settings',
               style: textTheme.titleLarge,
             ),
-            const SizedBox(height: 24),
+            const Gap(24),
             DropdownButtonFormField<String>(
               initialValue: settings.model,
               hint: const Text('Default Model'),
@@ -83,7 +84,7 @@ class _ConversationSettingsSheetState
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
+            const Gap(16),
             TextField(
               controller: _systemPromptController,
               onChanged: notifier.updateSystemPrompt,
@@ -93,7 +94,7 @@ class _ConversationSettingsSheetState
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 24),
+            const Gap(24),
             _buildSlider(
               context,
               'Temperature',
@@ -117,7 +118,7 @@ class _ConversationSettingsSheetState
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
+            const Gap(16),
             Text(
               'Tools & Features',
               style: textTheme.titleSmall,

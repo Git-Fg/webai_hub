@@ -1,9 +1,11 @@
+import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -30,20 +32,23 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  static final _appRouter = AppRouter();
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'AI Hybrid Hub MVP',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      routerConfig: _appRouter.config(),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
+@RoutePage()
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
@@ -54,15 +59,17 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  // A key to measure the overlay widget size for clamping drag within screen bounds
   final GlobalKey _overlayKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     final initialIndex = ref.read(currentTabIndexProvider);
-    _tabController =
-        TabController(length: 2, vsync: this, initialIndex: initialIndex);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
     _tabController.addListener(_onTabChanged);
   }
 
@@ -85,7 +92,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    // WHY: Listen to provider changes to synchronize TabController
     ref.listen(currentTabIndexProvider, (previous, next) {
       if (_tabController.index != next) {
         _tabController.animateTo(next);
@@ -93,59 +99,37 @@ class _MainScreenState extends ConsumerState<MainScreen>
     });
 
     final currentIndex = ref.watch(currentTabIndexProvider);
-    // Screen size is handled inside the overlay widget
+    final overlayState = ref.watch(overlayManagerProvider);
 
     return Scaffold(
       body: Stack(
         children: [
-          // Use IndexedStack - WebView will be built when tab switches to index 1
           IndexedStack(
             index: currentIndex,
             sizing: StackFit.expand,
             children: const [
               HubScreen(),
-              // Remove const to allow widget to rebuild when tab changes
               AiWebviewScreen(),
             ],
           ),
-          // WHY: Moved Positioned here to be a direct child of Stack, fixing the layout error.
-          // The positioning logic is now handled at the Stack level.
-          Builder(
-            builder: (context) {
-              final overlayState = ref.watch(overlayManagerProvider);
-              final screenSize = MediaQuery.of(context).size;
-              final overlayBox =
-                  _overlayKey.currentContext?.findRenderObject() as RenderBox?;
-              final overlaySize = overlayBox?.size ?? const Size(300, 150);
-
-              final position = overlayState.position;
-              final top = (screenSize.height / 2) +
-                  position.dy -
-                  (overlaySize.height / 2);
-              final left = (screenSize.width / 2) +
-                  position.dx -
-                  (overlaySize.width / 2);
-
-              return Positioned(
-                top: top,
-                left: left,
-                child: DraggableCompanionOverlay(overlayKey: _overlayKey),
-              );
-            },
+          // WHY: This new structure is robust.
+          // Align handles the centering, and Transform applies the drag delta.
+          // This removes the need for manual calculations and size measurements.
+          Align(
+            // We align to topCenter and will use the provider offset for fine-tuning.
+            alignment: const Alignment(0, -0.8), // Pushes it towards the top.
+            child: Transform.translate(
+              offset: overlayState.position,
+              child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+            ),
           ),
         ],
       ),
       bottomNavigationBar: TabBar(
         controller: _tabController,
         tabs: const [
-          Tab(
-            icon: Icon(Icons.chat),
-            text: 'Hub',
-          ),
-          Tab(
-            icon: Icon(Icons.web),
-            text: 'AI Studio',
-          ),
+          Tab(icon: Icon(Icons.chat), text: 'Hub'),
+          Tab(icon: Icon(Icons.web), text: 'AI Studio'),
         ],
         labelColor: Colors.blue,
         unselectedLabelColor: Colors.grey,
@@ -171,29 +155,25 @@ class DraggableCompanionOverlay extends ConsumerWidget {
         status != const AutomationStateData.idle() && currentTabIndex == 1;
 
     final screenSize = MediaQuery.of(context).size;
-    final overlayBox =
-        overlayKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlaySize =
-        overlayBox?.size ?? const Size(300, 150); // Fallback size
 
     return AnimatedOpacity(
       opacity: shouldShow ? 1.0 : 0.0,
       duration: kShortAnimationDuration,
       child: IgnorePointer(
         ignoring: !shouldShow,
-        // WHY: The Positioned widget was removed from here. The GestureDetector is now the root.
         child: GestureDetector(
           onPanUpdate: (details) {
-            ref.read(overlayManagerProvider.notifier).updateClampedPosition(
-                  details.delta,
-                  screenSize,
-                  overlaySize,
-                );
+            final overlayBox =
+                overlayKey.currentContext?.findRenderObject() as RenderBox?;
+            final overlaySize = overlayBox?.size ?? const Size(300, 150);
+
+            // WHY: The logic is now simple: just tell the provider to update its
+            // offset by the amount dragged. The provider handles clamping.
+            ref
+                .read(overlayManagerProvider.notifier)
+                .updateClampedPosition(details.delta, screenSize, overlaySize);
           },
-          child: Padding(
-            padding: const EdgeInsets.all(kDefaultPadding),
-            child: CompanionOverlay(overlayKey: overlayKey),
-          ),
+          child: CompanionOverlay(overlayKey: overlayKey),
         ),
       ),
     );

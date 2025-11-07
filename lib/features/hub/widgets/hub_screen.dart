@@ -1,16 +1,18 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/conversation_settings_sheet.dart';
-import 'package:ai_hybrid_hub/features/settings/widgets/settings_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 
 class HubScreen extends ConsumerStatefulWidget {
   const HubScreen({super.key});
@@ -95,14 +97,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             color: Colors.white,
             tooltip: 'Open application settings',
             onPressed: () {
-              unawaited(
-                Navigator.push<void>(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                ),
-              );
+              unawaited(context.router.push(const SettingsRoute()));
             },
           ),
           IconButton(
@@ -173,7 +168,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                           size: kLargeIconSize,
                           color: Colors.grey.shade400,
                         ),
-                        const SizedBox(height: kLargeSpacing),
+                        const Gap(kLargeSpacing),
                         Text(
                           'Welcome to AI Hybrid Hub!',
                           style: TextStyle(
@@ -182,7 +177,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                             color: Colors.grey.shade600,
                           ),
                         ),
-                        const SizedBox(height: kDefaultSpacing),
+                        const Gap(kDefaultSpacing),
                         Text(
                           'Send your first message to start',
                           style: TextStyle(
@@ -195,9 +190,11 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding:
-                        const EdgeInsets.symmetric(vertical: kDefaultPadding),
-                    itemCount: conversation.length +
+                    padding: const EdgeInsets.symmetric(
+                      vertical: kDefaultPadding,
+                    ),
+                    itemCount:
+                        conversation.length +
                         (ephemeralMessage != null ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index < conversation.length) {
@@ -238,8 +235,9 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                       decoration: InputDecoration(
                         hintText: 'Type your message...',
                         border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(kInputBorderRadius),
+                          borderRadius: BorderRadius.circular(
+                            kInputBorderRadius,
+                          ),
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
@@ -254,7 +252,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                  const SizedBox(width: kDefaultSpacing),
+                  const Gap(kDefaultSpacing),
                   FloatingActionButton(
                     key: const Key('hub_send_button'),
                     tooltip: 'Send message',

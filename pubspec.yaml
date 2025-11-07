@@ -7,19 +7,23 @@ environment:
   sdk: ">=3.8.0 <4.0.0"
 
 dependencies:
+  auto_route: ^10.2.0
   flutter:
     sdk: flutter
   flutter_inappwebview: ^6.0.0
   flutter_markdown_plus: ^1.0.5
   flutter_riverpod: ^3.0.1
   freezed_annotation: ^3.0.0
+  gap: ^3.0.1
   gpt_markdown: ^1.1.4
   json_annotation: ^4.9.0
+  popover: ^0.4.0
   riverpod_annotation: ^3.0.1
   shared_preferences: ^2.5.3
   xml: ^6.6.1
 
 dev_dependencies:
+  auto_route_generator: ^10.2.5
   build_runner: ^2.7.1
   flutter_test:
     sdk: flutter

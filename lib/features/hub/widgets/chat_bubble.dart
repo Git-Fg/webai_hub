@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/selected_message_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/widgets/message_action_hub.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:popover/popover.dart';
 
 class ChatBubble extends ConsumerStatefulWidget {
   const ChatBubble({
@@ -50,8 +54,6 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
     setState(() {
       _isEditing = !_isEditing;
       if (_isEditing) {
-        // Deselect message to hide the action hub while editing.
-        ref.read(selectedMessageIdProvider.notifier).clear();
         // Request focus when entering edit mode.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _focusNode.requestFocus();
@@ -78,12 +80,9 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   @override
   Widget build(BuildContext context) {
     final automationState = ref.watch(automationStateProvider);
-    final selectedMessageId = ref.watch(selectedMessageIdProvider);
 
-    final isSelected = selectedMessageId == widget.message.id;
     // WHY: Allow editing of any message (user or assistant) when automation is idle.
-    final isEditable =
-        automationState == const AutomationStateData.idle();
+    final isEditable = automationState == const AutomationStateData.idle();
 
     final semanticLabel =
         '${widget.message.isFromUser ? 'Your' : 'Assistant'} message: ${widget.message.text}. ${isEditable ? 'Tap to show actions.' : ''}';
@@ -92,10 +91,38 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
       label: semanticLabel,
       button: isEditable,
       child: GestureDetector(
+        // WHY: The onTap now calls showPopover, which handles all the complex UI logic.
         onTap: isEditable && !_isEditing
-            ? () => ref
-                .read(selectedMessageIdProvider.notifier)
-                .select(widget.message.id)
+            ? () {
+                unawaited(
+                  showPopover(
+                    context: context,
+                    bodyBuilder: (popoverContext) => MessageActionHub(
+                      onCopy: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: widget.message.text),
+                        );
+                        if (!popoverContext.mounted) return;
+                        Navigator.of(popoverContext).pop(); // Close the popover
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied to clipboard')),
+                        );
+                      },
+                      onEdit: () {
+                        Navigator.of(popoverContext).pop(); // Close the popover
+                        _toggleEditMode();
+                      },
+                    ),
+                    direction: PopoverDirection.top,
+                    arrowHeight: 10,
+                    arrowWidth: 20,
+                    radius: kDefaultBorderRadius,
+                    width: 120,
+                    height: 60,
+                  ),
+                );
+              }
             : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
@@ -110,14 +137,8 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
             children: [
               if (!widget.message.isFromUser) ..._buildAvatar(isUser: false),
               Flexible(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    _buildMessageContent(),
-                    if (isSelected && !_isEditing)
-                      _buildActionHub(context),
-                  ],
-                ),
+                // The Stack is no longer needed here, simplifying the layout.
+                child: _buildMessageContent(),
               ),
               if (widget.message.isFromUser) ..._buildAvatar(isUser: true),
             ],
@@ -128,36 +149,41 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   List<Widget> _buildAvatar({required bool isUser}) {
-    final avatarColor =
-        isUser ? Colors.green.shade100 : Colors.blue.shade100;
+    final avatarColor = isUser ? Colors.green.shade100 : Colors.blue.shade100;
     final icon = isUser ? Icons.person : Icons.smart_toy;
-    final iconColor =
-        isUser ? Colors.green.shade700 : Colors.blue.shade700;
+    final iconColor = isUser ? Colors.green.shade700 : Colors.blue.shade700;
 
     return [
-      if (isUser) const SizedBox(width: kDefaultSpacing),
+      if (isUser) const Gap(kDefaultSpacing),
       CircleAvatar(
         radius: kMediumIconSize,
         backgroundColor: avatarColor,
         child: Icon(icon, size: kDefaultIconSize, color: iconColor),
       ),
-      if (!isUser) const SizedBox(width: kDefaultSpacing),
+      if (!isUser) const Gap(kDefaultSpacing),
     ];
   }
 
   Widget _buildMessageContent() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: kDefaultPadding, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: kDefaultPadding,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: widget.message.isFromUser
             ? Colors.blue.shade500
             : Colors.grey.shade200,
         borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
           bottomLeft: Radius.circular(
-            widget.message.isFromUser ? kDefaultBorderRadius : kChatBubbleSmallRadius,
+            widget.message.isFromUser
+                ? kDefaultBorderRadius
+                : kChatBubbleSmallRadius,
           ),
           bottomRight: Radius.circular(
-            widget.message.isFromUser ? kChatBubbleSmallRadius : kDefaultBorderRadius,
+            widget.message.isFromUser
+                ? kChatBubbleSmallRadius
+                : kDefaultBorderRadius,
           ),
         ),
         boxShadow: [
@@ -215,7 +241,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
             contentPadding: EdgeInsets.zero,
           ),
         ),
-        const SizedBox(height: kDefaultSpacing),
+        const Gap(kDefaultSpacing),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -232,41 +258,6 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildActionHub(BuildContext context) {
-    return Positioned(
-      top: -12,
-      right: 0,
-      child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(kDefaultBorderRadius),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.copy, size: kDefaultIconSize),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: widget.message.text));
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied to clipboard')),
-                    );
-                  }
-                });
-                ref.read(selectedMessageIdProvider.notifier).clear();
-              },
-              tooltip: 'Copy Markdown',
-            ),
-            IconButton(
-              icon: const Icon(Icons.edit, size: kDefaultIconSize),
-              onPressed: _toggleEditMode,
-              tooltip: 'Edit Message',
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -287,8 +278,11 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
             LoadingIndicator(size: kTinyFontSize, color: color)
           else
             Icon(icon, size: kTinyFontSize, color: color),
-          const SizedBox(width: kTinyPadding),
-          Text(text, style: TextStyle(fontSize: kTinyFontSize, color: color)),
+          const Gap(kTinyPadding),
+          Text(
+            text,
+            style: TextStyle(fontSize: kTinyFontSize, color: color),
+          ),
         ],
       ),
     );
