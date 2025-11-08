@@ -330,6 +330,7 @@ When an operation fails, the `console.error` log **MUST** be a complete diagnost
 
 * **Use Modern Notifiers:** **ALWAYS** use code-generated `@riverpod` notifiers. **NEVER** use legacy `StateNotifier` or `ChangeNotifier`.
 * **Check `ref.mounted` After `await`:** **ALWAYS** add `if (!ref.mounted) return;` after any `await` call in a provider method to prevent "use after dispose" errors.
+* **Safely Access AsyncValue State:** When reading the state of an `AsyncNotifier` in a callback or non-reactive context, **ALWAYS** use `ref.read(provider).valueOrNull` or pattern matching to avoid runtime exceptions if the state is `AsyncLoading` or `AsyncError`.
 * **Critical Anti-Pattern: `TabController` for Business Logic:**
   * ❌ **NEVER:** `ref.read(tabControllerProvider)?.animateTo(1);`
   * ✅ **ALWAYS:** `ref.read(currentTabIndexProvider.notifier).changeTo(index);`
@@ -465,3 +466,84 @@ When waiting for DOM changes, `MutationObserver` is mandatory, but it must be us
     ```
 
 * **Why:** `auto_route` provides compile-time safety for route arguments, eliminates boilerplate, and creates a single source of truth for all navigation paths in the app. This makes the codebase more robust and easier to maintain.
+
+#### **3.6. Dependency Management (CLI Commands Only)**
+
+* **Guiding Principle:** All dependency modifications MUST be performed using CLI commands. Manual editing of dependency files is strictly forbidden.
+
+* ✅ **ALWAYS:** Use CLI commands to manage dependencies.
+
+  * **For Dart/Flutter packages:**
+    * `flutter pub add <package_name>` to add a dependency
+    * `flutter pub remove <package_name>` to remove a dependency
+    * `flutter pub upgrade <package_name>` to upgrade a specific package
+    * `flutter pub upgrade` to upgrade all packages
+
+  * **For npm/TypeScript packages:**
+    * `npm install <package_name>` or `npm install <package_name> --save-dev` to add a dependency
+    * `npm uninstall <package_name>` to remove a dependency
+    * `npm update <package_name>` to update a specific package
+
+* ❌ **NEVER:** Manually edit `pubspec.yaml` or `package.json` to add, remove, or modify dependencies.
+
+  ```yaml
+  # ANTI-PATTERN: Manual editing bypasses dependency resolution and version locking.
+  dependencies:
+    some_package: ^1.0.0  # ❌ NEVER do this
+  ```
+
+  ```json
+  // ANTI-PATTERN: Manual editing bypasses dependency resolution and version locking.
+  {
+    "dependencies": {
+      "some-package": "^1.0.0"  // ❌ NEVER do this
+    }
+  }
+  ```
+
+* **Why:** CLI commands ensure proper dependency resolution, version locking, and consistency across the project. They automatically update lock files (`pubspec.lock` and `package-lock.json`), resolve version conflicts, and maintain the integrity of the dependency tree. Manual editing can lead to inconsistent states, unresolved dependencies, and difficult-to-debug issues.
+
+#### 3.7. Modeling (Freezed 3.0+)
+
+* **Guiding Principle:** For classes with factory constructors, you **MUST** use the `sealed` or `abstract` keyword. `sealed` is the recommended modern choice as it enables exhaustive pattern matching. Omitting these keywords will cause build errors.
+
+* ✅ **ALWAYS (Recommended):** Use `sealed` for classes with factories.
+
+  ```dart
+  @freezed
+  sealed class Message with _$Message {
+    const factory Message({ required String id, /*... */ }) = _Message;
+  }
+  ```
+
+* ❌ **NEVER:** Omit `sealed` or `abstract` on classes with factories.
+
+  ```dart
+  // ANTI-PATTERN: This will fail to compile with freezed: ^3.0.0
+  @freezed
+  class Message with _$Message {
+    const factory Message({ required String id, /*... */ }) = _Message;
+  }
+  ```
+
+#### 3.8. Data Persistence (Drift)
+
+* **Guiding Principle:** Use the modern, platform-aware `NativeDatabase` constructor to abstract away file path management. This removes unnecessary dependencies on `path_provider`.
+
+* ✅ **ALWAYS:** Use `NativeDatabase.inDatabaseFolder` for database initialization.
+
+  ```dart
+  // In your database class constructor
+  AppDatabase() : super(NativeDatabase.inDatabaseFolder(path: 'db.sqlite'));
+  ```
+
+* ❌ **AVOID (Legacy):** Manual path construction with `path_provider`.
+
+  ```dart
+  // LEGACY PATTERN: Verbose and requires extra dependencies.
+  LazyDatabase(() async {
+    final dbFolder = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dbFolder.path, 'db.sqlite'));
+    return NativeDatabase(file);
+  });
+  ```
