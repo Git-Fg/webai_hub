@@ -30,6 +30,7 @@
 **/*.g.dart
 **/*.freezed.dart
 **/*.mocks.dart
+**/*.drift.dart
 
 # Node.js
 /node_modules/
