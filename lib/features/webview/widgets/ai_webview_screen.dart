@@ -67,7 +67,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
       if (bridge is JavaScriptBridge) {
-        final isAlive = await bridge.checkBridgeHeartbeat();
+        final isAlive = await bridge.isBridgeAlive();
         if (!isAlive) {
           debugPrint(
             '[AiWebviewScreen] Bridge dead after resume, triggering recovery...',
@@ -140,8 +140,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   child: LinearProgressIndicator(
                     value: _progress,
                     backgroundColor: Colors.green.shade200,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
                   ),
                 )
               : null,
@@ -186,21 +187,28 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             try {
               final json = Map<String, dynamic>.from(args[0] as Map);
               final event = BridgeEvent.fromJson(json);
-              final notifier = ref.read(conversationProvider.notifier);
-              final automationNotifier =
-                  ref.read(automationStateProvider.notifier);
+              final notifier = ref.read(conversationActionsProvider.notifier);
+              final automationNotifier = ref.read(
+                automationStateProvider.notifier,
+              );
 
               switch (event.type) {
                 case BridgeConstants.eventTypeNewResponse:
                   // WHY: First, ALWAYS transition to the 'refining' state.
                   // This ensures the application is in a stable, consistent state
                   // that matches the manual workflow before any further action is taken.
+                  final conversationAsync = ref.read(conversationProvider);
+                  final messageCount = conversationAsync.maybeWhen(
+                    data: (conversation) => conversation.length,
+                    orElse: () => 0,
+                  );
                   automationNotifier.moveToRefining(
-                    messageCount: ref.read(conversationProvider).length,
+                    messageCount: messageCount,
                   );
 
                   // Now, check if YOLO mode should proceed automatically.
-                  final yoloModeEnabled = ref
+                  final yoloModeEnabled =
+                      ref
                           .read(generalSettingsProvider)
                           .value
                           ?.yoloModeEnabled ??
@@ -258,8 +266,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             debugPrint('[AiWebviewScreen] bridgeReady handler called');
             ref
               ..read(bridgeReadyProvider.notifier).markReady()
-              ..read(bridgeDiagnosticsStateProvider.notifier)
-                  .recordBridgeReady();
+              ..read(
+                bridgeDiagnosticsStateProvider.notifier,
+              ).recordBridgeReady();
           },
         );
       },
@@ -301,7 +310,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           try {
             final bridge = ref.read(javaScriptBridgeProvider);
             if (bridge is JavaScriptBridge) {
-              final isAlive = await bridge.checkBridgeHeartbeat();
+              final isAlive = await bridge.isBridgeAlive();
               if (!isAlive) {
                 debugPrint(
                   '[AiWebviewScreen] Bridge dead after SPA navigation, re-injecting...',

@@ -1,6 +1,7 @@
 // ts_src/utils/wait-for-visible-element.ts
 
 import { waitForElement } from './wait-for-element';
+import { getModifiedTimeout } from './timeout';
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_RETRIES = 2;
@@ -29,8 +30,10 @@ export function waitForVisibleElement<T extends HTMLElement = HTMLElement>(
   retries: number = DEFAULT_RETRIES,
   options: IntersectionObserverOptions = {}
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForVisibleElementInternal<T>(selectors, timeout, options),
+    () => waitForVisibleElementInternal<T>(selectors, modifiedTimeout, options),
     retries,
     'waitForVisibleElement'
   );

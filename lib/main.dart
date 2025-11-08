@@ -1,9 +1,13 @@
+import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:drift/drift.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
+import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
@@ -39,7 +43,55 @@ void main() async {
   // synchronously later in the app.
   await Hive.openBox<GeneralSettingsData>('general_settings_box');
 
-  runApp(const ProviderScope(child: MyApp()));
+  // WHY: Create ProviderContainer before runApp to perform startup logic.
+  // This allows us to access providers synchronously during initialization.
+  final container = ProviderContainer();
+
+  // Perform startup tasks (prune conversations, restore session if enabled)
+  await _runStartupLogic(container);
+
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const MyApp(),
+    ),
+  );
+}
+
+// WHY: This function handles all startup tasks that need to run before the app UI is displayed.
+// It prunes old conversations and optionally restores the last active conversation.
+Future<void> _runStartupLogic(ProviderContainer container) async {
+  try {
+    final settings = await container.read(generalSettingsProvider.future);
+    final db = container.read(appDatabaseProvider);
+
+    // 1. Prune old conversations if count exceeds maxConversationHistory
+    await db.pruneOldConversations(settings.maxConversationHistory);
+
+    // 2. Load last session if enabled
+    if (settings.persistSessionOnRestart) {
+      final allConversations =
+          await (db.select(db.conversations)
+                ..orderBy([
+                  (t) => OrderingTerm(
+                    expression: t.updatedAt,
+                    mode: OrderingMode.desc,
+                  ),
+                ])
+                ..limit(1))
+              .get();
+      if (allConversations.isNotEmpty) {
+        final lastConversation = allConversations.first;
+        container
+            .read(activeConversationIdProvider.notifier)
+            .set(lastConversation.id);
+      }
+    }
+  } catch (e) {
+    // WHY: If startup logic fails, we log the error but don't crash the app.
+    // The app can still function without restoring the session or pruning conversations.
+    debugPrint('Startup logic error: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

@@ -5,6 +5,7 @@ import { notifyDart } from '../utils/notify-dart';
 import { waitForElement, waitForElementWithin, waitForElementByText } from '../utils/wait-for-element';
 import { waitForActionableElement } from '../utils/wait-for-actionable-element';
 import { assertIsElement } from '../utils/assertions';
+import { getModifiedTimeout } from '../utils/timeout';
 import { 
   EVENT_TYPE_LOGIN_REQUIRED
 } from '../utils/bridge-constants';
@@ -157,7 +158,7 @@ export class AiStudioChatbot implements Chatbot {
         const tuneButtonEl = await waitForActionableElement<HTMLButtonElement>(
           Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE : [SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE],
           'Settings panel toggle button',
-          DEFAULT_TIMEOUT_MS,
+          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
           2
         );
         const tuneButton = assertIsElement(tuneButtonEl, HTMLButtonElement, 'Settings panel toggle button');
@@ -183,7 +184,7 @@ export class AiStudioChatbot implements Chatbot {
         const closeButtonEl = await waitForActionableElement<HTMLButtonElement>(
           [SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON],
           'Settings panel close button',
-          DEFAULT_TIMEOUT_MS,
+          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
           0
         );
         const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Settings panel close button');
@@ -237,7 +238,7 @@ export class AiStudioChatbot implements Chatbot {
   private async _setModel(modelId: string): Promise<void> {
     console.log(`[AI Studio LOG] Setting model to: "${modelId}"`);
     return this.retryOperation(async () => {
-      const modelSelectorEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_SELECTOR_CARD], 'Model selector card', DEFAULT_TIMEOUT_MS, 2);
+      const modelSelectorEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_SELECTOR_CARD], 'Model selector card', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       const modelSelector = assertIsElement(modelSelectorEl, HTMLButtonElement, 'Model selector card');
       const currentModelNameEl = modelSelector.querySelector('span.title');
       if (currentModelNameEl && currentModelNameEl.textContent?.trim() === modelId) {
@@ -247,7 +248,7 @@ export class AiStudioChatbot implements Chatbot {
       modelSelector.click();
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
 
-      const allFilterEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_CATEGORIES_ALL_BUTTON], 'Model categories all button', DEFAULT_TIMEOUT_MS, 2);
+      const allFilterEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_CATEGORIES_ALL_BUTTON], 'Model categories all button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       const allFilter = assertIsElement(allFilterEl, HTMLButtonElement, 'Model categories all button');
       allFilter.click();
       await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
@@ -275,7 +276,7 @@ export class AiStudioChatbot implements Chatbot {
         throw this.createErrorWithContext('_setModel', `Model button for "${modelId}" not found.`, `AvailableModels=[${availableModels}]`);
       }
 
-      const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', DEFAULT_TIMEOUT_MS, 2);
+      const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
       closeButton.click();
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
@@ -461,7 +462,7 @@ export class AiStudioChatbot implements Chatbot {
     }
     
     try {
-      const inputAreaEl = await waitForActionableElement<HTMLTextAreaElement | HTMLInputElement>(SELECTORS.PROMPT_INPUTS, 'Prompt input area', DEFAULT_TIMEOUT_MS, 2);
+      const inputAreaEl = await waitForActionableElement<HTMLTextAreaElement | HTMLInputElement>(SELECTORS.PROMPT_INPUTS, 'Prompt input area', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       if (inputAreaEl instanceof HTMLTextAreaElement || inputAreaEl instanceof HTMLInputElement) {
         inputAreaEl.value = prompt;
         inputAreaEl.dispatchEvent(new Event('input', { bubbles: true }));
@@ -497,7 +498,7 @@ export class AiStudioChatbot implements Chatbot {
       });
       
       return this.retryOperation(async () => {
-        const sendButtonEl = await waitForActionableElement<HTMLElement>(SELECTORS.SEND_BUTTONS, 'Send button', DEFAULT_TIMEOUT_MS, 2);
+        const sendButtonEl = await waitForActionableElement<HTMLElement>(SELECTORS.SEND_BUTTONS, 'Send button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
         const sendButton = assertIsElement(sendButtonEl, HTMLElement, 'Send button');
         sendButton.click();
         console.log('[AI Studio LOG] Send button clicked successfully.');

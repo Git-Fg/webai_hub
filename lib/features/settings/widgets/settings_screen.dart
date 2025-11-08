@@ -161,6 +161,98 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   maxLines: 3,
                 ),
               ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Conversation History',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              SwitchListTile(
+                title: const Text('Persist Session on Restart'),
+                subtitle: const Text(
+                  'Restore the last active conversation when the app restarts.',
+                ),
+                value: settings.persistSessionOnRestart,
+                onChanged: (bool value) {
+                  unawaited(settingsNotifier.togglePersistSession(value));
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Max Conversation History: ${settings.maxConversationHistory}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Maximum number of conversations to keep. Older conversations will be automatically deleted.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    Slider(
+                      value: settings.maxConversationHistory.toDouble(),
+                      min: 5,
+                      max: 50,
+                      divisions: 9, // (5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
+                      label: '${settings.maxConversationHistory}',
+                      onChanged: (value) {
+                        unawaited(
+                          settingsNotifier.updateMaxConversationHistory(
+                            value.round(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Advanced Settings',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Timeout Modifier: ${settings.timeoutModifier.toStringAsFixed(1)}x',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Increase this on slower devices or networks if automation fails.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    Slider(
+                      value: settings.timeoutModifier,
+                      min: 1,
+                      max: 3,
+                      divisions: 4, // (1.0, 1.5, 2.0, 2.5, 3.0)
+                      label: '${settings.timeoutModifier.toStringAsFixed(1)}x',
+                      onChanged: (value) {
+                        unawaited(
+                          settingsNotifier.updateTimeoutModifier(value),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ],
           );
         },

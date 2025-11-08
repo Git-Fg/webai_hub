@@ -1,5 +1,7 @@
 // ts_src/utils/wait-for-element.ts
 
+import { getModifiedTimeout } from './timeout';
+
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_INTERVAL_MS = 300;
 const DEFAULT_RETRIES = 2;
@@ -178,8 +180,10 @@ export function waitForElement<T extends Element = HTMLElement>(
   timeout = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForElementInternal<T>(selectors, timeout, 'waitForElement'),
+    () => waitForElementInternal<T>(selectors, modifiedTimeout, 'waitForElement'),
     retries,
     'waitForElement'
   );
@@ -191,8 +195,10 @@ export function waitForElementWithin<T extends Element = HTMLElement>(
   timeout = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForElementInternal<T>(selectors, timeout, 'waitForElementWithin', root),
+    () => waitForElementInternal<T>(selectors, modifiedTimeout, 'waitForElementWithin', root),
     retries,
     'waitForElementWithin'
   );
@@ -204,8 +210,10 @@ export function waitForElementByText<T extends Element = HTMLElement>(
   timeout = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForElementByTextInternal<T>(baseSelector, text, timeout),
+    () => waitForElementByTextInternal<T>(baseSelector, text, modifiedTimeout),
     retries,
     'waitForElementByText'
   );

@@ -147,7 +147,7 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
-  Future<bool> checkBridgeHeartbeat() async {
+  Future<bool> isBridgeAlive() async {
     // WHY: Fake bridge always reports as alive for testing
     return true;
   }

@@ -12,6 +12,7 @@ export interface AutomationOptions {
   useWebSearch?: boolean;
   disableThinking?: boolean;
   urlContext?: boolean;
+  timeoutModifier?: number;
 }
 
 /**

@@ -80,7 +80,7 @@ class CompanionOverlay extends ConsumerWidget {
           onPressed: () {
             unawaited(
               ref
-                  .read(conversationProvider.notifier)
+                  .read(conversationActionsProvider.notifier)
                   .resumeAutomationAfterLogin(),
             );
           },
@@ -261,7 +261,7 @@ class CompanionOverlay extends ConsumerWidget {
               : () async {
                   try {
                     await ref
-                        .read(conversationProvider.notifier)
+                        .read(conversationActionsProvider.notifier)
                         .extractAndReturnToHub();
                   } on Object catch (e) {
                     // WHY: This is the clean, reactive way. The UI layer catches the
@@ -290,7 +290,9 @@ class CompanionOverlay extends ConsumerWidget {
           onPressed: isExtracting
               ? null
               : () {
-                  ref.read(conversationProvider.notifier).finalizeAutomation();
+                  ref
+                      .read(conversationActionsProvider.notifier)
+                      .finalizeAutomation();
                 },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,

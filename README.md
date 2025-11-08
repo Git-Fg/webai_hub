@@ -30,9 +30,23 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 
 - ✅ **Resilient Automation Engine** - A powerful TypeScript-based engine pilots web interfaces. It uses modern, event-driven APIs (`MutationObserver`) instead of inefficient polling to prevent crashes and ensure stability on mobile devices.
 
+- ✅ **Optimized for All Devices** - Built with performance in mind. Features a unique **Timeout Modifier** setting, allowing users on slower devices or networks to increase automation timeouts and ensure a reliable experience.
+
 - ✅ **Multi-Provider Ready** - Connects seamlessly to Google AI Studio with a modular architecture designed for easy expansion to other providers like ChatGPT, Claude, and more.
 
 - ❤️ **Free and Open-Source** - Released under the GNU license.
+
+### ⚙️ Performance & Adaptability
+
+AI Hybrid Hub is engineered to be reliable across a wide range of devices and network conditions. We believe that a powerful tool should not require the latest hardware.
+
+-   **Lightweight State Management:** Built on Riverpod, ensuring efficient and predictable state updates without unnecessary overhead.
+
+-   **Efficient DOM Interaction:** The TypeScript automation engine avoids inefficient polling (`setInterval`) in favor of modern, event-driven APIs like `MutationObserver`. This drastically reduces CPU and battery usage on mobile devices, preventing common WebView crashes.
+
+-   **User-Configurable Timeouts:** Recognizing that not all devices are equal, the app includes a **"Timeout Modifier"** in the settings. Users can easily increase the patience of the automation engine, making the app viable and reliable even on older phones or slow Wi-Fi connections.
+
+-   **Automatic History Pruning:** To manage storage space, the app automatically keeps only the most recent conversations (defaulting to 10, but configurable), preventing indefinite database growth and keeping the app feeling fast.
 
 ### 🤖 AI Development Workflow
 

@@ -7,5 +7,6 @@ abstract class JavaScriptBridgeInterface {
   Future<String> extractFinalResponse();
   Future<void> startResponseObserver();
   // WHY: Heartbeat check to detect dead contexts (only implemented in JavaScriptBridge)
-  Future<bool> checkBridgeHeartbeat();
+  // Checks JS context responsiveness, not bridge initialization state
+  Future<bool> isBridgeAlive();
 }

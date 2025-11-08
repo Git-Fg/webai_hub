@@ -1,5 +1,7 @@
 // ts_src/utils/wait-for-actionable-element.ts
 
+import { getModifiedTimeout } from './timeout';
+
 // NOTE: waitForElement and waitForElementWithin are imported for potential future use
 // but currently not used in this file
 
@@ -414,8 +416,10 @@ export function waitForActionableElement<T extends HTMLElement = HTMLElement>(
   timeout: number = DEFAULT_TIMEOUT_MS,
   retries: number = DEFAULT_RETRIES
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForActionableElementInternal<T>(selectors, elementName, timeout),
+    () => waitForActionableElementInternal<T>(selectors, elementName, modifiedTimeout),
     retries,
     `waitForActionableElement(${elementName})`
   );
@@ -438,8 +442,10 @@ export function waitForActionableElementWithin<T extends HTMLElement = HTMLEleme
   timeout: number = DEFAULT_TIMEOUT_MS,
   retries: number = DEFAULT_RETRIES
 ): Promise<T> {
+  // Apply the modifier to the timeout before passing it to the internal function
+  const modifiedTimeout = getModifiedTimeout(timeout);
   return retryOperation(
-    () => waitForActionableElementInternal<T>(selectors, elementName, timeout, root),
+    () => waitForActionableElementInternal<T>(selectors, elementName, modifiedTimeout, root),
     retries,
     `waitForActionableElementWithin(${elementName})`
   );

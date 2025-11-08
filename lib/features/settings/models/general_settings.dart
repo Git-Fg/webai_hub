@@ -22,6 +22,15 @@ abstract class GeneralSettingsData with _$GeneralSettingsData {
     // WHY: Controls whether the app automatically extracts the response
     // after the AI is finished generating. Defaults to true for a faster workflow.
     @Default(true) bool yoloModeEnabled,
+    // WHY: User-configurable multiplier for all TypeScript automation timeouts.
+    // Allows users to increase timeouts on slower devices or networks.
+    @Default(1.0) double timeoutModifier,
+    // WHY: Controls whether the app restores the last active conversation on app restart.
+    // Defaults to false to give users control over session persistence.
+    @Default(false) bool persistSessionOnRestart,
+    // WHY: Limits the number of conversations kept in history to prevent database bloat.
+    // Defaults to 10 conversations, which balances usability with storage efficiency.
+    @Default(10) int maxConversationHistory,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>

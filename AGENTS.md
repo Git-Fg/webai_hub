@@ -2,7 +2,7 @@
 
 Your primary mission is to assist in the development of the AI Hybrid Hub, a Flutter application bridging a native UI with web-based AI providers.
 
-**Core Philosophy:** Prioritize simplicity, robustness, and maintainability. The code is the single source of truth; your contributions must be clear and self-documenting.
+**Core Philosophy:** Prioritize simplicity, robustness, and maintainability. The code is the single source of truth; your contributions must be clear and self-documenting. **All features must be engineered for performance and adaptability, ensuring full compatibility with low-end devices.**
 
 ---
 
@@ -336,10 +336,17 @@ When an operation fails, the `console.error` log **MUST** be a complete diagnost
   * ✅ **ALWAYS:** `ref.read(currentTabIndexProvider.notifier).changeTo(index);`
   * **Why:** `TabController` is a UI concern. `currentTabIndexProvider` is the single source of truth for navigation state.
 
-#### 3.3. Hybrid Development (Timing & Delays)
+#### 3.3. Hybrid Development (Timing, Delays, and Performance)
 
-* **Diagnose First:** Before adding a `Future.delayed`, always investigate alternatives (callbacks, `Promise`, `MutationObserver`).
-* **Justify and Document:** Delays are a last resort. If one is necessary, it **MUST** be documented with a `// TIMING:` comment explaining the justification and the date.
+**Guiding Principle:** The application must remain performant and reliable on low-end devices and slow networks. Hardcoded, fixed timings are an anti-pattern. All asynchronous operations must be adaptable.
+
+##### **The "Observe, Don't Poll" Mandate**
+
+* ❌ **NEVER:** Use `setInterval` or recursive `setTimeout` to poll for DOM elements. This is the primary cause of silent WebView crashes on mobile due to CPU exhaustion.
+
+* ✅ **ALWAYS:** Use `MutationObserver` (`waitForElement`) for DOM structure changes and `IntersectionObserver` for visibility checks. These native APIs are event-driven and highly efficient.
+
+* ✅ **ALWAYS:** Follow the **"Observe Narrowly, Process Lightly"** principle: observe the smallest possible DOM subtree and disconnect the observer immediately after its condition is met to conserve resources.
 
 **Critical Anti-Pattern: `setInterval` for DOM Polling**
 
@@ -356,6 +363,23 @@ When an operation fails, the `console.error` log **MUST** be a complete diagnost
   * **Use `IntersectionObserver` (`waitForVisibleElement`)** for waiting on elements to scroll into view.
 
 * **Why:** `setInterval` polling is extremely inefficient. It forces the browser's JavaScript engine to perform expensive query operations hundreds of times per second, even when nothing on the page has changed. On mobile devices with constrained CPU and memory, this resource exhaustion leads to the WebView's JavaScript context crashing silently, which is extremely difficult to debug. `MutationObserver` is a native, highly optimized browser API that solves this problem by only executing code when a relevant DOM change actually occurs.
+
+##### **The Mandatory Timeout Modifier Pattern**
+
+* **Concept:** All timeouts within the TypeScript automation engine **MUST** be scalable. A user-configurable `timeoutModifier` is passed from Dart to TypeScript with every automation task.
+
+* **Implementation Rule:**
+
+  * A global `timeoutModifier` is stored on the `window` object by the `startAutomation` function.
+
+  * All timing-sensitive utilities (e.g., `waitForActionableElement`) **MUST NOT** use hardcoded default timeouts directly.
+
+  * They **MUST** call a shared utility function, `getModifiedTimeout(defaultTimeout)`, which applies the global `timeoutModifier` before executing the wait.
+
+* **Why:** This pattern makes the entire automation engine's timing user-configurable. It is our primary strategy for ensuring compatibility with low-end devices and is not optional.
+
+* **Diagnose First:** Before adding a `Future.delayed`, always investigate alternatives (callbacks, `Promise`, `MutationObserver`).
+* **Justify and Document:** Delays are a last resort. If one is necessary, it **MUST** be documented with a `// TIMING:` comment explaining the justification and the date.
 
 **Modern Waiting Patterns (TypeScript/JavaScript):**
 
@@ -547,3 +571,17 @@ When waiting for DOM changes, `MutationObserver` is mandatory, but it must be us
     return NativeDatabase(file);
   });
   ```
+
+#### 3.9. Data Persistence & Management (Drift)
+
+**Guiding Principle:** The on-device database must remain efficient and its size must be managed to prevent performance degradation over time.
+
+* **Cascading Deletes:** When defining foreign key relationships, **ALWAYS** use `onDelete: KeyAction.cascade`. This offloads the responsibility of cleaning up related data (e.g., deleting a conversation's messages) to the database itself, which is more efficient and reliable than manual Dart code.
+
+* **Automatic History Pruning:** To protect device storage, a history pruning mechanism **MUST** be implemented.
+
+  * **Trigger:** Pruning should occur once on application startup to avoid performance overhead during user interaction.
+
+  * **Logic:** The process must fetch the user-configured `maxConversationHistory` setting, identify all conversation records exceeding this limit (ordered by creation date), and delete them in a single, efficient batch operation.
+
+* **Atomic Operations:** Any sequence of related database writes (e.g., creating a new conversation and its first message) **MUST** be wrapped in a `db.transaction()` block. This guarantees data integrity by ensuring that either all operations complete successfully or all are rolled back in case of an error.

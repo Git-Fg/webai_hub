@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
+import 'package:ai_hybrid_hub/features/hub/widgets/conversation_history_drawer.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/conversation_settings_sheet.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
@@ -51,7 +53,9 @@ class _HubScreenState extends ConsumerState<HubScreen> {
 
     final message = _textController.text.trim();
     unawaited(
-      ref.read(conversationProvider.notifier).sendPromptToAutomation(message),
+      ref
+          .read(conversationActionsProvider.notifier)
+          .sendPromptToAutomation(message),
     );
     _textController.clear();
     _scrollToBottom();
@@ -59,21 +63,37 @@ class _HubScreenState extends ConsumerState<HubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final conversation = ref.watch(conversationProvider);
+    // The provider now returns an AsyncValue<List<Message>>
+    final conversationAsync = ref.watch(conversationProvider);
 
     // Listen for explicit scroll-to-bottom requests (e.g., after extraction)
     ref.listen(scrollToBottomRequestProvider, (previous, next) {
       _scrollToBottom();
     });
 
-    ref.listen<List<dynamic>>(conversationProvider, (previous, next) {
-      if (next.length > (previous?.length ?? 0)) {
-        _scrollToBottom();
-      }
+    ref.listen<AsyncValue<List<Message>>>(conversationProvider, (
+      previous,
+      next,
+    ) {
+      next.maybeWhen(
+        data: (conversation) {
+          final previousLength =
+              previous?.maybeWhen(
+                data: (prev) => prev.length,
+                orElse: () => 0,
+              ) ??
+              0;
+          if (conversation.length > previousLength) {
+            _scrollToBottom();
+          }
+        },
+        orElse: () {},
+      );
     });
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      drawer: const ConversationHistoryDrawer(),
       appBar: AppBar(
         title: const Text(
           'AI Hybrid Hub',
@@ -135,7 +155,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                           child: const Text('Confirm'),
                           onPressed: () {
                             ref
-                                .read(conversationProvider.notifier)
+                                .read(conversationActionsProvider.notifier)
                                 .clearConversation();
                             Navigator.of(context).pop();
                           },
@@ -152,8 +172,17 @@ class _HubScreenState extends ConsumerState<HubScreen> {
       body: Column(
         children: [
           Expanded(
-            child: conversation.isEmpty
-                ? Center(
+            // WHY: Using .when() is the standard, robust way to build UI from an
+            // AsyncValue. It forces you to handle all possible states, preventing
+            // common errors like trying to access data that hasn't loaded yet.
+            child: conversationAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => Center(
+                child: Text('Error: $error'),
+              ),
+              data: (conversation) {
+                if (conversation.isEmpty) {
+                  return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -181,17 +210,20 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         ),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: kDefaultPadding,
-                    ),
-                    itemCount: conversation.length,
-                    itemBuilder: (context, index) {
-                      return ChatBubble(message: conversation[index]);
-                    },
+                  );
+                }
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: kDefaultPadding,
                   ),
+                  itemCount: conversation.length,
+                  itemBuilder: (context, index) {
+                    return ChatBubble(message: conversation[index]);
+                  },
+                );
+              },
+            ),
           ),
           CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback>{

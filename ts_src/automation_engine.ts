@@ -91,6 +91,11 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
   // Global function called by Dart to start automation
   window.startAutomation = async function(options: AutomationOptions): Promise<void> {
     console.log('[Engine LOG] Received automation options:', JSON.stringify(options, null, 2));
+    
+    // Set the global modifier for this run
+    window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
+    console.log(`[Engine] Using timeout modifier: ${window.__AI_TIMEOUT_MODIFIER__}x`);
+    
     const chatbot = getChatbot();
     if (!chatbot) {
       notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: 'This site is not supported.' });

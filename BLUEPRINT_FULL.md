@@ -170,15 +170,19 @@ The JavaScript bridge implements a multi-layered defense system to handle the ep
   - `onUpdateVisitedHistory`: Validates bridge health during SPA navigations (where `onLoadStop` doesn't fire)
 - **JavaScript Idempotency:** The bridge script (`automation_engine.ts`) uses a master guard clause (`if (window.__AI_HYBRID_HUB_INITIALIZED__)`) to ensure it can be safely re-injected multiple times without side effects.
 
-##### Layer 2: Proactive Heartbeat Verification
+##### Layer 2: Multi-Stage Readiness Protocol
 
-- **Heartbeat Pattern:** The `checkBridgeHeartbeat()` method uses `evaluateJavascript` wrapped in `Future.timeout()` (2 seconds) to detect dead contexts.
-- **Canonical Signal:** A `TimeoutException` is not an error but the **canonical signal of a dead context**. This prevents infinite hangs on "zombie" contexts that appear alive but hang indefinitely.
-- **Integration:** Heartbeat checks are performed:
-  - Before each polling iteration in `waitForBridgeReady()` to detect zombie contexts early
-  - Before critical operations (`startAutomation`, `extractFinalResponse`) to fail fast
-  - After SPA navigations to validate bridge health
-  - On app resume to detect iOS "zombie" contexts after backgrounding
+- **Multi-Stage Verification:** The `waitForBridgeReady()` method uses a robust, four-stage protocol instead of simple polling. It sequentially waits for:
+
+  1.  **Native Controller:** The Flutter `InAppWebViewController` widget is initialized.
+
+  2.  **Page Load:** The web page's `document.readyState` is `'complete'`. This prevents race conditions where the script is checked before the page has finished loading.
+
+  3.  **Script Injection:** The `window.__AI_HYBRID_HUB_INITIALIZED__` flag is present, confirming the JavaScript bundle has executed.
+
+  4.  **Final Signal:** The JavaScript bridge sends an explicit "ready" signal to Dart, confirming all handlers are active.
+
+- **Integration:** This comprehensive check is performed before any critical operation (`startAutomation`, `extractFinalResponse`), guaranteeing the bridge is in a valid state.
 
 ##### Layer 3: Disaster Recovery (Platform-Specific)
 

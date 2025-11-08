@@ -12,7 +12,6 @@ part 'javascript_bridge.g.dart';
 
 const int _webViewCreationMaxAttempts = 400;
 const Duration _webViewCreationCheckDelay = Duration(milliseconds: 100);
-const Duration _bridgeInitializationDelay = Duration(milliseconds: 300);
 const int _bridgeReadyMaxAttempts = 200;
 const Duration _bridgeReadyCheckDelay = Duration(milliseconds: 100);
 const int _bridgeReadyTimeoutSeconds = 20;
@@ -30,17 +29,19 @@ class WebViewController extends _$WebViewController {
         debugPrint('[WebViewController] Disposing controller.');
         // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
         unawaited(
-          controller.evaluateJavascript(
-            source: '''
+          controller
+              .evaluateJavascript(
+                source: '''
             delete window.startAutomation;
             delete window.extractFinalResponse;
             delete window.inspectDOMForSelectors;
             delete window.__AI_HYBRID_HUB_INITIALIZED__;
           ''',
-          ).catchError((Object error) {
-            // WHY: Controller may already be destroyed, errors are non-critical here
-            debugPrint('[WebViewController] Error during disposal: $error');
-          }),
+              )
+              .catchError((Object error) {
+                // WHY: Controller may already be destroyed, errors are non-critical here
+                debugPrint('[WebViewController] Error during disposal: $error');
+              }),
         );
       }
     });
@@ -101,23 +102,17 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   /// WHY: Heartbeat check with timeout is the only reliable way to detect dead contexts.
   /// A simple evaluateJavascript call will hang indefinitely on a crashed ("zombie") context.
   /// A TimeoutException is the canonical signal of a dead context, not an error condition.
-  /// This method returns true if the bridge is alive, false if dead (timeout).
+  /// This method returns true if the JS context is responsive, false if dead (timeout).
+  /// It does NOT check for bridge initialization - use _isBridgeInjected() for that.
   @override
-  Future<bool> checkBridgeHeartbeat() async {
+  Future<bool> isBridgeAlive() async {
     try {
-      await _waitForWebViewToBeCreated();
       final controller = _controller;
-
-      // WHY: Simple probe that checks if bridge initialization flag exists
+      // WHY: Simple probe that only checks JS context responsiveness
       // Wrap in timeout to detect hung contexts
       await controller
-          .evaluateJavascript(
-            source:
-                "typeof window.__AI_HYBRID_HUB_INITIALIZED__ !== 'undefined'",
-          )
-          .timeout(
-            _heartbeatTimeout,
-          );
+          .evaluateJavascript(source: 'true')
+          .timeout(_heartbeatTimeout);
       return true;
     } on TimeoutException {
       // WHY: TimeoutException is the canonical signal of a dead context
@@ -163,6 +158,21 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     );
   }
 
+  /// WHY: Specifically checks if the bridge script has been injected and initialized.
+  /// This is separate from isBridgeAlive() which only checks JS context responsiveness.
+  Future<bool> _isBridgeInjected() async {
+    try {
+      final result = await _controller
+          .evaluateJavascript(
+            source: 'window.__AI_HYBRID_HUB_INITIALIZED__ === true',
+          )
+          .timeout(_heartbeatTimeout);
+      return result == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Future<void> loadUrlAndWaitForReady(URLRequest urlRequest) async {
     // First, ensure the controller itself exists.
@@ -186,15 +196,15 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
   @override
   Future<void> waitForBridgeReady() async {
-    // First ensure the WebView controller exists (with extended timeout for IndexedStack)
-    await _waitForWebViewToBeCreated();
-
-    // Additional wait to ensure WebView is fully initialized
-    await Future<void>.delayed(_bridgeInitializationDelay);
-
-    var attempts = 0;
     final startTime = DateTime.now();
 
+    // Stage 1: Wait for the native controller to exist.
+    await _waitForWebViewToBeCreated();
+
+    // Stage 2: Wait for the web page to finish loading.
+    // WHY: This is the CRITICAL missing step that fixes the race condition.
+    // We cannot expect JavaScript to be ready before the page itself has finished loading.
+    var attempts = 0;
     while (attempts < _bridgeReadyMaxAttempts) {
       if (!ref.mounted) {
         throw AutomationError(
@@ -207,51 +217,112 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       final elapsed = DateTime.now().difference(startTime);
       if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
-        ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
-              AutomationErrorCode.bridgeTimeout.name,
+        ref
+            .read(bridgeDiagnosticsStateProvider.notifier)
+            .recordError(
+              AutomationErrorCode.pageNotLoaded.name,
               'waitForBridgeReady',
             );
         throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeTimeout,
+          errorCode: AutomationErrorCode.pageNotLoaded,
           location: 'waitForBridgeReady',
-          message: 'Bridge readiness timeout.',
+          message: 'Page did not load within timeout.',
           diagnostics: _getBridgeDiagnostics(),
         );
       }
 
-      // WHY: Check heartbeat before each polling iteration to detect zombie contexts
-      // This prevents infinite hangs when the context is dead but provider flag hasn't updated
-      final isAlive = await checkBridgeHeartbeat();
-      if (!isAlive) {
-        ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
-              AutomationErrorCode.bridgeTimeout.name,
-              'waitForBridgeReady',
-            );
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeTimeout,
-          location: 'waitForBridgeReady',
-          message: 'Bridge context is dead (heartbeat failed).',
-          diagnostics: _getBridgeDiagnostics(),
+      try {
+        final readyState = await _controller.evaluateJavascript(
+          source: 'document.readyState',
         );
-      }
-
-      final isReady = ref.read(bridgeReadyProvider);
-      if (isReady) {
-        return;
+        if (readyState == 'complete') break;
+      } catch (_) {
+        // Ignore errors during page load check, continue polling
       }
 
       await Future<void>.delayed(_bridgeReadyCheckDelay);
       attempts++;
     }
 
-    ref.read(bridgeDiagnosticsStateProvider.notifier).recordError(
+    // Stage 3: Wait for our script to be injected and initialized.
+    attempts = 0;
+    while (attempts < _bridgeReadyMaxAttempts) {
+      if (!ref.mounted) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeNotInitialized,
+          location: 'waitForBridgeReady',
+          message: 'Provider disposed while waiting for bridge',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final elapsed = DateTime.now().difference(startTime);
+      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
+        ref
+            .read(bridgeDiagnosticsStateProvider.notifier)
+            .recordError(
+              AutomationErrorCode.scriptNotInjected.name,
+              'waitForBridgeReady',
+            );
+        throw AutomationError(
+          errorCode: AutomationErrorCode.scriptNotInjected,
+          location: 'waitForBridgeReady',
+          message: 'Bridge script not injected within timeout.',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      if (await _isBridgeInjected()) break;
+
+      await Future<void>.delayed(_bridgeReadyCheckDelay);
+      attempts++;
+    }
+
+    // Stage 4: Wait for the final 'ready' signal from the JS side.
+    attempts = 0;
+    while (attempts < _bridgeReadyMaxAttempts) {
+      if (!ref.mounted) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeNotInitialized,
+          location: 'waitForBridgeReady',
+          message: 'Provider disposed while waiting for bridge',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final elapsed = DateTime.now().difference(startTime);
+      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
+        ref
+            .read(bridgeDiagnosticsStateProvider.notifier)
+            .recordError(
+              AutomationErrorCode.bridgeTimeout.name,
+              'waitForBridgeReady',
+            );
+        throw AutomationError(
+          errorCode: AutomationErrorCode.bridgeTimeout,
+          location: 'waitForBridgeReady',
+          message: 'Bridge did not signal ready within timeout.',
+          diagnostics: _getBridgeDiagnostics(),
+        );
+      }
+
+      final isReady = ref.read(bridgeReadyProvider);
+      if (isReady) return; // Success
+
+      await Future<void>.delayed(_bridgeReadyCheckDelay);
+      attempts++;
+    }
+
+    ref
+        .read(bridgeDiagnosticsStateProvider.notifier)
+        .recordError(
           AutomationErrorCode.bridgeTimeout.name,
           'waitForBridgeReady',
         );
     throw AutomationError(
       errorCode: AutomationErrorCode.bridgeTimeout,
       location: 'waitForBridgeReady',
-      message: 'Bridge readiness timeout.',
+      message: 'Bridge did not signal ready within timeout.',
       diagnostics: _getBridgeDiagnostics(),
     );
   }
@@ -262,7 +333,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       await _waitForWebViewToBeCreated();
 
       // WHY: Check heartbeat before critical operations to detect dead contexts early
-      final isAlive = await checkBridgeHeartbeat();
+      final isAlive = await isBridgeAlive();
       if (!isAlive) {
         throw AutomationError(
           errorCode: AutomationErrorCode.bridgeTimeout,
@@ -459,7 +530,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       debugPrint('[JavaScriptBridge] Bridge ready, proceeding with extraction');
 
       // WHY: Final heartbeat check before extraction to ensure context is still alive
-      final isAlive = await checkBridgeHeartbeat();
+      final isAlive = await isBridgeAlive();
       if (!isAlive) {
         throw AutomationError(
           errorCode: AutomationErrorCode.bridgeTimeout,
@@ -477,24 +548,26 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       debugPrint(
         '[JavaScriptBridge] Calling extractFinalResponse in WebView...',
       );
-      final result = await controller.callAsyncJavaScript(
-        functionBody: '''
+      final result = await controller
+          .callAsyncJavaScript(
+            functionBody: '''
           // The function passed here is awaited by the WebView.
           // We return the result of our async function directly.
           return await window.extractFinalResponse();
         ''',
-      ).timeout(
-        _callAsyncJavaScriptTimeout,
-        onTimeout: () {
-          throw AutomationError(
-            errorCode: AutomationErrorCode.bridgeTimeout,
-            location: 'extractFinalResponse',
-            message:
-                'Bridge call timed out after ${_callAsyncJavaScriptTimeout.inSeconds} seconds',
-            diagnostics: _getBridgeDiagnostics(),
+          )
+          .timeout(
+            _callAsyncJavaScriptTimeout,
+            onTimeout: () {
+              throw AutomationError(
+                errorCode: AutomationErrorCode.bridgeTimeout,
+                location: 'extractFinalResponse',
+                message:
+                    'Bridge call timed out after ${_callAsyncJavaScriptTimeout.inSeconds} seconds',
+                diagnostics: _getBridgeDiagnostics(),
+              );
+            },
           );
-        },
-      );
       debugPrint(
         '[JavaScriptBridge] Extraction call completed, result: ${result?.value != null ? "success (${(result?.value as String?)?.length ?? 0} chars)" : "null"}',
       );

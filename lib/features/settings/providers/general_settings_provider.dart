@@ -42,8 +42,9 @@ class GeneralSettings extends _$GeneralSettings {
 
   Future<void> toggleProvider(String providerId) async {
     await _updateSettings((currentSettings) {
-      final currentProviders =
-          List<String>.from(currentSettings.enabledProviders);
+      final currentProviders = List<String>.from(
+        currentSettings.enabledProviders,
+      );
       if (currentProviders.contains(providerId)) {
         currentProviders.remove(providerId);
       } else {
@@ -87,6 +88,30 @@ class GeneralSettings extends _$GeneralSettings {
         historyContextInstruction:
             const GeneralSettingsData().historyContextInstruction,
       );
+    });
+  }
+
+  // WHY: Allows users to adjust timeout modifier for TypeScript automation.
+  // This makes the automation engine adaptable to slower devices and networks.
+  Future<void> updateTimeoutModifier(double modifier) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(timeoutModifier: modifier);
+    });
+  }
+
+  // WHY: Allows users to control whether the app restores the last active conversation
+  // on app restart. This gives users control over session persistence behavior.
+  Future<void> togglePersistSession(bool value) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(persistSessionOnRestart: value);
+    });
+  }
+
+  // WHY: Allows users to set the maximum number of conversations kept in history.
+  // This prevents database bloat while maintaining a useful conversation history.
+  Future<void> updateMaxConversationHistory(int max) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(maxConversationHistory: max);
     });
   }
 }

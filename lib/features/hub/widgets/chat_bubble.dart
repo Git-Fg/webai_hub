@@ -66,7 +66,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
     final newText = _textController.text.trim();
     if (newText.isNotEmpty) {
       ref
-          .read(conversationProvider.notifier)
+          .read(conversationActionsProvider.notifier)
           .updateMessageContent(widget.message.id, newText);
     }
     _toggleEditMode();
