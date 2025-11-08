@@ -1,8 +1,7 @@
-import 'dart:developer';
-
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/provider_config_provider.dart';
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -14,7 +13,6 @@ import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:xml/xml.dart';
@@ -269,9 +267,12 @@ User: $newPrompt
     try {
       final db = ref.read(appDatabaseProvider);
       final settingsAsync = ref.read(generalSettingsProvider);
-      // Use .value to get the data, with a fallback to the default constructor.
-      final generalSettings =
-          settingsAsync.value ?? const GeneralSettingsData();
+      // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
+      // This prevents exceptions if the state is AsyncLoading or AsyncError.
+      final generalSettings = settingsAsync.maybeWhen(
+        data: (value) => value,
+        orElse: () => const GeneralSettingsData(),
+      );
 
       final settings = ref.read(conversationSettingsProvider);
       final systemPrompt = settings.systemPrompt;
@@ -341,12 +342,15 @@ User: $newPrompt
       }
 
       final finalPrompt = promptBuffer.toString().trim();
-      log('Generated Prompt Template:\n---\n$finalPrompt\n---');
+      final talker = ref.read(talkerProvider);
+      talker.info('Generated Prompt Template:\n---\n$finalPrompt\n---');
       return finalPrompt;
-    } on XmlException catch (e) {
-      log(
+    } on XmlException catch (e, st) {
+      final talker = ref.read(talkerProvider);
+      talker.handle(
+        e,
+        st,
         'XML fragment build error: ${e.message}. Falling back to simple prompt.',
-        error: e,
       );
       // WHY: On any XML failure, we fall back to the reliable simple prompt.
       return _buildSimplePrompt(
@@ -389,9 +393,12 @@ User: $newPrompt
   Map<String, dynamic> _buildAutomationOptions(String promptWithContext) {
     final conversationSettings = ref.read(conversationSettingsProvider);
     final providerConfig = ref.read(currentProviderConfigurationProvider);
-    // Read the general settings
-    final generalSettings =
-        ref.read(generalSettingsProvider).value ?? const GeneralSettingsData();
+    // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
+    // This prevents exceptions if the state is AsyncLoading or AsyncError.
+    final generalSettings = ref.read(generalSettingsProvider).maybeWhen(
+      data: (value) => value,
+      orElse: () => const GeneralSettingsData(),
+    );
 
     final automationOptions = <String, dynamic>{
       'prompt': promptWithContext,
@@ -491,7 +498,8 @@ User: $newPrompt
         final jsBridge = bridge as JavaScriptBridge;
         final logs = await jsBridge.getCapturedLogs();
         if (logs.isNotEmpty) {
-          debugPrint(
+          final talker = ref.read(talkerProvider);
+          talker.debug(
             '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
           );
         }
@@ -502,9 +510,9 @@ User: $newPrompt
       final automationOptions = _buildAutomationOptions(promptWithContext);
 
       // DART-SIDE LOGGING FOR VERIFICATION
-      log(
-        '[ConversationProvider LOG] Sending automation options to bridge:',
-        error: automationOptions,
+      final talker = ref.read(talkerProvider);
+      talker.info(
+        '[ConversationProvider LOG] Sending automation options to bridge: $automationOptions',
       );
 
       // Start the automation with all configuration options.
@@ -521,7 +529,10 @@ User: $newPrompt
 
         await bridge.startResponseObserver();
       }
-    } on Object catch (e) {
+    } on Object catch (e, st) {
+      if (!ref.mounted) return;
+      final talker = ref.read(talkerProvider);
+      talker.handle(e, st, 'Automation orchestration failed.');
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
@@ -558,6 +569,7 @@ User: $newPrompt
       );
       // Drift returns the ID of the new row.
       activeId = await db.createConversation(newConversation);
+      if (!ref.mounted) return;
       ref.read(activeConversationIdProvider.notifier).set(activeId);
     }
 
@@ -572,7 +584,8 @@ User: $newPrompt
 
   // Extract and return to Hub without finalizing automation
   Future<void> extractAndReturnToHub() async {
-    log('[ConversationProvider] extractAndReturnToHub called');
+    final talker = ref.read(talkerProvider);
+    talker.info('[ConversationProvider] extractAndReturnToHub called');
     final bridge = ref.read(javaScriptBridgeProvider);
     final automationNotifier = ref.read(automationStateProvider.notifier);
     final activeId = ref.read(activeConversationIdProvider);
@@ -581,10 +594,12 @@ User: $newPrompt
     automationNotifier.setExtracting(extracting: true);
 
     try {
-      log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
+      talker.info(
+        '[ConversationProvider] Calling bridge.extractFinalResponse()...',
+      );
       final responseText = await bridge.extractFinalResponse();
 
-      log(
+      talker.info(
         '[ConversationProvider] Extraction successful, received ${responseText.length} chars',
       );
 
@@ -607,12 +622,14 @@ User: $newPrompt
             .read(automationStateProvider.notifier)
             .setExtracting(extracting: false);
       }
-    } on Object catch (e) {
+    } on Object catch (e, st) {
       if (ref.mounted) {
         ref
             .read(automationStateProvider.notifier)
             .setExtracting(extracting: false);
       }
+      final talker = ref.read(talkerProvider);
+      talker.handle(e, st, 'Response extraction failed.');
       // WHY: The provider's responsibility is to manage state, not trigger UI.
       // By re-throwing the error, we let the UI layer decide how to present it.
       if (e is AutomationError) {
@@ -713,7 +730,9 @@ User: $newPrompt
             .read(automationStateProvider.notifier)
             .moveToRefining(messageCount: messages.length);
       }
-    } on Object catch (e) {
+    } on Object catch (e, st) {
+      final talker = ref.read(talkerProvider);
+      talker.handle(e, st, 'Resume automation after login failed.');
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {
