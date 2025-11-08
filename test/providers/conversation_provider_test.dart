@@ -10,7 +10,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provi
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
-import 'package:ai_hybrid_hub/main.dart'; // Pour importer currentTabIndexProvider
+import 'package:ai_hybrid_hub/main.dart'; // Import currentTabIndexProvider
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,7 +80,7 @@ void main() {
       'ConversationProvider initially provides an empty list of messages',
       () async {
         // ARRANGE
-        final listener = container.listen(conversationProvider, (_, __) {});
+        final listener = container.listen(conversationProvider, (_, _) {});
 
         // ACT & ASSERT
         // The first value from the stream should be AsyncData with an empty list.
@@ -101,7 +101,7 @@ void main() {
       () async {
         // ARRANGE
         final provider = container.read(conversationActionsProvider.notifier);
-        final listener = container.listen(conversationProvider, (_, __) {});
+        final listener = container.listen(conversationProvider, (_, _) {});
 
         // ACT
         final activeId = container.read(activeConversationIdProvider);
@@ -224,17 +224,14 @@ void main() {
 
         expect(fakeBridge.wasExtractCalled, isTrue);
 
-        // VERIFY: L'état d'automatisation reste en refining
+        // VERIFY: Automation state remains in refining
         expect(
           container.read(automationStateProvider),
           const AutomationStateData.refining(messageCount: 2),
         );
 
-        // VERIFY: L'onglet retourne au Hub (0)
+        // VERIFY: Tab returns to Hub (0)
         expect(container.read(currentTabIndexProvider), 0);
-
-        // VERIFY: Le pending prompt est effacé
-        expect(container.read(pendingPromptProvider), isNull);
       },
     );
 
@@ -292,17 +289,19 @@ void main() {
         final notifier = container.read(conversationActionsProvider.notifier);
 
         // First add messages to simulate a conversation with a sending message
-        final activeId = container.read(activeConversationIdProvider)!;
+        final activeId = container.read(activeConversationIdProvider);
+        expect(activeId, isNotNull);
+        final conversationId = activeId!;
         await notifier.addMessage(
           'Hello',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         await notifier.addMessage(
           'Sending...',
           isFromUser: false,
           status: MessageStatus.sending,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
 
         // Set status to refining to simulate ongoing automation
@@ -343,23 +342,22 @@ void main() {
         expect(
           finalState,
           const AutomationStateData.failed(),
-          reason: "L'état d'automatisation devrait être 'failed'",
+          reason: "Automation state should be 'failed'",
         );
         expect(
           conversation!.last.status,
           MessageStatus.error,
-          reason: "Le dernier message devrait avoir un statut d'erreur",
+          reason: 'Last message should have error status',
         );
         expect(
           conversation.last.text,
           contains('An unexpected error occurred'),
-          reason: "Le message d'erreur devrait être affiché",
+          reason: 'Error message should be displayed',
         );
         expect(
           conversation.last.text,
           contains('Fake automation error'),
-          reason:
-              "Le message d'erreur devrait contenir le détail de l'exception",
+          reason: 'Error message should contain exception details',
         );
       },
     );
@@ -378,22 +376,22 @@ void main() {
       expect(
         finalState,
         const AutomationStateData.failed(),
-        reason: "L'état d'automatisation devrait être 'failed'",
+        reason: "Automation state should be 'failed'",
       );
       expect(
         conversation!.last.status,
         MessageStatus.error,
-        reason: "Le dernier message devrait avoir un statut d'erreur",
+        reason: 'Last message should have error status',
       );
       expect(
         conversation.last.text,
         contains('Error:'),
-        reason: "Le message d'erreur devrait commencer par 'Error:'",
+        reason: "Error message should start with 'Error:'",
       );
       expect(
         conversation.last.text,
         contains('automationExecutionFailed'),
-        reason: "Le message d'erreur devrait contenir le code d'erreur",
+        reason: 'Error message should contain error code',
       );
     });
 
@@ -427,14 +425,14 @@ void main() {
         final conversationAsync = container.read(conversationProvider);
         final conversation = conversationAsync.value;
 
-        // VERIFY: L'état d'automatisation reste en refining pour permettre un nouvel essai
+        // VERIFY: Automation state remains in refining to allow retry
         expect(
           finalState,
           const AutomationStateData.refining(messageCount: 1),
-          reason: "L'état d'automatisation doit rester 'refining'",
+          reason: "Automation state must remain 'refining'",
         );
 
-        // VERIFY: Le dernier message de l'assistant n'est pas écrasé
+        // VERIFY: Last assistant message is not overwritten
         final lastAiMessage = conversation!.lastWhere((m) => !m.isFromUser);
         expect(lastAiMessage.status, MessageStatus.sending);
       },
@@ -470,14 +468,14 @@ void main() {
         final conversationAsync = container.read(conversationProvider);
         final conversation = conversationAsync.value;
 
-        // VERIFY: L'état d'automatisation reste en refining
+        // VERIFY: Automation state remains in refining
         expect(
           finalState,
           const AutomationStateData.refining(messageCount: 1),
-          reason: "L'état d'automatisation doit rester 'refining'",
+          reason: "Automation state must remain 'refining'",
         );
 
-        // VERIFY: Le dernier message de l'assistant n'est pas écrasé
+        // VERIFY: Last assistant message is not overwritten
         final lastAiMessage = conversation!.lastWhere((m) => !m.isFromUser);
         expect(lastAiMessage.status, MessageStatus.sending);
       },
@@ -595,11 +593,13 @@ void main() {
       () async {
         // ARRANGE
         final notifier = container.read(conversationActionsProvider.notifier);
-        final activeId = container.read(activeConversationIdProvider)!;
+        final activeId = container.read(activeConversationIdProvider);
+        expect(activeId, isNotNull);
+        final conversationId = activeId!;
         await notifier.addMessage(
           'Message 1',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
 
         // Set a non-default conversation setting
@@ -637,11 +637,13 @@ void main() {
         final notifier = container.read(conversationActionsProvider.notifier);
 
         // Créer une conversation initiale
-        final activeId = container.read(activeConversationIdProvider)!;
+        final activeId = container.read(activeConversationIdProvider);
+        expect(activeId, isNotNull);
+        final conversationId = activeId!;
         await notifier.addMessage(
           'Original Prompt',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         final conversationAsyncInitial = container.read(conversationProvider);
         final conversationInitial = conversationAsyncInitial.value;
@@ -649,17 +651,17 @@ void main() {
         await notifier.addMessage(
           'Original Response',
           isFromUser: false,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         await notifier.addMessage(
           'Another Prompt',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         await notifier.addMessage(
           'Another Response',
           isFromUser: false,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         final conversationAsyncAfterSeed = container.read(conversationProvider);
         final conversationAfterSeed = conversationAsyncAfterSeed.value;
@@ -756,7 +758,9 @@ void main() {
         resilienceMockWebViewController.loadUrl(
           urlRequest: anyNamed('urlRequest'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) async {
+        return;
+      });
 
       // Simulate the bridge becoming ready after a short delay
       Future.delayed(const Duration(milliseconds: 30), () {
@@ -797,6 +801,7 @@ void main() {
           // Mark bridge as ready immediately after loadUrl completes
           // to allow loadUrlAndWaitForReady to finish quickly
           resilienceContainer.read(bridgeReadyProvider.notifier).markReady();
+          return;
         });
 
         // Mocks to allow the rest of the function to complete without error
@@ -851,11 +856,13 @@ void main() {
       () async {
         final notifier = container.read(conversationActionsProvider.notifier);
 
-        final activeId = container.read(activeConversationIdProvider)!;
+        final activeId = container.read(activeConversationIdProvider);
+        expect(activeId, isNotNull);
+        final conversationId = activeId!;
         await notifier.addMessage(
           'Prompt 1',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         ); // will edit this
         final conversationAsync1 = container.read(conversationProvider);
         final conversation1 = conversationAsync1.value;
@@ -863,17 +870,17 @@ void main() {
         await notifier.addMessage(
           'Response 1',
           isFromUser: false,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         await notifier.addMessage(
           'Prompt 2',
           isFromUser: true,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
         await notifier.addMessage(
           'Response 2',
           isFromUser: false,
-          conversationId: activeId,
+          conversationId: conversationId,
         );
 
         await notifier.editAndResendPrompt(messageToEditId, 'Edited Prompt 1');

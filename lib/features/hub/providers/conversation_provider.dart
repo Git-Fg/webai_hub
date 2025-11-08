@@ -7,32 +7,16 @@ import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/services/prompt_builder.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
-import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:xml/xml.dart';
 
 part 'conversation_provider.g.dart';
-
-@riverpod
-class PendingPrompt extends _$PendingPrompt {
-  @override
-  String? build() => null;
-
-  void set(String prompt) {
-    state = prompt;
-  }
-
-  void clear() {
-    state = null;
-  }
-}
 
 // WHY: This provider streams messages for the currently active conversation.
 // It reacts to changes in activeConversationIdProvider to show the correct messages.
@@ -73,6 +57,8 @@ class ConversationActions extends _$ConversationActions {
     await db.insertMessage(message, conversationId);
     // Update conversation timestamp
     await db.updateConversationTimestamp(conversationId, DateTime.now());
+    // Signal UI to scroll to bottom after adding message
+    ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
   }
 
   Future<void> updateMessageContent(String messageId, String newText) async {
@@ -95,61 +81,6 @@ class ConversationActions extends _$ConversationActions {
       status: messageData.status,
     );
     await db.updateMessage(message);
-  }
-
-  /// Helper to build the system XML node as a string fragment.
-  String _buildSystemPromptXml(String systemPrompt) {
-    final builder = XmlBuilder();
-    builder.element(
-      'system',
-      nest: () {
-        // Use .text() for automatic XML entity escaping.
-        builder.text(systemPrompt);
-      },
-    );
-    return builder.buildDocument().toXmlString(pretty: true);
-  }
-
-  /// Helper to build the history as a flat, human-readable string.
-  String _buildHistoryText(List<Message> history) {
-    final buffer = StringBuffer();
-
-    // WHY: This logic correctly pairs User/Assistant messages into turns
-    // and safely handles any orphaned messages, ensuring a clean log format.
-    for (var i = 0; i < history.length;) {
-      if (history[i].isFromUser) {
-        final userMessage = history[i];
-        final assistantMessage =
-            (i + 1 < history.length && !history[i + 1].isFromUser)
-            ? history[i + 1]
-            : null;
-
-        buffer.writeln('User: ${userMessage.text}');
-        if (assistantMessage != null) {
-          buffer.writeln('Assistant: ${assistantMessage.text}');
-        }
-        // Add a blank line between turns for better readability
-        buffer.writeln();
-
-        i += (assistantMessage != null) ? 2 : 1;
-      } else {
-        // Skip orphaned assistant messages
-        i++;
-      }
-    }
-    return buffer.toString().trim();
-  }
-
-  /// Helper to build user_input XML node as a string fragment.
-  String _buildUserInputXml(String userInput) {
-    final builder = XmlBuilder();
-    builder.element(
-      'user_input',
-      nest: () {
-        builder.text(userInput);
-      },
-    );
-    return builder.buildDocument().toXmlString(pretty: true);
   }
 
   Future<void> clearConversation() async {
@@ -194,202 +125,6 @@ class ConversationActions extends _$ConversationActions {
     );
   }
 
-  // Preserve the current text-based prompt as the simple fallback
-  Future<String> _buildSimplePrompt(
-    String newPrompt, {
-    required int conversationId,
-    String? excludeMessageId,
-  }) async {
-    final db = ref.read(appDatabaseProvider);
-    final settings = ref.read(conversationSettingsProvider);
-    final systemPrompt = settings.systemPrompt;
-    final contextBuffer = StringBuffer();
-
-    if (systemPrompt.isNotEmpty) {
-      contextBuffer.writeln(systemPrompt);
-      contextBuffer.writeln();
-    }
-
-    // Get messages scoped to conversation
-    final messages = await (db.select(
-      db.messages,
-    )..where((t) => t.conversationId.equals(conversationId))).get();
-    final previousMessages = messages
-        .map(
-          (m) => Message(
-            id: m.id,
-            text: m.content,
-            isFromUser: m.isFromUser,
-            status: m.status,
-          ),
-        )
-        .where((m) {
-          return m.status == MessageStatus.success &&
-              (excludeMessageId == null || m.id != excludeMessageId);
-        })
-        .toList();
-
-    if (previousMessages.isEmpty) {
-      // If no history, it's just system prompt + new prompt
-      if (systemPrompt.isNotEmpty) {
-        return '$systemPrompt\n\nUser: $newPrompt';
-      }
-      return newPrompt;
-    }
-
-    // This part is now cleaner
-    for (final message in previousMessages) {
-      final prefix = message.isFromUser ? 'User:' : 'Assistant:';
-      contextBuffer.writeln('$prefix ${message.text}');
-      contextBuffer.writeln(); // Add a blank line between messages
-    }
-
-    // Use a more descriptive intro for clarity
-    final fullPrompt =
-        '''
-Here is the conversation history for context:
-
-$contextBuffer
----
-
-Now, please respond to the following:
-
-User: $newPrompt
-''';
-
-    return fullPrompt.trim();
-  }
-
-  Future<String> _buildXmlPrompt(
-    String newPrompt, {
-    required int conversationId,
-    String? excludeMessageId,
-  }) async {
-    try {
-      final db = ref.read(appDatabaseProvider);
-      final settingsAsync = ref.read(generalSettingsProvider);
-      // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
-      // This prevents exceptions if the state is AsyncLoading or AsyncError.
-      final generalSettings = settingsAsync.maybeWhen(
-        data: (value) => value,
-        orElse: () => const GeneralSettingsData(),
-      );
-
-      final settings = ref.read(conversationSettingsProvider);
-      final systemPrompt = settings.systemPrompt;
-      final providerConfig = ref.read(currentProviderConfigurationProvider);
-
-      // Get messages scoped to conversation
-      final messages = await (db.select(
-        db.messages,
-      )..where((t) => t.conversationId.equals(conversationId))).get();
-      final history = messages
-          .map(
-            (m) => Message(
-              id: m.id,
-              text: m.content,
-              isFromUser: m.isFromUser,
-              status: m.status,
-            ),
-          )
-          .where(
-            (m) =>
-                m.id != excludeMessageId && m.status == MessageStatus.success,
-          )
-          .toList();
-
-      final shouldInjectSystemPrompt =
-          systemPrompt.isNotEmpty && !providerConfig.supportsNativeSystemPrompt;
-
-      // WHY: Use StringBuffer for efficient string concatenation to build the template.
-      final promptBuffer = StringBuffer();
-
-      // --- Part 1: Initial Instruction ---
-      promptBuffer.writeln(_buildUserInputXml(newPrompt));
-      if (shouldInjectSystemPrompt) {
-        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
-      }
-
-      // --- Part 2: Context ---
-      if (history.isNotEmpty) {
-        // Use the instruction from the settings object instead of a hardcoded string.
-        promptBuffer.writeln('\n${generalSettings.historyContextInstruction}');
-
-        // 1. Generate the history as a flat string.
-        final historyText = _buildHistoryText(history);
-
-        // 2. Build a simple XML block that contains the flat string.
-        final historyBuilder = XmlBuilder();
-        historyBuilder.element(
-          'history',
-          nest: () {
-            // Use .text() to safely wrap the entire multi-line string.
-            // This will handle any special characters correctly.
-            historyBuilder.text(historyText);
-          },
-        );
-        promptBuffer.writeln(
-          historyBuilder.buildDocument().toXmlString(pretty: true),
-        );
-      }
-      // Future <files> context would be added here.
-
-      // --- Part 3: Repeated Instruction for Focus ---
-      // WHY: Duplicate the user prompt and system prompt at the end to ensure the AI model
-      // focuses on the most recent user input rather than getting lost in the context.
-      promptBuffer.writeln(_buildUserInputXml(newPrompt));
-      if (shouldInjectSystemPrompt) {
-        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
-      }
-
-      final finalPrompt = promptBuffer.toString().trim();
-      final talker = ref.read(talkerProvider);
-      talker.info('Generated Prompt Template:\n---\n$finalPrompt\n---');
-      return finalPrompt;
-    } on XmlException catch (e, st) {
-      final talker = ref.read(talkerProvider);
-      talker.handle(
-        e,
-        st,
-        'XML fragment build error: ${e.message}. Falling back to simple prompt.',
-      );
-      // WHY: On any XML failure, we fall back to the reliable simple prompt.
-      return _buildSimplePrompt(
-        newPrompt,
-        excludeMessageId: excludeMessageId,
-        conversationId: conversationId,
-      );
-    }
-  }
-
-  /// Constructs the prompt with conversation context via selected strategy
-  Future<String> _buildPromptWithContext(
-    String newPrompt, {
-    required int conversationId,
-    String? excludeMessageId,
-  }) async {
-    final settingsAsync = ref.read(generalSettingsProvider);
-    final useAdvanced = settingsAsync.maybeWhen(
-      data: (s) => s.useAdvancedPrompting,
-      // WHY: Default to simple prompting until settings are loaded to avoid
-      // impacting tests and first-frame behavior.
-      orElse: () => false,
-    );
-    if (useAdvanced) {
-      return _buildXmlPrompt(
-        newPrompt,
-        excludeMessageId: excludeMessageId,
-        conversationId: conversationId,
-      );
-    } else {
-      return _buildSimplePrompt(
-        newPrompt,
-        excludeMessageId: excludeMessageId,
-        conversationId: conversationId,
-      );
-    }
-  }
-
   /// Builds the automation options map from conversation settings and provider configuration.
   Map<String, dynamic> _buildAutomationOptions(String promptWithContext) {
     final conversationSettings = ref.read(conversationSettingsProvider);
@@ -431,14 +166,15 @@ User: $newPrompt
     String? excludeMessageId,
   }) async {
     final db = ref.read(appDatabaseProvider);
-    final promptWithContext = await _buildPromptWithContext(
+
+    // WHY: Delegating prompt creation to a dedicated class cleans up this
+    // method, allowing it to focus solely on orchestration.
+    final promptBuilder = PromptBuilder(ref: ref, db: db);
+    final promptWithContext = await promptBuilder.buildPromptWithContext(
       promptForContext,
       excludeMessageId: excludeMessageId,
       conversationId: conversationId,
     );
-
-    // WHY: Store original prompt (without context) to resume after login
-    ref.read(pendingPromptProvider.notifier).set(promptForContext);
 
     final assistantMessageId = DateTime.now().microsecondsSinceEpoch.toString();
 
@@ -471,12 +207,25 @@ User: $newPrompt
     // Update conversation timestamp
     await db.updateConversationTimestamp(conversationId, DateTime.now());
 
-    ref.read(automationStateProvider.notifier).moveToSending();
+    // WHY: Store the prompt in the automation state so it can be retried after login
+    ref
+        .read(automationStateProvider.notifier)
+        .moveToSending(prompt: promptForContext);
 
     if (!ref.mounted) return;
 
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
+      final controller = ref.read(webViewControllerProvider);
+
+      // This is the critical check
+      if (controller == null) {
+        throw AutomationError(
+          errorCode: AutomationErrorCode.webViewNotReady,
+          location: '_orchestrateAutomation',
+          message: 'WebView controller is not available to start automation.',
+        );
+      }
 
       // Switch to the WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
@@ -485,29 +234,20 @@ User: $newPrompt
       await Future<void>.delayed(Duration.zero);
       if (!ref.mounted) return;
 
-      // WHY: A single, declarative call that handles everything.
-      // This replaces loadUrl, the Completer, and the direct call to waitForBridgeReady.
-      // The bridge encapsulates the entire load-and-wait cycle: reset state, load URL,
-      // and poll until the bridge is ready (page loaded, script injected, JS signaled ready).
-      await bridge.loadUrlAndWaitForReady(
-        URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
-      );
+      // Wait for the bridge to be ready. The WebView's onLoadStop and
+      // onUpdateVisitedHistory handlers are responsible for ensuring the bridge
+      // script is injected on the correct page.
+      await bridge.waitForBridgeReady();
 
       if (!ref.mounted) return;
 
       // Get console logs to debug selector issues (captured before automation starts)
-      // Note: getCapturedLogs is only available on JavaScriptBridge, not on interface
-      try {
-        final jsBridge = bridge as JavaScriptBridge;
-        final logs = await jsBridge.getCapturedLogs();
-        if (logs.isNotEmpty) {
-          final talker = ref.read(talkerProvider);
-          talker.debug(
-            '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
-          );
-        }
-      } on Object catch (_) {
-        // Ignore cast errors in tests - FakeJavaScriptBridge doesn't extend JavaScriptBridge
+      final logs = await bridge.getCapturedLogs();
+      if (logs.isNotEmpty) {
+        final talker = ref.read(talkerProvider);
+        talker.debug(
+          '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
+        );
       }
 
       final automationOptions = _buildAutomationOptions(promptWithContext);
@@ -614,7 +354,6 @@ User: $newPrompt
           MessageStatus.success,
           conversationId: activeId,
         );
-        ref.read(pendingPromptProvider.notifier).clear();
         ref.read(currentTabIndexProvider.notifier).changeTo(0);
         // Signal UI to scroll to bottom after successful extraction
         ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
@@ -679,81 +418,6 @@ User: $newPrompt
     ref.read(automationStateProvider.notifier).moveToFailed();
   }
 
-  Future<void> resumeAutomationAfterLogin() async {
-    final pendingPrompt = ref.read(pendingPromptProvider);
-    if (pendingPrompt == null) {
-      ref.read(automationStateProvider.notifier).returnToIdle();
-      return;
-    }
-
-    final activeId = ref.read(activeConversationIdProvider);
-    if (activeId == null) return;
-
-    // WHY: Rebuild prompt with context (conversation may have changed)
-    final promptWithContext = await _buildPromptWithContext(
-      pendingPrompt,
-      conversationId: activeId,
-    );
-
-    await _updateLastMessage(
-      'Resuming automation after login...',
-      MessageStatus.sending,
-      conversationId: activeId,
-    );
-
-    ref.read(automationStateProvider.notifier).moveToSending();
-
-    if (!ref.mounted) return;
-
-    try {
-      final bridge = ref.read(javaScriptBridgeProvider);
-
-      // WHY: Wait for bridge to be ready (WebView may have been reloaded)
-      await bridge.waitForBridgeReady();
-
-      if (!ref.mounted) return;
-
-      final automationOptions = _buildAutomationOptions(promptWithContext);
-
-      // WHY: Let startAutomation detect login page again if necessary
-      await bridge.startAutomation(automationOptions);
-
-      if (ref.mounted) {
-        await _updateLastMessage(
-          'Assistant is responding in the WebView...',
-          MessageStatus.sending,
-          conversationId: activeId,
-        );
-
-        final db = ref.read(appDatabaseProvider);
-        final messages = await (db.select(
-          db.messages,
-        )..where((t) => t.conversationId.equals(activeId))).get();
-        ref
-            .read(automationStateProvider.notifier)
-            .moveToRefining(messageCount: messages.length);
-      }
-    } on Object catch (e, st) {
-      final talker = ref.read(talkerProvider);
-      talker.handle(e, st, 'Resume automation after login failed.');
-      if (ref.mounted) {
-        String errorMessage;
-        if (e is AutomationError) {
-          errorMessage = 'Error: ${e.message} (Code: ${e.errorCode.name})';
-        } else {
-          errorMessage = 'An unexpected error occurred: $e';
-        }
-
-        await _updateLastMessage(
-          errorMessage,
-          MessageStatus.error,
-          conversationId: activeId,
-        );
-        ref.read(automationStateProvider.notifier).moveToFailed();
-      }
-    }
-  }
-
   Future<void> _updateLastMessage(
     String text,
     MessageStatus status, {
@@ -765,9 +429,11 @@ User: $newPrompt
 
     // WHY: This query is more efficient as it fetches only the single last
     // message from the database instead of loading the entire list.
+    // WHY: Order by createdAt timestamp instead of ID to ensure reliable ordering,
+    // independent of ID generation timing or potential clock adjustments.
     final lastMessageQuery = db.select(db.messages)
       ..where((t) => t.conversationId.equals(conversationId))
-      ..orderBy([(t) => OrderingTerm.desc(t.id)]) // Assuming ID is sequential
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
       ..limit(1);
 
     final lastMessageData = await lastMessageQuery.getSingleOrNull();

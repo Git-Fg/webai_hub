@@ -174,20 +174,10 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
-        // WHY: Security hardening - restrict file access to prevent XSS attacks
-        // These settings prevent file:// URLs from accessing other origins
-        allowUniversalAccessFromFileURLs: false,
-        allowFileAccessFromFileURLs: false,
-        // WHY: Explicitly enable JavaScript (required for bridge) but restrict dangerous APIs
-        javaScriptEnabled: true,
         // WHY: Disable database APIs if not needed to reduce attack surface
         databaseEnabled: false,
-        // WHY: Enable DOM storage for modern web apps (required for AI Studio)
-        domStorageEnabled: true,
         // WHY: Disable third-party cookies for privacy and security
         thirdPartyCookiesEnabled: false,
-        // WHY: Clear cache on navigation to prevent stale data issues
-        clearCache: false,
       ),
       onWebViewCreated: (controller) {
         webViewController = controller;
@@ -238,7 +228,23 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   // If YOLO is off, the app simply remains in the 'refining' state, waiting for the user.
                   return;
                 case BridgeConstants.eventTypeLoginRequired:
-                  automationNotifier.moveToNeedsLogin();
+                  // Read the prompt from the automation state notifier
+                  // This works even if state has transitioned from sending to observing
+                  final automationState = ref.read(automationStateProvider.notifier);
+                  final pendingPrompt = automationState.currentPrompt;
+                  if (pendingPrompt != null) {
+                    // Pass the entire resumption logic as a callback.
+                    automationNotifier.moveToNeedsLogin(
+                      onResume: () async {
+                        await ref
+                            .read(conversationActionsProvider.notifier)
+                            .sendPromptToAutomation(pendingPrompt);
+                      },
+                    );
+                  } else {
+                    // If no pending prompt, still transition to needsLogin but without callback
+                    automationNotifier.moveToNeedsLogin();
+                  }
                   return;
                 case BridgeConstants.eventTypeAutomationFailed:
                   final payload = event.payload ?? 'Unknown error';
@@ -261,7 +267,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                     }
                   }
 
-                  notifier.onAutomationFailed(errorMessage);
+                  unawaited(notifier.onAutomationFailed(errorMessage));
                   return;
                 default:
                   // Handle any unexpected event types
@@ -307,9 +313,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           _progress = 1.0;
         });
 
-        final currentUrl = url?.toString() ?? '';
-        if (currentUrl.contains(WebViewConstants.aiStudioDomain) ||
-            currentUrl.startsWith('file://')) {
+        // WHY: This check is now stricter. It verifies the exact host of the URL,
+        // preventing the bridge script from being injected into cross-origin
+        // redirect pages like the Google login page.
+        if (url?.host == WebViewConstants.aiStudioDomain ||
+            (url?.toString() ?? '').startsWith('file://')) {
           await _injectBridgeScript(controller, bridgeScript);
         }
 
@@ -322,9 +330,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         final newUrl = url?.toString() ?? '';
         ref.read(currentWebViewUrlProvider.notifier).updateUrl(newUrl);
 
-        // WHY: SPA navigations don't trigger onLoadStop, so we must validate bridge health
-        // and re-inject if needed. This handles client-side routing in modern web apps.
-        if (newUrl.contains(WebViewConstants.aiStudioDomain) ||
+        // WHY: Applying the same strict host check here ensures that client-side
+        // routing to an external page doesn't trigger a faulty bridge injection.
+        if (url?.host == WebViewConstants.aiStudioDomain ||
             newUrl.startsWith('file://')) {
           try {
             final bridge = ref.read(javaScriptBridgeProvider);
@@ -409,11 +417,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   Future<void> _recoverFromDeadBridge(InAppWebViewController controller) async {
     try {
       final currentUrl = await controller.getUrl();
-      final urlString = currentUrl?.toString() ?? '';
 
-      // WHY: Only attempt recovery on supported domains
-      if (urlString.contains(WebViewConstants.aiStudioDomain) ||
-          urlString.startsWith('file://')) {
+      // WHY: Only attempt recovery on supported domains. Using strict host check
+      // prevents recovery attempts on cross-origin redirect pages.
+      if (currentUrl?.host == WebViewConstants.aiStudioDomain ||
+          (currentUrl?.toString() ?? '').startsWith('file://')) {
         // Attempt to re-inject bridge script
         await _injectBridgeScript(controller, _currentBridgeScript);
       } else {

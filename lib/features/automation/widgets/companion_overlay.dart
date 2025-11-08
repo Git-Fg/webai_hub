@@ -44,46 +44,36 @@ class CompanionOverlay extends ConsumerWidget {
 
   Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
-    final statusColor = _getStatusColor(status);
     final screenSize = MediaQuery.of(context).size;
     final content = status.when(
       idle: () => const SizedBox.shrink(),
-      sending: () => _buildStatusUI(
+      sending: (prompt) => _buildStatusUI(
         context: context,
-        statusIcon: Icons.send,
-        statusColor: Colors.blue,
-        message: 'Phase 1: Sending prompt...',
+        status: status,
         isLoading: true,
       ),
       observing: () => _buildStatusUI(
         context: context,
-        statusIcon: Icons.visibility,
-        statusColor: Colors.orange,
-        message: 'Phase 2: Assistant is responding...',
+        status: status,
         isLoading: true,
       ),
       refining: (messageCount, isExtracting) => _buildStatusUI(
         context: context,
-        statusIcon: Icons.edit,
-        statusColor: Colors.green,
-        message: 'Phase 3: Ready for refinement.',
+        status: status,
         actionButton: _buildRefiningButtons(context, ref, messageCount),
       ),
-      needsLogin: () => _buildStatusUI(
+      needsLogin: (onResume) => _buildStatusUI(
         context: context,
-        statusIcon: Icons.login,
-        statusColor: Colors.amber,
-        message: 'Please sign in to your Google Account to continue.',
+        status: status,
         actionButton: ElevatedButton.icon(
           icon: const Icon(Icons.check_circle),
-          label: const Text("OK I'm logged"),
-          onPressed: () {
-            unawaited(
-              ref
-                  .read(conversationActionsProvider.notifier)
-                  .resumeAutomationAfterLogin(),
-            );
-          },
+          label: const Text("I'm logged in, Continue"),
+          onPressed: onResume == null
+              ? null
+              : () {
+                  // Simply execute the provided callback.
+                  unawaited(onResume());
+                },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.amber,
             foregroundColor: Colors.white,
@@ -92,9 +82,7 @@ class CompanionOverlay extends ConsumerWidget {
       ),
       failed: () => _buildStatusUI(
         context: context,
-        statusIcon: Icons.error,
-        statusColor: Colors.red,
-        message: 'Automation Failed.',
+        status: status,
         actionButton: ElevatedButton.icon(
           icon: const Icon(Icons.close),
           label: const Text('Dismiss'),
@@ -202,7 +190,7 @@ class CompanionOverlay extends ConsumerWidget {
                 border: status.maybeWhen(
                   idle: () => null,
                   orElse: () => Border.all(
-                    color: statusColor.withValues(alpha: 0.3),
+                    color: status.color.withValues(alpha: 0.3),
                     width: 2,
                   ),
                 ),
@@ -304,23 +292,9 @@ class CompanionOverlay extends ConsumerWidget {
     );
   }
 
-  // Helper method to get color from state
-  Color _getStatusColor(AutomationStateData status) {
-    return status.when(
-      idle: () => Colors.grey,
-      sending: () => Colors.blue,
-      observing: () => Colors.orange,
-      refining: (_, isExtracting) => Colors.green,
-      needsLogin: () => Colors.amber,
-      failed: () => Colors.red,
-    );
-  }
-
   Widget _buildStatusUI({
     required BuildContext context,
-    required String message,
-    required Color statusColor,
-    required IconData statusIcon,
+    required AutomationStateData status,
     Widget? actionButton,
     bool isLoading = false,
   }) {
@@ -335,14 +309,14 @@ class CompanionOverlay extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(kSmallPadding),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
+                  color: status.color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(kSmallBorderRadius),
                 ),
                 child: isLoading
                     ? const LoadingIndicator(size: kDefaultIconSize)
                     : Icon(
-                        statusIcon,
-                        color: statusColor,
+                        status.icon,
+                        color: status.color,
                         size: kDefaultIconSize,
                       ),
               ),
@@ -351,7 +325,7 @@ class CompanionOverlay extends ConsumerWidget {
                 child: Semantics(
                   liveRegion: true,
                   child: Text(
-                    message,
+                    status.title,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: kSmallFontSize,
