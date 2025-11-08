@@ -5,7 +5,11 @@ import 'dart:io';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+// Export ConversationData from generated drift file for use in Riverpod providers
+export 'database.drift.dart' show ConversationData;
 
 part 'database.g.dart';
 
@@ -53,7 +57,7 @@ class Messages extends Table {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File('${dbFolder.path}/db.sqlite');
+    final file = File(p.join(dbFolder.path, 'db.sqlite'));
     return NativeDatabase(file);
   });
 }
@@ -86,10 +90,7 @@ class AppDatabase extends _$AppDatabase {
           // Step 1: Create Conversations table
           await m.createTable(conversations);
 
-          // Step 2: Add nullable conversationId column to Messages
-          await m.addColumn(messages, messages.conversationId);
-
-          // Step 3: Create default "Legacy" conversation for existing messages
+          // Step 2: Create default "Legacy" conversation for existing messages
           final db = m.database as AppDatabase;
           final legacyId = await db
               .into(db.conversations)
@@ -101,15 +102,28 @@ class AppDatabase extends _$AppDatabase {
                 ),
               );
 
-          // Step 4: Assign all existing messages to legacy conversation
-          await (db.update(db.messages)
-                ..where((t) => t.conversationId.isNull()))
-              .write(MessagesCompanion(conversationId: Value(legacyId)));
+          // Step 3: Recreate Messages table with conversationId column
+          // WHY: SQLite doesn't support adding NOT NULL columns to existing tables.
+          // We must recreate the table: rename old, create new, copy data, drop old.
+          // Handle case where messages_old might already exist from a failed migration
+          try {
+            await db.customStatement('DROP TABLE IF EXISTS messages_old');
+          } on Object {
+            // Ignore if table doesn't exist or other errors
+          }
+          await db.customStatement(
+            'ALTER TABLE messages RENAME TO messages_old',
+          );
+          await m.createTable(messages);
 
-          // Step 5: Make conversationId non-nullable
-          // Note: SQLite doesn't support altering column constraints directly,
-          // so we rely on the schema definition. The column is already non-nullable
-          // in the schema, so new inserts will enforce it.
+          // Step 4: Migrate existing messages to new table with legacy conversationId
+          await db.customStatement(
+            'INSERT INTO messages (id, conversationId, content, isFromUser, status) '
+            'SELECT id, $legacyId, content, isFromUser, status FROM messages_old',
+          );
+
+          // Step 5: Drop old table
+          await db.customStatement('DROP TABLE messages_old');
         }
       },
     );
@@ -170,6 +184,16 @@ class AppDatabase extends _$AppDatabase {
           .toList();
     });
   }
+
+  // NOTE: This class uses both Manager API and Query Builder API intentionally:
+  // - Manager API (managers.*): Used for simple CRUD operations on Messages (insertMessage,
+  //   updateMessage, clearAllMessages). It provides a fluent, readable interface that's less
+  //   error-prone for straightforward operations.
+  // - Query Builder API (select, into, update, delete): Used for Conversations and complex
+  //   queries (watchAllConversations, watchMessagesForConversation, pruneOldConversations).
+  //   It offers more flexibility for filtering, ordering, and complex operations.
+  // This mixed approach leverages the strengths of each API: Manager for simplicity,
+  // Query Builder for flexibility and reactive streams.
 
   // WHY: The Manager API provides a fluent, readable, and less error-prone
   // interface for common CRUD operations compared to the standard query builder.

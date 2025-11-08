@@ -11,6 +11,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "validate:ts": "npx tsc --noEmit && npm run lint && npm run build",
+    "build:dart": "flutter pub run build_runner build --delete-conflicting-outputs",
+    "build:dart:watch": "flutter pub run build_runner watch --delete-conflicting-outputs",
     "validate": "npm run validate:ts && flutter analyze && flutter pub run build_runner build --delete-conflicting-outputs",
     "test:ci": "npm run validate && flutter test"
   },
