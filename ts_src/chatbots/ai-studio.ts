@@ -507,40 +507,19 @@ export class AiStudioChatbot implements Chatbot {
     }
   }
   
+  private findTurnContainerFromEditButton(editButton: HTMLElement): HTMLElement | null {
+    const CHAT_TURN_SELECTOR = Array.isArray(SELECTORS.CHAT_TURN) ? SELECTORS.CHAT_TURN.join(',') : SELECTORS.CHAT_TURN;
+    const turnContainer = editButton.closest(CHAT_TURN_SELECTOR);
+    return turnContainer as HTMLElement | null;
+  }
+
   async extractResponse(): Promise<string> {
     console.log(`[AI Studio LOG] Starting extraction process... (timeout: ${TIMING.FINALIZED_TURN_TIMEOUT_MS}ms)`);
-    
-    const findTurnContainerFromEditButton = (editButton: HTMLElement): HTMLElement => {
-      // WHY: Bottom-up approach (starting from Edit button, traversing up to find turn)
-      // This is more reliable than top-down because:
-      // 1. querySelectorAll(CHAT_TURN_SELECTOR) returns turns in DOM order, which may not match Edit button order
-      // 2. The last turn in querySelectorAll result might not contain the last Edit button
-      // 3. closest() traverses up from Edit button, guaranteeing we find the correct parent turn
-      // This matches the validation script approach which works reliably in browsers
-      const CHAT_TURN_SELECTOR = Array.isArray(SELECTORS.CHAT_TURN) ? SELECTORS.CHAT_TURN.join(',') : SELECTORS.CHAT_TURN;
-      const explicit = editButton.closest(CHAT_TURN_SELECTOR);
-      if (explicit) return explicit as HTMLElement;
 
-      // Heuristic fallback: climb ancestors and pick the first with likely turn hints
-      let cursor: HTMLElement | null = editButton as HTMLElement;
-      const turnHints = [
-        (el: HTMLElement) => el.id?.startsWith('turn-'),
-        (el: HTMLElement) => el.tagName.toLowerCase() === 'ms-chat-turn',
-        (el: HTMLElement) => /\bchat-?turn\b/i.test(el.className),
-        (el: HTMLElement) => el.getAttribute('data-test-id')?.toLowerCase().includes('turn') === true,
-      ];
-      while (cursor && cursor !== document.body) {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        if (turnHints.some(fn => fn(cursor!))) {
-          return cursor;
-        }
-        cursor = cursor.parentElement;
-      }
-      // Last resort: use the edit button's nearest sizeable container
-      return (editButton.parentElement as HTMLElement) || document.body as unknown as HTMLElement;
-    };
-
-    // WHY: Return both turn container and Edit button to avoid redundant search
+    // WHY: This function waits for the UI to be in a "finalized" state, meaning
+    // an "Edit" button is present and actionable, and the turn is not in edit mode.
+    // It uses a MutationObserver to react to DOM changes efficiently, which is more
+    // performant and reliable than polling with setInterval.
     const waitForFinalizedTurn = (timeout = TIMING.FINALIZED_TURN_TIMEOUT_MS): Promise<{turn: HTMLElement, editButton: HTMLElement}> => {
       return new Promise((resolve, reject) => {
         const EDIT_BUTTON_SELECTOR = Array.isArray(SELECTORS.EDIT_BUTTON) ? SELECTORS.EDIT_BUTTON.join(',') : SELECTORS.EDIT_BUTTON;
@@ -559,11 +538,12 @@ export class AiStudioChatbot implements Chatbot {
           }
 
           const lastEditButton = allEditButtons[allEditButtons.length - 1] as HTMLElement;
-          const candidateTurn = findTurnContainerFromEditButton(lastEditButton);
+          const candidateTurn = this.findTurnContainerFromEditButton(lastEditButton);
 
           if (candidateTurn) {
             const hasStopEditingButton = candidateTurn.querySelector('button[aria-label="Stop editing"]');
             
+            // The critical check: ensure the button is visible (offsetParent) and enabled.
             if (!hasStopEditingButton && lastEditButton.offsetParent !== null && !(lastEditButton as HTMLButtonElement).disabled) {
               console.log('[AI Studio LOG] Found finalized turn via MutationObserver check.');
               cleanup();
@@ -572,25 +552,23 @@ export class AiStudioChatbot implements Chatbot {
           }
         };
 
-        // WHY: Use a MutationObserver instead of setInterval to avoid crashing the JS context.
-        // This is far more performant as it only runs 'check' when the DOM actually changes.
         observer = new MutationObserver(check);
         observer.observe(document.body, {
           childList: true,
           subtree: true,
-          attributes: true, // Watch for changes to aria-label, disabled, etc.
+          attributes: true, 
           attributeFilter: ['aria-label', 'disabled']
         });
 
         timeoutId = window.setTimeout(() => {
           cleanup();
           const allEditButtons = document.querySelectorAll(EDIT_BUTTON_SELECTOR);
-          const errorMessage = `Extraction timed out via MutationObserver. Final state: ${allEditButtons.length} edit buttons found.`;
+          const errorMessage = `Extraction timed out. Final state: ${allEditButtons.length} edit buttons found. The last response may still be generating or the UI has changed.`;
           console.error(`[AI Studio LOG] ${errorMessage}`);
           reject(new Error(errorMessage));
         }, timeout);
 
-        // Perform an initial check in case the element is already present
+        // Perform an initial check in case the element is already present and ready.
         check();
       });
     };
@@ -598,146 +576,36 @@ export class AiStudioChatbot implements Chatbot {
     const {turn: lastTurn, editButton: editButtonToClick} = await waitForFinalizedTurn();
     console.log('[AI Studio LOG] Finalized turn found, clicking edit button...');
     
-    // ENHANCED LOGGING: Add visual indicator and detailed logging before clicking
-    console.log(`[AI Studio LOG] [ENHANCED] Edit button details:`, {
-      tagName: editButtonToClick.tagName,
-      outerHTML: editButtonToClick.outerHTML.substring(0, 200),
-      offsetParent: editButtonToClick.offsetParent !== null,
-      // Fix: Check if element is HTMLButtonElement before accessing disabled property
-      disabled: editButtonToClick instanceof HTMLButtonElement ? editButtonToClick.disabled : 'N/A',
-      ariaLabel: editButtonToClick.getAttribute('aria-label'),
-      className: editButtonToClick.className
-    });
-    
-    // Add visual highlight to edit button before clicking
-    const originalStyle = editButtonToClick.style.border;
-    editButtonToClick.style.border = '3px solid red';
-    console.log('[AI Studio LOG] [ENHANCED] Edit button highlighted in red before clicking');
-    
-    // Click the edit button
+    // This is the working logic: a direct click after the state has been confirmed.
     editButtonToClick.click();
     
-    // Wait a moment and check if anything changed
-    await new Promise(resolve => setTimeout(resolve, 500));
-    console.log(`[AI Studio LOG] [ENHANCED] Edit button state after clicking:`, {
-      tagName: editButtonToClick.tagName,
-      // Fix: Check if element is HTMLButtonElement before accessing disabled property
-      disabled: editButtonToClick instanceof HTMLButtonElement ? editButtonToClick.disabled : 'N/A',
-      offsetParent: editButtonToClick.offsetParent !== null,
-      border: editButtonToClick.style.border
-    });
-    
-    // Restore original style
-    editButtonToClick.style.border = originalStyle;
-
     console.log('[AI Studio LOG] Waiting for textarea to appear...');
-    const textareaSelectors = Array.isArray(SELECTORS.EDIT_TEXTAREA) ? SELECTORS.EDIT_TEXTAREA : [SELECTORS.EDIT_TEXTAREA];
+    // Use waitForElementWithin to scope the search, which is robust.
+    const textarea = await waitForElementWithin<HTMLTextAreaElement | HTMLDivElement>(
+        lastTurn,
+        SELECTORS.EDIT_TEXTAREA,
+        TIMING.TEXTAREA_APPEAR_TIMEOUT_MS
+    );
     
-    // ENHANCED LOGGING: Log all textarea search attempts
-    console.log(`[AI Studio LOG] [ENHANCED] Searching for textarea with selectors: ${textareaSelectors.join(', ')}`);
-    console.log(`[AI Studio LOG] [ENHANCED] Search root: lastTurn with ID: ${lastTurn.id || 'no-id'}, tagName: ${lastTurn.tagName}`);
-    
-    let textareaEl: HTMLTextAreaElement | HTMLDivElement;
-    try {
-      // First try to find textarea within the last turn
-      console.log(`[AI Studio LOG] [ENHANCED] Attempting to find textarea within last turn...`);
-      const textareasInTurn = Array.from(lastTurn.querySelectorAll(textareaSelectors.join(', ')));
-      console.log(`[AI Studio LOG] [ENHANCED] Found ${textareasInTurn.length} textarea(s) within last turn`);
-      
-      if (textareasInTurn.length > 0) {
-        textareaEl = textareasInTurn[0] as HTMLTextAreaElement | HTMLDivElement;
-        console.log(`[AI Studio LOG] [ENHANCED] Using first textarea found in turn:`, {
-          tagName: textareaEl.tagName,
-          id: textareaEl.id || 'no-id',
-          className: textareaEl.className || 'no-class',
-          value: textareaEl instanceof HTMLTextAreaElement ? textareaEl.value.substring(0, 100) : 'N/A',
-          innerText: textareaEl instanceof HTMLDivElement ? textareaEl.innerText.substring(0, 100) : 'N/A',
-          offsetParent: textareaEl.offsetParent !== null
-        });
-      } else {
-        throw new Error('No textarea found within last turn');
-      }
-    } catch (error) {
-      console.warn(`[AI Studio LOG] [ENHANCED] Error finding textarea within last turn: ${error}`);
-      // Fallback: editor may render outside of turn container
-      console.log('[AI Studio LOG] [ENHANCED] Textarea not found within last turn, trying global search...');
-      
-      try {
-        const allTextareas = Array.from(document.querySelectorAll(textareaSelectors.join(', ')));
-        console.log(`[AI Studio LOG] [ENHANCED] Found ${allTextareas.length} textarea(s) globally`);
-        
-        // Filter out prompt input textareas
-        const editTextareas = allTextareas.filter(el => el.closest('ms-chunk-input') === null);
-        console.log(`[AI Studio LOG] [ENHANCED] Found ${editTextareas.length} edit textarea(s) after filtering out prompt inputs`);
-        
-        if (editTextareas.length > 0) {
-          textareaEl = editTextareas[editTextareas.length - 1] as HTMLTextAreaElement | HTMLDivElement;
-          console.log(`[AI Studio LOG] [ENHANCED] Using last edit textarea found globally:`, {
-            tagName: textareaEl.tagName,
-            id: textareaEl.id || 'no-id',
-            className: textareaEl.className || 'no-class',
-            value: textareaEl instanceof HTMLTextAreaElement ? textareaEl.value.substring(0, 100) : 'N/A',
-            innerText: textareaEl instanceof HTMLDivElement ? textareaEl.innerText.substring(0, 100) : 'N/A',
-            offsetParent: textareaEl.offsetParent !== null
-          });
-        } else {
-          throw new Error('No edit textarea found globally');
-        }
-      } catch (globalError) {
-        console.error(`[AI Studio LOG] [ENHANCED] Error in global textarea search: ${globalError}`);
-        throw globalError;
-      }
-    }
-    
-    const textarea = textareaEl;
     console.log('[AI Studio LOG] Textarea appeared, waiting for UI to stabilize...');
-    
-    // Add visual highlight to textarea
-    if (textarea) {
-      const originalTextareaStyle = textarea.style.border;
-      textarea.style.border = '3px solid blue';
-      console.log('[AI Studio LOG] [ENHANCED] Textarea highlighted in blue');
-    
     await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
-      
-      // Log textarea details after stabilization
-      console.log(`[AI Studio LOG] [ENHANCED] Textarea details after stabilization:`, {
-        tagName: textarea.tagName,
-        value: textarea instanceof HTMLTextAreaElement ? textarea.value.substring(0, 100) : 'N/A',
-        innerText: textarea instanceof HTMLDivElement ? textarea.innerText.substring(0, 100) : 'N/A',
-        valueLength: textarea instanceof HTMLTextAreaElement ? textarea.value.length : 
-                     textarea instanceof HTMLDivElement ? textarea.innerText.length : 0,
-        offsetParent: textarea.offsetParent !== null,
-        disabled: textarea instanceof HTMLTextAreaElement ? textarea.disabled : 'N/A'
-      });
-      
-      // Restore original style
-      textarea.style.border = originalTextareaStyle;
-    }
-    
+
     const extractedContent = (
       (textarea as HTMLTextAreaElement).value ?? (textarea as HTMLElement).innerText ?? ''
     ).trim();
-    const preview = extractedContent.substring(0, 100);
-    const previewText = extractedContent.length > 100 ? `${preview}...` : preview;
-    console.log(`[AI Studio LOG] Extracted ${extractedContent.length} chars successfully. Preview: "${previewText}"`);
-
+    
     if (!extractedContent) {
-        const textareaValueLength = (textarea instanceof HTMLTextAreaElement) 
-          ? textarea.value.length 
-          : (textarea as HTMLElement).innerText.length;
-        const errorMessage = `Textarea was found but it was empty.
-Context: URL=${window.location.href}, TextareaVisible=${textarea.offsetParent !== null}, TextareaValueLength=${textareaValueLength}`;
+        const errorMessage = `Textarea was found but it was empty.`;
         console.error(`[AI Studio LOG] ${errorMessage}`);
         throw new Error(errorMessage);
     }
+    
+    console.log(`[AI Studio LOG] Extracted ${extractedContent.length} chars successfully.`);
 
+    // Gracefully attempt to exit edit mode, but don't fail if the button isn't found.
     try {
-      console.log('[AI Studio LOG] Looking for stop editing button...');
-      const stopEditingButtonEl = await waitForElementWithin<HTMLElement>(lastTurn, [SELECTORS.STOP_EDITING_BUTTON], TIMING.EDIT_BUTTON_WAIT_TIMEOUT_MS);
-      const stopEditingButton = assertIsElement(stopEditingButtonEl, HTMLElement, 'Stop editing button');
+      const stopEditingButton = lastTurn.querySelector<HTMLElement>(SELECTORS.STOP_EDITING_BUTTON);
       if (stopEditingButton) {
-        await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
         stopEditingButton.click();
         console.log('[AI Studio LOG] Exited edit mode successfully.');
       }

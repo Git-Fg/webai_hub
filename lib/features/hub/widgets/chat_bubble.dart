@@ -118,8 +118,8 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                     arrowHeight: 10,
                     arrowWidth: 20,
                     radius: kDefaultBorderRadius,
-                    width: 120,
-                    height: 60,
+                    width: 150,
+                    height: 97, // Corrected height for accessibility
                   ),
                 );
               }

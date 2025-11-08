@@ -75,9 +75,7 @@ The workflow is now driven by a structured XML prompt that ensures clarity, elim
 <prompt>
   <!-- System instructions provide high-level guidance for the entire conversation. -->
   <system>
-    <![CDATA[
     You are an expert Flutter developer. All code examples must be sound and null-safe.
-    ]]>
   </system>
 
   <!-- The history provides the full conversational context as a single block of text. -->
@@ -89,9 +87,7 @@ Assistant: To keep a provider's state, you can use the `@Riverpod(keepAlive: tru
 
   <!-- The user's current, specific request. -->
   <user_input>
-    <![CDATA[
     Thank you. Now, show me how to test it.
-    ]]>
   </user_input>
 </prompt>
 ```

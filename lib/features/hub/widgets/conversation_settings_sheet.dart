@@ -32,8 +32,9 @@ class _ConversationSettingsSheetState
   void initState() {
     super.initState();
     final settings = ref.read(conversationSettingsProvider);
-    _systemPromptController =
-        TextEditingController(text: settings.systemPrompt);
+    _systemPromptController = TextEditingController(
+      text: settings.systemPrompt,
+    );
     _thinkingBudgetController = TextEditingController(
       text: settings.thinkingBudget?.toString() ?? '',
     );

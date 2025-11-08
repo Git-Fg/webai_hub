@@ -1,10 +1,9 @@
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('OverlayManager.updateClampedPosition', () {
+  group('OverlayManager.updatePosition', () {
     late ProviderContainer container;
 
     setUp(() {
@@ -15,73 +14,42 @@ void main() {
       container.dispose();
     });
 
-    test('within-bounds delta adjusts position exactly', () {
+    test('delta adjusts position exactly', () {
       final notifier = container.read(overlayManagerProvider.notifier);
 
-      // Start from default Offset(0, 150)
-      const screenSize = Size(400, 800);
-      const widgetSize = Size(100, 100);
-
-      notifier.updateClampedPosition(
-        const Offset(10, 20),
-        screenSize,
-        widgetSize,
-      );
+      // Start from default Offset.zero
+      notifier.updatePosition(const Offset(10, 20));
 
       final state = container.read(overlayManagerProvider);
       expect(state.position.dx, 10);
-      expect(state.position.dy, 170);
+      expect(state.position.dy, 20);
     });
 
-    test('exceeding top/left clamps to negative bounds', () {
+    test('multiple updates accumulate position', () {
       final notifier = container.read(overlayManagerProvider.notifier);
 
-      const screenSize = Size(400, 800);
-      const widgetSize = Size(100, 100);
-
-      // Huge negative drag
-      notifier.updateClampedPosition(
-        const Offset(-10000, -10000),
-        screenSize,
-        widgetSize,
-      );
+      notifier.updatePosition(const Offset(10, 20));
+      notifier.updatePosition(const Offset(5, -10));
 
       final state = container.read(overlayManagerProvider);
-      // Bounds: width: (400/2 - 100/2) = 150, height: (800/2 - 100/2) = 350
-      expect(state.position.dx, -150);
-      expect(state.position.dy, -350);
+      expect(state.position.dx, 15);
+      expect(state.position.dy, 10);
     });
 
-    test('exceeding bottom/right clamps to positive bounds', () {
+    test('negative delta adjusts position correctly', () {
       final notifier = container.read(overlayManagerProvider.notifier);
 
-      const screenSize = Size(400, 800);
-      const widgetSize = Size(100, 100);
-
-      // Move positively beyond bounds
-      notifier.updateClampedPosition(
-        const Offset(10000, 10000),
-        screenSize,
-        widgetSize,
-      );
+      notifier.updatePosition(const Offset(-100, -200));
 
       final state = container.read(overlayManagerProvider);
-      expect(state.position.dx, 150);
-      expect(state.position.dy, 350);
+      expect(state.position.dx, -100);
+      expect(state.position.dy, -200);
     });
 
-    test('zero-sized screen and widget clamps to (0, 0) without throwing', () {
+    test('zero delta does not change position', () {
       final notifier = container.read(overlayManagerProvider.notifier);
 
-      const screenSize = Size.zero;
-      const widgetSize = Size.zero;
-
-      // Any delta should clamp to 0 bounds
-      notifier.updateClampedPosition(
-        const Offset(5, 5),
-        screenSize,
-        widgetSize,
-      );
+      notifier.updatePosition(Offset.zero);
 
       final state = container.read(overlayManagerProvider);
       expect(state.position, Offset.zero);

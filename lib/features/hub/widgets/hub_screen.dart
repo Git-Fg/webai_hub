@@ -1,9 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/conversation_settings_sheet.dart';
@@ -62,7 +60,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
   @override
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider);
-    final ephemeralMessage = ref.watch(ephemeralMessageProvider);
 
     // Listen for explicit scroll-to-bottom requests (e.g., after extraction)
     ref.listen(scrollToBottomRequestProvider, (previous, next) {
@@ -73,9 +70,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
       if (next.length > (previous?.length ?? 0)) {
         _scrollToBottom();
       }
-    });
-    ref.listen<Message?>(ephemeralMessageProvider, (_, message) {
-      _scrollToBottom();
     });
 
     return Scaffold(
@@ -158,7 +152,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
       body: Column(
         children: [
           Expanded(
-            child: conversation.isEmpty && ephemeralMessage == null
+            child: conversation.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -193,15 +187,9 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                     padding: const EdgeInsets.symmetric(
                       vertical: kDefaultPadding,
                     ),
-                    itemCount:
-                        conversation.length +
-                        (ephemeralMessage != null ? 1 : 0),
+                    itemCount: conversation.length,
                     itemBuilder: (context, index) {
-                      if (index < conversation.length) {
-                        return ChatBubble(message: conversation[index]);
-                      } else {
-                        return ChatBubble(message: ephemeralMessage!);
-                      }
+                      return ChatBubble(message: conversation[index]);
                     },
                   ),
           ),

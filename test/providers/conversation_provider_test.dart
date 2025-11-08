@@ -4,7 +4,7 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart'; // Pour importer currentTabIndexProvider
@@ -304,7 +304,7 @@ void main() {
     });
 
     test(
-        'extractAndReturnToHub handles extraction errors gracefully via ephemeral message and stays refining',
+        'extractAndReturnToHub throws AutomationError on extraction failure and stays refining',
         () async {
       fakeBridge.extractFinalResponseErrorType = ErrorType.genericException;
 
@@ -317,11 +317,18 @@ void main() {
           .read(automationStateProvider.notifier)
           .moveToRefining(messageCount: 1);
 
-      await notifier.extractAndReturnToHub();
+      // VERIFY: extractAndReturnToHub throws an AutomationError
+      await expectLater(
+        notifier.extractAndReturnToHub(),
+        throwsA(isA<AutomationError>().having(
+          (e) => e.errorCode,
+          'errorCode',
+          AutomationErrorCode.responseExtractionFailed,
+        )),
+      );
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
-      final ephemeral = container.read(ephemeralMessageProvider);
 
       // VERIFY: L'état d'automatisation reste en refining pour permettre un nouvel essai
       expect(
@@ -330,21 +337,13 @@ void main() {
         reason: "L'état d'automatisation doit rester 'refining'",
       );
 
-      // VERIFY: Un message éphémère d'erreur est présent
-      expect(ephemeral, isNotNull);
-      expect(ephemeral!.status, MessageStatus.error);
-      expect(
-        ephemeral.text,
-        contains('Failed to extract response'),
-      );
-
       // VERIFY: Le dernier message de l'assistant n'est pas écrasé
       final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
       expect(lastAiMessage.status, MessageStatus.sending);
     });
 
     test(
-        'extractAndReturnToHub handles AutomationError during extraction via ephemeral message and stays refining',
+        'extractAndReturnToHub re-throws AutomationError during extraction and stays refining',
         () async {
       fakeBridge.extractFinalResponseErrorType = ErrorType.automationError;
 
@@ -357,11 +356,18 @@ void main() {
           .read(automationStateProvider.notifier)
           .moveToRefining(messageCount: 1);
 
-      await notifier.extractAndReturnToHub();
+      // VERIFY: extractAndReturnToHub re-throws the AutomationError
+      await expectLater(
+        notifier.extractAndReturnToHub(),
+        throwsA(isA<AutomationError>().having(
+          (e) => e.errorCode,
+          'errorCode',
+          AutomationErrorCode.responseExtractionFailed,
+        )),
+      );
 
       final finalState = container.read(automationStateProvider);
       final conversation = container.read(conversationProvider);
-      final ephemeral = container.read(ephemeralMessageProvider);
 
       // VERIFY: L'état d'automatisation reste en refining
       expect(
@@ -369,11 +375,6 @@ void main() {
         const AutomationStateData.refining(messageCount: 1),
         reason: "L'état d'automatisation doit rester 'refining'",
       );
-
-      // VERIFY: Un message éphémère d'erreur est présent avec le code
-      expect(ephemeral, isNotNull);
-      expect(ephemeral!.status, MessageStatus.error);
-      expect(ephemeral.text, contains('Extraction Error'));
 
       // VERIFY: Le dernier message de l'assistant n'est pas écrasé
       final lastAiMessage = conversation.lastWhere((m) => !m.isFromUser);
@@ -447,7 +448,11 @@ void main() {
         isTrue,
       );
 
-      await extractionFutureError;
+      // Expect the error to be thrown, but don't let it propagate
+      await expectLater(
+        extractionFutureError,
+        throwsA(isA<AutomationError>()),
+      );
 
       // After error, should also be false
       final stateAfterError = container.read(automationStateProvider);

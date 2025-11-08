@@ -1,29 +1,20 @@
-import 'dart:convert';
-
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 
 const _settingsKey = 'general_settings';
 
 class SettingsService {
-  SettingsService(this._prefs);
-  final SharedPreferencesWithCache _prefs;
+  SettingsService(this._box);
+  final Box<GeneralSettingsData> _box;
 
   GeneralSettingsData loadSettings() {
-    final settingsString = _prefs.getString(_settingsKey);
-    if (settingsString != null) {
-      try {
-        final json = jsonDecode(settingsString) as Map<String, dynamic>;
-        return GeneralSettingsData.fromJson(json);
-      } on Object {
-        return const GeneralSettingsData(); // Return default on error
-      }
-    }
-    return const GeneralSettingsData(); // Return default if not found
+    // WHY: Hive provides the typed object directly, with a fallback to the
+    // default constructor if no data exists. No manual JSON parsing is needed.
+    return _box.get(_settingsKey) ?? const GeneralSettingsData();
   }
 
   Future<void> saveSettings(GeneralSettingsData settings) async {
-    final settingsString = jsonEncode(settings.toJson());
-    await _prefs.setString(_settingsKey, settingsString);
+    // WHY: Hive handles the binary serialization automatically via the generated adapter.
+    await _box.put(_settingsKey, settings);
   }
 }

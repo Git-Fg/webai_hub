@@ -1,28 +1,25 @@
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/services/settings_service.dart';
+import 'package:hive/hive.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 part 'general_settings_provider.g.dart';
 
-const _settingsKey = 'general_settings';
+const _settingsBoxName = 'general_settings_box';
 
 @Riverpod(keepAlive: true)
 class GeneralSettings extends _$GeneralSettings {
-  // WHY: Helper to get the service, avoiding repeated SharedPreferences instantiation.
-  Future<SettingsService> _getService() async {
-    final prefs = await SharedPreferencesWithCache.create(
-      cacheOptions: const SharedPreferencesWithCacheOptions(
-        allowList: <String>{_settingsKey},
-      ),
-    );
-    return SettingsService(prefs);
+  // WHY: The service now depends on a Hive Box, which we can get synchronously
+  // because it was opened during app initialization in main.dart.
+  SettingsService _getService() {
+    final box = Hive.box<GeneralSettingsData>(_settingsBoxName);
+    return SettingsService(box);
   }
 
   @override
   Future<GeneralSettingsData> build() async {
-    // WHY: The build method handles the initial async loading.
-    final service = await _getService();
+    // WHY: The loading logic is now simpler and synchronous.
+    final service = _getService();
     return service.loadSettings();
   }
 
@@ -31,7 +28,7 @@ class GeneralSettings extends _$GeneralSettings {
   Future<void> _updateSettings(
     GeneralSettingsData Function(GeneralSettingsData) updater,
   ) async {
-    final service = await _getService();
+    final service = _getService();
     final previousState = state.requireValue;
     final newState = updater(previousState);
 

@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:hive/hive.dart';
 
 part 'general_settings.freezed.dart';
 part 'general_settings.g.dart';
 
+// WHY: We use a manual adapter, so @HiveType/@HiveField annotations are not needed.
 @freezed
 abstract class GeneralSettingsData with _$GeneralSettingsData {
   const factory GeneralSettingsData({
@@ -22,4 +26,25 @@ abstract class GeneralSettingsData with _$GeneralSettingsData {
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>
       _$GeneralSettingsDataFromJson(json);
+}
+
+// WHY: Manual TypeAdapter implementation since hive_generator conflicts with
+// riverpod_generator. We use the existing JSON serialization for compatibility.
+class GeneralSettingsDataAdapter extends TypeAdapter<GeneralSettingsData> {
+  @override
+  final int typeId = 0;
+
+  @override
+  GeneralSettingsData read(BinaryReader reader) {
+    final jsonString = reader.readString();
+    final json = jsonDecode(jsonString) as Map<String, dynamic>;
+    return GeneralSettingsData.fromJson(json);
+  }
+
+  @override
+  void write(BinaryWriter writer, GeneralSettingsData obj) {
+    final json = obj.toJson();
+    final jsonString = jsonEncode(json);
+    writer.writeString(jsonString);
+  }
 }

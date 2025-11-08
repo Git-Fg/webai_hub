@@ -231,6 +231,101 @@ These are the fundamental principles of quality code in this project. They apply
 
 * **Note on `withAlpha(int)`:** The `withAlpha(int alpha)` method remains valid and is not deprecated. Use it only for specific cases that require direct 8-bit integer manipulation (0-255).
 
+#### 3.1.2. TypeScript Logging Protocol for Automation
+
+**Guiding Principle:** Logs are for diagnosing state, not just printing strings. To ensure failures are immediately diagnosable and success is verifiable, all `console.log` and `console.error` calls within the TypeScript automation engine (`ts_src/**`) MUST adhere to this structured protocol.
+
+**1. Prefixed and Scoped Messages**
+
+All logs must be prefixed with a scope in square brackets to provide immediate context about their origin.
+
+* **Format:** `[Scope] Message`
+
+* **Examples:**
+  * `[Engine] Bridge ready signal sent.` (General orchestrator)
+  * `[AI Studio] Settings panel opened successfully.` (Provider-specific logic)
+  * `[waitForElement] Still searching...` (Utility-specific logs)
+
+* **Why:** In a hybrid app, this is the only way to quickly differentiate between logs from the general engine, a specific chatbot module, and a low-level utility.
+
+**2. The Intent-Action-Result (IAR) Pattern**
+
+For any significant operation, log the flow using three distinct phases to make the sequence of events clear.
+
+* **A. Intent:** Log what you are about to do.
+
+  ```typescript
+  console.log('[AI Studio] Attempting to click Send button...');
+  ```
+
+* **B. Action:** Execute the code.
+
+  ```typescript
+  sendButton.click();
+  ```
+
+* **C. Result:** Log the successful outcome.
+
+  ```typescript
+  console.log('[AI Studio] Send button clicked successfully.');
+  ```
+
+* **Why:** This pattern makes it trivial to follow the automation script's execution path and pinpoint exactly where an operation hung or failed.
+
+**3. Data-Rich Payloads, Not Verbose Dumps**
+
+When logging objects or variables, log a curated summary of key properties, not the entire object. This keeps logs readable.
+
+* ❌ **NEVER:** Log an entire object directly.
+
+  ```typescript
+  // ANTI-PATTERN: Produces unreadable "[object Object]" or a massive dump.
+  console.log('Received options:', options);
+  ```
+
+* ✅ **ALWAYS:** Log a new object containing only the most relevant properties. For long strings, log a preview.
+
+  ```typescript
+  // CORRECT: Provides a clear, concise, and useful summary.
+  console.log('[Engine] Received automation options:', {
+    model: options.model,
+    promptLength: options.prompt.length,
+    promptPreview: options.prompt.substring(0, 50) + '...',
+    temperature: options.temperature,
+  });
+  ```
+
+**4. Structured Error Diagnostics (The Critical Rule)**
+
+When an operation fails, the `console.error` log **MUST** be a complete diagnostic report, not just an error message. It must include:
+
+* **Operation:** What was being attempted?
+* **Reason:** The specific error message.
+* **Inputs:** The data used (e.g., selectors, timeouts).
+* **State:** The state of the web page at the moment of failure (URL, readyState, etc.).
+
+* **Example Implementation:**
+
+  ```typescript
+  // In a catch block...
+  const pageState = {
+    url: window.location.href,
+    readyState: document.readyState,
+  };
+
+  const errorMessage = `
+    Operation: Waiting for actionable "Edit" button
+    Reason: Element found but was not visible or interactive.
+    Selectors Used: [${selectors.join(', ')}]
+    Timeout: ${timeout}ms
+    Page State: URL=${pageState.url}, ReadyState=${pageState.readyState}
+  `;
+  console.error(`[AI Studio] ${errorMessage}`);
+  throw new Error(errorMessage); // Re-throw to ensure the promise rejects.
+  ```
+
+* **Why:** This turns a simple failure log into a full bug report, drastically reducing the time needed for a developer (or another AI) to diagnose and fix the issue. It was this exact structure that allowed us to quickly solve the last regression.
+
 #### 3.2. State Management (Riverpod 3.0+)
 
 * **Use Modern Notifiers:** **ALWAYS** use code-generated `@riverpod` notifiers. **NEVER** use legacy `StateNotifier` or `ChangeNotifier`.
@@ -294,4 +389,79 @@ When waiting for DOM changes, `MutationObserver` is mandatory, but it must be us
 
 **Actionability vs Simple Waiting:**
 
-* **Use `
+* **Use `waitForActionableElement`** before ALL critical interactions (clicks, value setting). Performs comprehensive 5-point check:
+  1. Attached (in DOM)
+  2. Visible (checkVisibility API or offsetParent)
+  3. Stable (no ongoing animations)
+  4. Enabled (not disabled/inert)
+  5. Unoccluded (not covered by another element)
+
+---
+
+#### **3.4. UI & Layout (Spacing with `gap`)**
+
+* **Guiding Principle:** Use the `gap` package for all vertical and horizontal spacing within `Column`, `Row`, and other `Flex`-based layouts.
+
+* ✅ **ALWAYS:** Use `const Gap(...)`.
+
+    ```dart
+
+    Row(
+
+      children: [
+
+        const Icon(Icons.info),
+
+        const Gap(8), // Correct: clean, readable, and explicit.
+
+        const Text('Information'),
+
+      ],
+
+    )
+
+    ```
+
+* ❌ **NEVER:** Use `SizedBox` for spacing.
+
+    ```dart
+
+    // ANTI-PATTERN: Verbose and less clear about intent.
+
+    const SizedBox(width: 8),
+
+    ```
+
+* **Why:** The `Gap` widget is a simple, `const`-_friendly_ abstraction that makes layout code more readable and self-documenting by clearly stating its purpose is to create space.
+
+#### **3.5. Navigation (`auto_route`)**
+
+* **Guiding Principle:** All navigation between screens MUST be handled by the `auto_route` package. The routing configuration is centralized in `lib/core/router/app_router.dart`.
+
+* ✅ **ALWAYS:** Use the generated `Route` objects and the `context.router` extension.
+
+    ```dart
+
+    // Correct: Type-safe, centralized, and easy to refactor.
+
+    unawaited(context.router.push(const SettingsRoute()));
+
+    ```
+
+* ❌ **NEVER:** Use manual `Navigator.push` with `MaterialPageRoute`.
+
+    ```dart
+
+    // ANTI-PATTERN: Brittle, not type-safe, and decentralizes navigation logic.
+
+    Navigator.push(
+
+      context,
+
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+
+    );
+
+    ```
+
+* **Why:** `auto_route` provides compile-time safety for route arguments, eliminates boilerplate, and creates a single source of truth for all navigation paths in the app. This makes the codebase more robust and easier to maintain.

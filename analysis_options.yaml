@@ -17,6 +17,9 @@ analyzer:
     lines_longer_than_80_chars: ignore
     cascade_invocations: ignore
     use_setters_to_change_properties: ignore
+    # WHY: Disable unreachable_from_main for code-generated classes (auto_route, Riverpod)
+    # These classes are used indirectly through code generation, not directly from main()
+    unreachable_from_main: ignore
 
 linter:
   rules:

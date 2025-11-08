@@ -3,11 +3,13 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
+import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'main.g.dart';
@@ -26,6 +28,17 @@ class CurrentTabIndex extends _$CurrentTabIndex {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // WHY: Initialize Hive in a platform-agnostic way.
+  await Hive.initFlutter();
+
+  // WHY: Register the generated adapter for our settings model.
+  Hive.registerAdapter<GeneralSettingsData>(GeneralSettingsDataAdapter());
+
+  // WHY: Open the box that will store our settings. This makes it available
+  // synchronously later in the app.
+  await Hive.openBox<GeneralSettingsData>('general_settings_box');
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -112,15 +125,19 @@ class _MainScreenState extends ConsumerState<MainScreen>
               AiWebviewScreen(),
             ],
           ),
-          // WHY: This new structure is robust.
-          // Align handles the centering, and Transform applies the drag delta.
-          // This removes the need for manual calculations and size measurements.
-          Align(
-            // We align to topCenter and will use the provider offset for fine-tuning.
-            alignment: const Alignment(0, -0.8), // Pushes it towards the top.
-            child: Transform.translate(
-              offset: overlayState.position,
-              child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+          // WHY: This declarative structure is robust.
+          // The overlay's base position is aligned to the top-center,
+          // and the provider's offset is applied as a pure delta from that point.
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Transform.translate(
+                offset: overlayState.position,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: kDefaultPadding),
+                  child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+                ),
+              ),
             ),
           ),
         ],
@@ -154,8 +171,6 @@ class DraggableCompanionOverlay extends ConsumerWidget {
     final shouldShow =
         status != const AutomationStateData.idle() && currentTabIndex == 1;
 
-    final screenSize = MediaQuery.of(context).size;
-
     return AnimatedOpacity(
       opacity: shouldShow ? 1.0 : 0.0,
       duration: kShortAnimationDuration,
@@ -163,15 +178,10 @@ class DraggableCompanionOverlay extends ConsumerWidget {
         ignoring: !shouldShow,
         child: GestureDetector(
           onPanUpdate: (details) {
-            final overlayBox =
-                overlayKey.currentContext?.findRenderObject() as RenderBox?;
-            final overlaySize = overlayBox?.size ?? const Size(300, 150);
-
-            // WHY: The logic is now simple: just tell the provider to update its
-            // offset by the amount dragged. The provider handles clamping.
+            // The provider now simply accumulates the raw drag delta.
             ref
                 .read(overlayManagerProvider.notifier)
-                .updateClampedPosition(details.delta, screenSize, overlaySize);
+                .updatePosition(details.delta);
           },
           child: CompanionOverlay(overlayKey: overlayKey),
         ),

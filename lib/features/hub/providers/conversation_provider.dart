@@ -4,7 +4,6 @@ import 'package:ai_hybrid_hub/core/providers/provider_config_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/ephemeral_message_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
@@ -419,8 +418,6 @@ User: $newPrompt
     final bridge = ref.read(javaScriptBridgeProvider);
     final automationNotifier = ref.read(automationStateProvider.notifier);
     automationNotifier.setExtracting(extracting: true);
-    // WHY: Clear any previous error message when a new extraction attempt starts.
-    ref.read(ephemeralMessageProvider.notifier).clearMessage();
 
     try {
       log('[ConversationProvider] Calling bridge.extractFinalResponse()...');
@@ -439,32 +436,32 @@ User: $newPrompt
         // Signal UI to scroll to bottom after successful extraction
         ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
       }
-    } on Object catch (e) {
-      // WHY: If we reach here, a REAL exception was thrown, preventing the Promise from returning a value
-      if (ref.mounted) {
-        String errorMessage;
-        if (e is AutomationError) {
-          errorMessage =
-              'Extraction Error: ${e.message} (Code: ${e.errorCode.name})';
-        } else {
-          errorMessage = 'Failed to extract response: $e';
-        }
-        // Post to ephemeral provider instead of updating last message or failing automation
-        ref.read(ephemeralMessageProvider.notifier).setMessage(errorMessage);
-      }
-    } finally {
-      // WHY: This block executes after try OR catch, ensuring loading indicator is always disabled
+      // WHY: Reset extracting state after successful extraction
       if (ref.mounted) {
         ref
             .read(automationStateProvider.notifier)
             .setExtracting(extracting: false);
       }
+    } on Object catch (e) {
+      if (ref.mounted) {
+        ref.read(automationStateProvider.notifier).setExtracting(extracting: false);
+      }
+      // WHY: The provider's responsibility is to manage state, not trigger UI.
+      // By re-throwing the error, we let the UI layer decide how to present it.
+      if (e is AutomationError) {
+        rethrow; // Re-throw the specific error.
+      }
+      // Wrap other exceptions in a generic AutomationError.
+      throw AutomationError(
+        errorCode: AutomationErrorCode.responseExtractionFailed,
+        location: 'extractAndReturnToHub',
+        message: 'An unexpected error occurred: $e',
+      );
     }
   }
 
   // Finalize automation and return to Hub
   void finalizeAutomation() {
-    ref.read(ephemeralMessageProvider.notifier).clearMessage();
     ref.read(automationStateProvider.notifier).returnToIdle();
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
   }

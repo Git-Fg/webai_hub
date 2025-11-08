@@ -4,7 +4,9 @@ import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
+import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -65,7 +67,7 @@ class CompanionOverlay extends ConsumerWidget {
         statusIcon: Icons.edit,
         statusColor: Colors.green,
         message: 'Phase 3: Ready for refinement.',
-        actionButton: _buildRefiningButtons(ref, messageCount),
+        actionButton: _buildRefiningButtons(context, ref, messageCount),
       ),
       needsLogin: () => _buildStatusUI(
         context: context,
@@ -224,6 +226,7 @@ class CompanionOverlay extends ConsumerWidget {
   }
 
   Widget _buildRefiningButtons(
+    BuildContext context,
     WidgetRef ref,
     int messageCount,
   ) {
@@ -255,12 +258,23 @@ class CompanionOverlay extends ConsumerWidget {
           label: const Text('Extract & View Hub'),
           onPressed: isExtracting
               ? null
-              : () {
-                  unawaited(
-                    ref
+              : () async {
+                  try {
+                    await ref
                         .read(conversationProvider.notifier)
-                        .extractAndReturnToHub(),
-                  );
+                        .extractAndReturnToHub();
+                  } on Object catch (e) {
+                    // WHY: This is the clean, reactive way. The UI layer catches the
+                    // error from the business logic layer and decides how to display it.
+                    if (e is AutomationError) {
+                      if (!context.mounted) return;
+                      ElegantNotification.error(
+                        title: const Text('Extraction Failed'),
+                        description: Text(e.message),
+                        toastDuration: const Duration(seconds: 5),
+                      ).show(context);
+                    }
+                  }
                 },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,

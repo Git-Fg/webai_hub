@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   auto_route: ^10.2.0
+  elegant_notification: ^2.5.1
   flutter:
     sdk: flutter
   flutter_inappwebview: ^6.0.0
@@ -16,10 +17,12 @@ dependencies:
   freezed_annotation: ^3.0.0
   gap: ^3.0.1
   gpt_markdown: ^1.1.4
+  hive: ^2.2.3
+  hive_ce: ^2.15.1
+  hive_flutter: ^1.1.0
   json_annotation: ^4.9.0
   popover: ^0.4.0
   riverpod_annotation: ^3.0.1
-  shared_preferences: ^2.5.3
   xml: ^6.6.1
 
 dev_dependencies:

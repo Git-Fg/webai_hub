@@ -25,9 +25,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // We read the value directly. `value` might be null if settings are loading/error.
     final initialInstruction =
         ref.read(generalSettingsProvider).value?.historyContextInstruction ??
-            '';
-    _historyInstructionController =
-        TextEditingController(text: initialInstruction);
+        '';
+    _historyInstructionController = TextEditingController(
+      text: initialInstruction,
+    );
 
     // Initialize the FocusNode and add a listener to save on unfocus.
     _focusNode = FocusNode();
@@ -78,7 +79,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (settings) {
           // Determine if the reset button should be visible.
-          final isDefault = settings.historyContextInstruction ==
+          final isDefault =
+              settings.historyContextInstruction ==
               const GeneralSettingsData().historyContextInstruction;
 
           return ListView(
@@ -128,8 +130,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: TextField(
                   controller: _historyInstructionController,
                   focusNode: _focusNode,
