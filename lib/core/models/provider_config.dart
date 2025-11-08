@@ -3,7 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'provider_config.freezed.dart';
 
 @freezed
-abstract class ProviderConfig with _$ProviderConfig {
+sealed class ProviderConfig with _$ProviderConfig {
   const factory ProviderConfig({
     required String providerId,
     required String displayName,

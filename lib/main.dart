@@ -1,6 +1,6 @@
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:drift/drift.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:talker_flutter/talker_flutter.dart';
+import 'package:talker_riverpod_logger/talker_riverpod_logger.dart';
 
 part 'main.g.dart';
 
@@ -45,7 +47,19 @@ void main() async {
 
   // WHY: Create ProviderContainer before runApp to perform startup logic.
   // This allows us to access providers synchronously during initialization.
-  final container = ProviderContainer();
+  // WHY: Create a temporary Talker instance for the observer setup.
+  // The observer needs a Talker instance before the provider-managed one is available.
+  // WHY: Explicitly disable Talker in release builds for performance and security.
+  final tempTalker = TalkerFlutter.init(
+    settings: TalkerSettings(),
+  );
+  final container = ProviderContainer(
+    observers: [
+      // WHY: This observer automatically logs all Riverpod provider state changes
+      // and errors, providing comprehensive visibility into the app's state management.
+      TalkerRiverpodObserver(talker: tempTalker),
+    ],
+  );
 
   // Perform startup tasks (prune conversations, restore session if enabled)
   await _runStartupLogic(container);
@@ -59,38 +73,52 @@ void main() async {
 }
 
 // WHY: This function handles all startup tasks that need to run before the app UI is displayed.
-// It prunes old conversations and optionally restores the last active conversation.
+// It cleans up corrupted dates, prunes old conversations, and optionally restores the last active conversation.
 Future<void> _runStartupLogic(ProviderContainer container) async {
   try {
     final settings = await container.read(generalSettingsProvider.future);
     final db = container.read(appDatabaseProvider);
+    final talker = container.read(talkerProvider);
 
-    // 1. Prune old conversations if count exceeds maxConversationHistory
+    // 1. Clean up corrupted DateTime values in the database
+    // WHY: This fixes any corrupted date formats before we try to read conversations.
+    // Errors in cleanup are logged but don't prevent startup from continuing.
+    try {
+      final fixedCount = await db.cleanupCorruptedDates();
+      if (fixedCount > 0) {
+        talker.info(
+          'Cleaned up $fixedCount conversation(s) with corrupted dates',
+        );
+      }
+    } on Exception catch (e, st) {
+      // WHY: Log cleanup errors but don't fail startup - pruning will handle corrupted data safely
+      talker.handle(e, st, 'Date cleanup error (non-fatal)');
+    }
+
+    // 2. Prune old conversations if count exceeds maxConversationHistory
     await db.pruneOldConversations(settings.maxConversationHistory);
 
-    // 2. Load last session if enabled
+    // 3. Load last session if enabled
+    // WHY: Use safe reading to handle any remaining corrupted dates gracefully.
     if (settings.persistSessionOnRestart) {
-      final allConversations =
-          await (db.select(db.conversations)
-                ..orderBy([
-                  (t) => OrderingTerm(
-                    expression: t.updatedAt,
-                    mode: OrderingMode.desc,
-                  ),
-                ])
-                ..limit(1))
-              .get();
-      if (allConversations.isNotEmpty) {
-        final lastConversation = allConversations.first;
-        container
-            .read(activeConversationIdProvider.notifier)
-            .set(lastConversation.id);
+      try {
+        final allConversations = await db.safeReadConversations();
+        if (allConversations.isNotEmpty) {
+          final lastConversation = allConversations.first;
+          container
+              .read(activeConversationIdProvider.notifier)
+              .set(lastConversation.id);
+        }
+      } on Exception catch (e, st) {
+        // WHY: If session restore fails, log but don't crash - app can start without restored session
+        talker.handle(e, st, 'Session restore error (non-fatal)');
       }
     }
-  } catch (e) {
+  } on Exception catch (e, st) {
     // WHY: If startup logic fails, we log the error but don't crash the app.
     // The app can still function without restoring the session or pruning conversations.
-    debugPrint('Startup logic error: $e');
+    final talker = container.read(talkerProvider);
+    talker.handle(e, st, 'Startup logic error');
   }
 }
 

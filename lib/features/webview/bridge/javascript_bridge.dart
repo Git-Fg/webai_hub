@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -26,7 +26,8 @@ class WebViewController extends _$WebViewController {
     ref.onDispose(() {
       final controller = state;
       if (controller != null) {
-        debugPrint('[WebViewController] Disposing controller.');
+        final talker = ref.read(talkerProvider);
+        talker.debug('[WebViewController] Disposing controller.');
         // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
         unawaited(
           controller
@@ -40,7 +41,10 @@ class WebViewController extends _$WebViewController {
               )
               .catchError((Object error) {
                 // WHY: Controller may already be destroyed, errors are non-critical here
-                debugPrint('[WebViewController] Error during disposal: $error');
+                final talker = ref.read(talkerProvider);
+                talker.warning(
+                  '[WebViewController] Error during disposal: $error',
+                );
               }),
         );
       }
@@ -116,13 +120,15 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       return true;
     } on TimeoutException {
       // WHY: TimeoutException is the canonical signal of a dead context
-      debugPrint(
+      final talker = ref.read(talkerProvider);
+      talker.debug(
         '[JavaScriptBridge] Heartbeat timeout - bridge context is dead',
       );
       return false;
     } on Object catch (e) {
       // WHY: Other errors (e.g., controller disposed) also indicate dead context
-      debugPrint('[JavaScriptBridge] Heartbeat check failed: $e');
+      final talker = ref.read(talkerProvider);
+      talker.warning('[JavaScriptBridge] Heartbeat check failed: $e');
       return false;
     }
   }
@@ -168,7 +174,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           )
           .timeout(_heartbeatTimeout);
       return result == true;
-    } catch (_) {
+    } on Object catch (_) {
       return false;
     }
   }
@@ -236,7 +242,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           source: 'document.readyState',
         );
         if (readyState == 'complete') break;
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore errors during page load check, continue polling
       }
 
@@ -522,12 +528,15 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
   @override
   Future<String> extractFinalResponse() async {
-    debugPrint('[JavaScriptBridge] extractFinalResponse called');
+    final talker = ref.read(talkerProvider);
+    talker.debug('[JavaScriptBridge] extractFinalResponse called');
     try {
       // WHY: Ensure bridge is ready before extraction to avoid race conditions
-      debugPrint('[JavaScriptBridge] Waiting for bridge ready...');
+      talker.debug('[JavaScriptBridge] Waiting for bridge ready...');
       await waitForBridgeReady();
-      debugPrint('[JavaScriptBridge] Bridge ready, proceeding with extraction');
+      talker.debug(
+        '[JavaScriptBridge] Bridge ready, proceeding with extraction',
+      );
 
       // WHY: Final heartbeat check before extraction to ensure context is still alive
       final isAlive = await isBridgeAlive();
@@ -545,7 +554,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       // WHY: callAsyncJavaScript natively handles Promises, eliminating race conditions
       // WHY: Wrap with timeout to prevent silent hangs/deadlocks documented in flutter_inappwebview
       // Research shows callAsyncJavaScript can hang indefinitely on Android, causing app crashes
-      debugPrint(
+      talker.debug(
         '[JavaScriptBridge] Calling extractFinalResponse in WebView...',
       );
       final result = await controller
@@ -568,7 +577,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
               );
             },
           );
-      debugPrint(
+      talker.debug(
         '[JavaScriptBridge] Extraction call completed, result: ${result?.value != null ? "success (${(result?.value as String?)?.length ?? 0} chars)" : "null"}',
       );
 

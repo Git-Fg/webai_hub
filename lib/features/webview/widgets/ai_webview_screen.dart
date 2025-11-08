@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
@@ -69,14 +70,16 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       if (bridge is JavaScriptBridge) {
         final isAlive = await bridge.isBridgeAlive();
         if (!isAlive) {
-          debugPrint(
+          final talker = ref.read(talkerProvider);
+          talker.warning(
             '[AiWebviewScreen] Bridge dead after resume, triggering recovery...',
           );
           await _recoverFromDeadBridge(controller);
         }
       }
     } on Object catch (e) {
-      debugPrint(
+      final talker = ref.read(talkerProvider);
+      talker.warning(
         '[AiWebviewScreen] Error checking bridge health on resume: $e',
       );
     }
@@ -113,22 +116,23 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
               icon: const Icon(Icons.search),
               onPressed: () async {
                 if (webViewController == null) return;
+                final talker = ref.read(talkerProvider);
                 try {
-                  debugPrint('[DOM INSPECT] Requesting DOM analysis...');
+                  talker.info('[DOM INSPECT] Requesting DOM analysis...');
                   final result = await webViewController!.evaluateJavascript(
                     source: 'inspectDOMForSelectors();',
                   );
                   if (result != null) {
                     const encoder = JsonEncoder.withIndent('  ');
                     final prettyJson = encoder.convert(result);
-                    debugPrint('[DOM INSPECT] Result:\n$prettyJson');
+                    talker.info('[DOM INSPECT] Result:\n$prettyJson');
                   } else {
-                    debugPrint(
+                    talker.info(
                       '[DOM INSPECT] inspectDOMForSelectors returned null.',
                     );
                   }
                 } on Object catch (e) {
-                  debugPrint('[DOM INSPECT] Error: $e');
+                  talker.error('[DOM INSPECT] Error: $e');
                 }
               },
               tooltip: 'Inspect DOM for Selectors',
@@ -170,8 +174,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
-        // WHY: Security hardening - bridge security configuration should be added
-        // Research shows default bridge behavior is dangerously permissive
+        // WHY: Security hardening - restrict file access to prevent XSS attacks
+        // These settings prevent file:// URLs from accessing other origins
+        allowUniversalAccessFromFileURLs: false,
+        allowFileAccessFromFileURLs: false,
+        // WHY: Explicitly enable JavaScript (required for bridge) but restrict dangerous APIs
+        javaScriptEnabled: true,
+        // WHY: Disable database APIs if not needed to reduce attack surface
+        databaseEnabled: false,
+        // WHY: Enable DOM storage for modern web apps (required for AI Studio)
+        domStorageEnabled: true,
+        // WHY: Disable third-party cookies for privacy and security
+        thirdPartyCookiesEnabled: false,
+        // WHY: Clear cache on navigation to prevent stale data issues
+        clearCache: false,
       ),
       onWebViewCreated: (controller) {
         webViewController = controller;
@@ -249,13 +265,15 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   return;
                 default:
                   // Handle any unexpected event types
-                  debugPrint(
+                  final talker = ref.read(talkerProvider);
+                  talker.info(
                     '[Bridge Handler] Unknown event type: ${event.type}',
                   );
                   return;
               }
             } on Object catch (e) {
-              debugPrint('[Bridge Handler] Failed to parse event: $e');
+              final talker = ref.read(talkerProvider);
+              talker.info('[Bridge Handler] Failed to parse event: $e');
             }
           },
         );
@@ -263,7 +281,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         controller.addJavaScriptHandler(
           handlerName: BridgeConstants.readyHandler,
           callback: (args) {
-            debugPrint('[AiWebviewScreen] bridgeReady handler called');
+            final talker = ref.read(talkerProvider);
+            talker.info('[AiWebviewScreen] bridgeReady handler called');
             ref
               ..read(bridgeReadyProvider.notifier).markReady()
               ..read(
@@ -312,14 +331,16 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             if (bridge is JavaScriptBridge) {
               final isAlive = await bridge.isBridgeAlive();
               if (!isAlive) {
-                debugPrint(
+                final talker = ref.read(talkerProvider);
+                talker.warning(
                   '[AiWebviewScreen] Bridge dead after SPA navigation, re-injecting...',
                 );
                 await _injectBridgeScript(controller, _currentBridgeScript);
               }
             }
           } on Object catch (e) {
-            debugPrint(
+            final talker = ref.read(talkerProvider);
+            talker.warning(
               '[AiWebviewScreen] Error checking bridge after SPA navigation: $e',
             );
             // WHY: On error, attempt re-injection anyway as defensive measure
@@ -330,7 +351,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       // WHY: Android renderer process crash is fatal - WebView instance becomes unusable
       // Recovery requires destroying and recreating the entire widget via key change
       onRenderProcessGone: (controller, details) {
-        debugPrint(
+        final talker = ref.read(talkerProvider);
+        talker.warning(
           '[AiWebviewScreen] Android renderer process crashed: ${details.didCrash}',
         );
         // Reset bridge state
@@ -342,7 +364,18 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       // The heartbeat check on app resume will detect and recover from zombie contexts
       // iOS crashes often manifest as "zombie" contexts that hang on evaluateJavascript calls
       onConsoleMessage: (controller, consoleMessage) {
-        debugPrint('[WebView CONSOLE] ${consoleMessage.message}');
+        final talker = ref.read(talkerProvider);
+        final message = '[WebView CONSOLE] ${consoleMessage.message}';
+        // WHY: Pipe WebView console messages to talker with appropriate log levels
+        // This centralizes all logs from both Dart and WebView JavaScript contexts.
+        switch (consoleMessage.messageLevel) {
+          case ConsoleMessageLevel.ERROR:
+            talker.error(message);
+          case ConsoleMessageLevel.WARNING:
+            talker.warning(message);
+          default:
+            talker.info(message);
+        }
       },
       onReceivedError: (controller, request, error) {
         setState(() {
@@ -362,11 +395,13 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     try {
       await controller.evaluateJavascript(source: bridgeScript);
       final currentUrl = await controller.getUrl();
-      debugPrint(
+      final talker = ref.read(talkerProvider);
+      talker.info(
         '[AiWebviewScreen] Bridge script (re-)injected on ${currentUrl?.toString() ?? 'unknown'}.',
       );
     } on Object catch (e) {
-      debugPrint('[AiWebviewScreen] Error injecting bridge script: $e');
+      final talker = ref.read(talkerProvider);
+      talker.warning('[AiWebviewScreen] Error injecting bridge script: $e');
     }
   }
 
@@ -386,7 +421,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         await controller.reload();
       }
     } on Object catch (e) {
-      debugPrint('[AiWebviewScreen] Error during bridge recovery: $e');
+      final talker = ref.read(talkerProvider);
+      talker.warning('[AiWebviewScreen] Error during bridge recovery: $e');
     }
   }
 }

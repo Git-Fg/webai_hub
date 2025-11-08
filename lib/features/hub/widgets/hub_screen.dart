@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
@@ -13,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 
 class HubScreen extends ConsumerStatefulWidget {
   const HubScreen({super.key});
@@ -107,6 +109,22 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.monitor_heart),
+            color: Colors.white,
+            tooltip: 'Open Logs',
+            onPressed: () {
+              unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => TalkerScreen(
+                      talker: ref.read(talkerProvider),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             color: Colors.white,
             tooltip: 'Open application settings',
@@ -154,9 +172,11 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         TextButton(
                           child: const Text('Confirm'),
                           onPressed: () {
-                            ref
-                                .read(conversationActionsProvider.notifier)
-                                .clearConversation();
+                            unawaited(
+                              ref
+                                  .read(conversationActionsProvider.notifier)
+                                  .clearConversation(),
+                            );
                             Navigator.of(context).pop();
                           },
                         ),

@@ -2,7 +2,6 @@
 
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -38,7 +37,9 @@ void main() {
 
     // ACT
     await database.insertMessage(message, conversationId);
-    final messagesStream = database.watchMessagesForConversation(conversationId);
+    final messagesStream = database.watchMessagesForConversation(
+      conversationId,
+    );
 
     // ASSERT
     // We expect the stream to emit a list containing our inserted message.
@@ -64,7 +65,9 @@ void main() {
     // ACT
     final updatedMessage = originalMessage.copyWith(text: 'Updated');
     await database.updateMessage(updatedMessage);
-    final messagesStream = database.watchMessagesForConversation(conversationId);
+    final messagesStream = database.watchMessagesForConversation(
+      conversationId,
+    );
 
     // ASSERT
     await expectLater(messagesStream, emits([updatedMessage]));
@@ -86,7 +89,9 @@ void main() {
 
     // ACT
     await database.clearAllMessages();
-    final messagesStream = database.watchMessagesForConversation(conversationId);
+    final messagesStream = database.watchMessagesForConversation(
+      conversationId,
+    );
 
     // ASSERT
     // We expect the stream to emit an empty list after clearing.

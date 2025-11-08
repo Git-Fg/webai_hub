@@ -1,6 +1,5 @@
 // lib/features/hub/widgets/conversation_history_drawer.dart
 
-import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_history_provider.dart';
@@ -53,9 +52,7 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                 ),
               ),
               data: (conversations) {
-                // WHY: Cast to List<ConversationData> since the provider returns Stream without explicit type
-                final convos = conversations as List<ConversationData>;
-                if (convos.isEmpty) {
+                if (conversations.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -87,9 +84,9 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                 }
 
                 return ListView.builder(
-                  itemCount: convos.length,
+                  itemCount: conversations.length,
                   itemBuilder: (context, index) {
-                    final conversation = convos[index];
+                    final conversation = conversations[index];
                     final isActive = conversation.id == activeId;
                     final updatedAt = conversation.updatedAt.toLocal();
                     final dateStr =

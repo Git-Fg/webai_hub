@@ -6,7 +6,7 @@ part 'overlay_state_provider.freezed.dart';
 part 'overlay_state_provider.g.dart';
 
 @freezed
-abstract class OverlayState with _$OverlayState {
+sealed class OverlayState with _$OverlayState {
   const factory OverlayState({
     // WHY: The position is now a delta from the center. (0,0) means "centered".
     @Default(Offset.zero) Offset position,

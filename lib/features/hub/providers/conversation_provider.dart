@@ -13,6 +13,7 @@ import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
+import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:xml/xml.dart';
@@ -395,10 +396,12 @@ User: $newPrompt
     final providerConfig = ref.read(currentProviderConfigurationProvider);
     // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
     // This prevents exceptions if the state is AsyncLoading or AsyncError.
-    final generalSettings = ref.read(generalSettingsProvider).maybeWhen(
-      data: (value) => value,
-      orElse: () => const GeneralSettingsData(),
-    );
+    final generalSettings = ref
+        .read(generalSettingsProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const GeneralSettingsData(),
+        );
 
     final automationOptions = <String, dynamic>{
       'prompt': promptWithContext,
@@ -759,14 +762,19 @@ User: $newPrompt
     if (!ref.mounted) return;
 
     final db = ref.read(appDatabaseProvider);
-    final messages = await (db.select(
-      db.messages,
-    )..where((t) => t.conversationId.equals(conversationId))).get();
 
-    // WHY: Explicitly check that messages list is not empty and the last message is an assistant's "sending" message.
+    // WHY: This query is more efficient as it fetches only the single last
+    // message from the database instead of loading the entire list.
+    final lastMessageQuery = db.select(db.messages)
+      ..where((t) => t.conversationId.equals(conversationId))
+      ..orderBy([(t) => OrderingTerm.desc(t.id)]) // Assuming ID is sequential
+      ..limit(1);
+
+    final lastMessageData = await lastMessageQuery.getSingleOrNull();
+
+    // WHY: Explicitly check that a message exists and it is an assistant's "sending" message.
     // This prevents errors if the state is cleared while an async operation is in flight.
-    if (messages.isNotEmpty) {
-      final lastMessageData = messages.last;
+    if (lastMessageData != null) {
       final lastMessage = Message(
         id: lastMessageData.id,
         text: lastMessageData.content,

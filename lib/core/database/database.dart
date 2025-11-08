@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 // Export ConversationData from generated drift file for use in Riverpod providers
@@ -57,8 +56,8 @@ class Messages extends Table {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'db.sqlite'));
-    return NativeDatabase(file);
+    final file = File('${dbFolder.path}/db.sqlite');
+    return NativeDatabase.createInBackground(file);
   });
 }
 
@@ -126,6 +125,11 @@ class AppDatabase extends _$AppDatabase {
           await db.customStatement('DROP TABLE messages_old');
         }
       },
+      // WHY: Foreign keys must be explicitly enabled in SQLite for referential integrity.
+      // This ensures cascade deletes work correctly and prevents orphaned records.
+      beforeOpen: (OpeningDetails details) async {
+        await customStatement('PRAGMA foreign_keys = ON');
+      },
     );
   }
 
@@ -153,14 +157,159 @@ class AppDatabase extends _$AppDatabase {
         ConversationsCompanion(updatedAt: Value(timestamp)),
       );
 
+  // WHY: This method safely reads conversations by catching FormatException
+  // when parsing corrupted DateTime values. It uses raw SQL to read date strings
+  // first, then manually parses them, allowing us to handle corrupted data gracefully.
+  Future<List<ConversationData>> safeReadConversations() async {
+    final results = await customSelect(
+      'SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC',
+      readsFrom: {conversations},
+    ).get();
+
+    final validConversations = <ConversationData>[];
+    final now = DateTime.now();
+
+    for (final row in results) {
+      try {
+        final id = row.read<int>('id');
+        final title = row.read<String>('title');
+        final createdAtStr = row.read<String>('created_at');
+        final updatedAtStr = row.read<String>('updated_at');
+
+        DateTime? createdAt;
+        DateTime? updatedAt;
+
+        // Try to parse createdAt
+        try {
+          createdAt = _parseDateTime(createdAtStr);
+        } on FormatException {
+          // If parsing fails, use current time as fallback
+          createdAt = now;
+        }
+
+        // Try to parse updatedAt
+        try {
+          updatedAt = _parseDateTime(updatedAtStr);
+        } on FormatException {
+          // If parsing fails, use current time as fallback
+          updatedAt = now;
+        }
+
+        validConversations.add(
+          ConversationData(
+            id: id,
+            title: title,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+        );
+      } on Exception {
+        // Skip corrupted records entirely if we can't even read basic fields
+        continue;
+      }
+    }
+
+    return validConversations;
+  }
+
+  // WHY: This helper method attempts to parse DateTime strings, handling
+  // corrupted formats like Unix timestamps with 'Z' suffix (e.g., "1762611824Z").
+  DateTime _parseDateTime(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) {
+      throw const FormatException('Empty date string');
+    }
+
+    // Try standard ISO 8601 parsing first
+    try {
+      return DateTime.parse(dateStr);
+    } on FormatException {
+      // Handle corrupted Unix timestamp format (e.g., "1762611824Z")
+      final cleaned = dateStr.replaceAll(RegExp('[^0-9]'), '');
+      if (cleaned.isNotEmpty) {
+        try {
+          final timestamp = int.tryParse(cleaned);
+          if (timestamp != null) {
+            // Assume seconds if < year 2100, milliseconds otherwise
+            if (timestamp < 4102444800) {
+              // Less than year 2100 in seconds
+              return DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+            } else {
+              // Likely milliseconds
+              return DateTime.fromMillisecondsSinceEpoch(timestamp);
+            }
+          }
+        } on FormatException {
+          // Fall through to throw FormatException
+        }
+      }
+      throw FormatException('Invalid date format', dateStr);
+    }
+  }
+
+  // WHY: This method cleans up corrupted DateTime values in the database.
+  // It finds conversations with invalid date formats and fixes them by
+  // converting them to proper DateTime values.
+  Future<int> cleanupCorruptedDates() async {
+    final results = await customSelect(
+      'SELECT id, created_at, updated_at FROM conversations',
+      readsFrom: {conversations},
+    ).get();
+
+    var fixedCount = 0;
+    final now = DateTime.now();
+
+    for (final row in results) {
+      final id = row.read<int>('id');
+      final createdAtStr = row.read<String>('created_at');
+      final updatedAtStr = row.read<String>('updated_at');
+
+      DateTime? fixedCreatedAt;
+      DateTime? fixedUpdatedAt;
+      var needsUpdate = false;
+
+      // Check and fix createdAt
+      try {
+        fixedCreatedAt = _parseDateTime(createdAtStr);
+      } on FormatException {
+        fixedCreatedAt = now;
+        needsUpdate = true;
+      }
+
+      // Check and fix updatedAt
+      try {
+        fixedUpdatedAt = _parseDateTime(updatedAtStr);
+      } on FormatException {
+        fixedUpdatedAt = now;
+        needsUpdate = true;
+      }
+
+      // Update the record if it was corrupted
+      if (needsUpdate) {
+        await (update(conversations)..where((t) => t.id.equals(id))).write(
+          ConversationsCompanion(
+            createdAt: Value(fixedCreatedAt),
+            updatedAt: Value(fixedUpdatedAt),
+          ),
+        );
+        fixedCount++;
+      }
+    }
+
+    return fixedCount;
+  }
+
   Future<void> pruneOldConversations(int maxCount) async {
-    final allConvos = await (select(
-      conversations,
-    )..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])).get();
-    if (allConvos.length > maxCount) {
-      final convosToPrune = allConvos.sublist(maxCount);
-      final idsToPrune = convosToPrune.map((c) => c.id).toList();
-      await (delete(conversations)..where((t) => t.id.isIn(idsToPrune))).go();
+    // WHY: This query efficiently finds the IDs of the oldest conversations
+    // exceeding the maxCount limit and deletes them in a single operation,
+    // avoiding loading the full conversation list into Dart memory.
+    final oldestIdsQuery = select(conversations)
+      ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+      ..limit(1000, offset: maxCount); // High limit to get all excess rows
+
+    final oldestIds = await oldestIdsQuery.map((row) => row.id).get();
+
+    if (oldestIds.isNotEmpty) {
+      await (delete(conversations)..where((t) => t.id.isIn(oldestIds))).go();
     }
   }
 

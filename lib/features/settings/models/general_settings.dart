@@ -8,7 +8,7 @@ part 'general_settings.g.dart';
 
 // WHY: We use a manual adapter, so @HiveType/@HiveField annotations are not needed.
 @freezed
-abstract class GeneralSettingsData with _$GeneralSettingsData {
+sealed class GeneralSettingsData with _$GeneralSettingsData {
   const factory GeneralSettingsData({
     @Default(['ai_studio']) List<String> enabledProviders,
     // WHY: Add a flag for the new prompt engineering mode. Default to true to

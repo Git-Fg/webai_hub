@@ -6,6 +6,12 @@ declare global {
     /** A flag for idempotent script injection. Set to `true` after first init. */
     __AI_HYBRID_HUB_INITIALIZED__?: boolean;
 
+    /** User-configurable multiplier for all automation timeouts. */
+    __AI_TIMEOUT_MODIFIER__?: number;
+
+    /** Internal counter for tracking processed response footers. */
+    __processedFootersCount?: number;
+
     /** Entry point for automation. Called from Dart. */
     startAutomation: (options: AutomationOptions) => Promise<void>;
 

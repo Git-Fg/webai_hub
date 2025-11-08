@@ -22,10 +22,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     // Initialize the controller with the current setting value.
-    // We read the value directly. `value` might be null if settings are loading/error.
-    final initialInstruction =
-        ref.read(generalSettingsProvider).value?.historyContextInstruction ??
-        '';
+    // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
+    // This prevents exceptions if the state is AsyncLoading or AsyncError.
+    final initialInstruction = ref.read(generalSettingsProvider).maybeWhen(
+      data: (settings) => settings.historyContextInstruction,
+      orElse: () => '',
+    );
     _historyInstructionController = TextEditingController(
       text: initialInstruction,
     );
@@ -63,8 +65,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settingsNotifier = ref.read(generalSettingsProvider.notifier);
 
     // Listen for changes to update the controller if needed (e.g., reset to default)
+    // WHY: Use maybeWhen to safely access AsyncValue in listener callback.
     ref.listen(generalSettingsProvider, (_, next) {
-      final newInstruction = next.value?.historyContextInstruction ?? '';
+      final newInstruction = next.maybeWhen(
+        data: (settings) => settings.historyContextInstruction,
+        orElse: () => '',
+      );
       if (_historyInstructionController.text != newInstruction) {
         _historyInstructionController.text = newInstruction;
       }
@@ -176,7 +182,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 value: settings.persistSessionOnRestart,
                 onChanged: (bool value) {
-                  unawaited(settingsNotifier.togglePersistSession(value));
+                  unawaited(settingsNotifier.togglePersistSession(value: value));
                 },
               ),
               Padding(

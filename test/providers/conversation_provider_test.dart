@@ -113,7 +113,7 @@ void main() {
 
         // ASSERT
         // Wait a bit for the stream to update
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // The provider's AsyncValue should contain the added message.
         final updatedValue = listener.read();
@@ -310,7 +310,7 @@ void main() {
             .read(automationStateProvider.notifier)
             .moveToRefining(messageCount: 1);
 
-        notifier.cancelAutomation();
+        await notifier.cancelAutomation();
 
         final conversationAsync = container.read(conversationProvider);
         final conversation = conversationAsync.value;

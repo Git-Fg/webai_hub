@@ -64,7 +64,6 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
   window.__AI_HYBRID_HUB_INITIALIZED__ = true;
 
   // Initialize global counter for tracking processed response footers
-  // @ts-expect-error - Internal counter not part of public Window interface
   window.__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
 
   const SUPPORTED_SITES = {

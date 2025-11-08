@@ -101,7 +101,7 @@ class GeneralSettings extends _$GeneralSettings {
 
   // WHY: Allows users to control whether the app restores the last active conversation
   // on app restart. This gives users control over session persistence behavior.
-  Future<void> togglePersistSession(bool value) async {
+  Future<void> togglePersistSession({required bool value}) async {
     await _updateSettings((currentSettings) {
       return currentSettings.copyWith(persistSessionOnRestart: value);
     });
