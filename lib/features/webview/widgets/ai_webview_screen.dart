@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ai_hybrid_hub/core/providers/provider_config_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
@@ -18,7 +19,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class AiWebviewScreen extends ConsumerStatefulWidget {
-  const AiWebviewScreen({super.key});
+  const AiWebviewScreen({required this.providerUrl, super.key});
+
+  final String providerUrl;
 
   @override
   ConsumerState<AiWebviewScreen> createState() => _AiWebviewScreenState();
@@ -49,6 +52,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       handlerName: BridgeConstants.readyHandler,
     );
     super.dispose();
+  }
+
+  String _getProviderDisplayName() {
+    final providerConfig = ref.watch(currentProviderConfigurationProvider);
+    return providerConfig.displayName;
   }
 
   @override
@@ -102,9 +110,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
-          title: const Text(
-            'Google AI Studio',
-            style: TextStyle(
+          title: Text(
+            _getProviderDisplayName(),
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -167,7 +175,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     // WHY: Store bridge script for use in recovery methods
     _currentBridgeScript = bridgeScript;
     final webViewKey = ref.watch(webViewKeyProvider);
-    final settings = ref.watch(generalSettingsProvider).maybeWhen(
+    final settings = ref
+        .watch(generalSettingsProvider)
+        .maybeWhen(
           data: (data) => data,
           orElse: () => const GeneralSettingsData(),
         );
@@ -179,8 +189,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         : null;
 
     return InAppWebView(
-      key: ValueKey('ai_webview_$webViewKey'),
-      initialUrlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
+      key: ValueKey('ai_webview_${widget.providerUrl}_$webViewKey'),
+      initialUrlRequest: URLRequest(url: WebUri(widget.providerUrl)),
       initialSettings: InAppWebViewSettings(
         userAgent: userAgent,
         applicationNameForUserAgent: 'AIHybridHub',
@@ -348,14 +358,16 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // preventing the bridge script from being injected into cross-origin
         // redirect pages like the Google login page.
         if (url?.host == WebViewConstants.aiStudioDomain ||
+            url?.host == WebViewConstants.kimiDomain ||
+            url?.host == WebViewConstants.kimiDomainAlt ||
             currentUrl.startsWith('file://')) {
           talker.info(
-            '[WebView] URL matches AI Studio domain, injecting bridge script...',
+            '[WebView] URL matches supported domain, injecting bridge script...',
           );
           await _injectBridgeScript(controller, bridgeScript);
         } else {
           talker.warning(
-            '[WebView] URL does not match AI Studio domain, bridge script NOT injected.',
+            '[WebView] URL does not match supported domain, bridge script NOT injected.',
           );
         }
 
@@ -371,6 +383,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // WHY: Applying the same strict host check here ensures that client-side
         // routing to an external page doesn't trigger a faulty bridge injection.
         if (url?.host == WebViewConstants.aiStudioDomain ||
+            url?.host == WebViewConstants.kimiDomain ||
+            url?.host == WebViewConstants.kimiDomainAlt ||
             newUrl.startsWith('file://')) {
           try {
             final bridge = ref.read(javaScriptBridgeProvider);
@@ -459,6 +473,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       // WHY: Only attempt recovery on supported domains. Using strict host check
       // prevents recovery attempts on cross-origin redirect pages.
       if (currentUrl?.host == WebViewConstants.aiStudioDomain ||
+          currentUrl?.host == WebViewConstants.kimiDomain ||
+          currentUrl?.host == WebViewConstants.kimiDomainAlt ||
           (currentUrl?.toString() ?? '').startsWith('file://')) {
         // Attempt to re-inject bridge script
         await _injectBridgeScript(controller, _currentBridgeScript);

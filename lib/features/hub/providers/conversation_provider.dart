@@ -7,6 +7,7 @@ import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/target_provider_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/services/prompt_builder.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
@@ -163,6 +164,7 @@ class ConversationActions extends _$ConversationActions {
   Future<void> _orchestrateAutomation(
     String promptForContext,
     int conversationId, {
+    required String targetProviderId,
     bool isResend = false,
     String? excludeMessageId,
   }) async {
@@ -226,18 +228,36 @@ class ConversationActions extends _$ConversationActions {
     }
 
     try {
-      final bridge = ref.read(javaScriptBridgeProvider);
+      // Step 1: Switch to the CORRECT WebView tab using the map FIRST
+      // WHY: We must switch tabs before waiting for bridge, as each tab has its own WebView instance.
+      final tabIndexMap = ref.read(providerTabIndexMapProvider);
+      final tabIndex = tabIndexMap[targetProviderId];
+      if (tabIndex == null) {
+        throw StateError('No tab index found for provider: $targetProviderId');
+      }
+      
+      ref.read(currentTabIndexProvider.notifier).changeTo(tabIndex);
+      talker.info(
+        '[Orchestration] Tab switch to index $tabIndex requested for provider $targetProviderId.',
+      );
 
-      // Step 1: Ensure bridge is ready (pre-warming may have already done this)
-      await bridge.waitForBridgeReady();
+      // TIMING: Yield to event loop multiple times to ensure widget tree updates
+      // and the new WebView instance is created before we try to access it.
+      await Future<void>.delayed(Duration.zero);
+      if (!ref.mounted) return;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
       if (!ref.mounted) return;
 
-      // Step 2: Switch to WebView tab
-      ref.read(currentTabIndexProvider.notifier).changeTo(1);
-      talker.info('[Orchestration] Tab switch requested.');
+      // Step 2: Reset bridge ready state AFTER switching tabs
+      // WHY: We reset after switching to ensure we wait for the bridge in the NEW tab,
+      // not the old one. This ensures the ready signal we receive is from the correct WebView.
+      ref.read(bridgeReadyProvider.notifier).reset();
 
-      // TIMING: Yield to event loop to ensure widget tree updates before WebView is touched.
-      await Future<void>.delayed(Duration.zero);
+      // Step 3: Ensure bridge is ready for the target WebView tab
+      // WHY: After switching tabs and resetting the ready state, we need to wait
+      // for the bridge in the new WebView instance to signal ready.
+      final bridge = ref.read(javaScriptBridgeProvider);
+      await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
 
       // Step 3: Build automation options
@@ -297,6 +317,16 @@ class ConversationActions extends _$ConversationActions {
     final db = ref.read(appDatabaseProvider);
     var activeId = ref.read(activeConversationIdProvider);
 
+    // Get the target provider from the state
+    final targetProviderId = ref.read(targetProviderIdProvider);
+    if (targetProviderId == null) {
+      // This should not happen if the UI is working correctly, but it's a safe fallback.
+      ref
+          .read(talkerProvider)
+          .error('Send action triggered but no target provider was selected.');
+      return;
+    }
+
     // If no conversation is active, create one.
     if (activeId == null) {
       final title = prompt.length > 30 ? prompt.substring(0, 30) : prompt;
@@ -313,6 +343,7 @@ class ConversationActions extends _$ConversationActions {
     await _orchestrateAutomation(
       prompt,
       activeId,
+      targetProviderId: targetProviderId,
       isResend: isResend,
       excludeMessageId: excludeMessageId,
     );
@@ -428,8 +459,22 @@ class ConversationActions extends _$ConversationActions {
         MessageStatus.sending,
         conversationId: activeId,
       );
+      // Get the target provider for retry
+      final targetProviderId = ref.read(targetProviderIdProvider);
+      if (targetProviderId == null) {
+        talker.error('Could not retry: no target provider selected.');
+        await onAutomationFailed(
+          'Could not perform automatic retry: no provider selected.',
+        );
+        return;
+      }
       // Re-run the full orchestration logic from the start.
-      await _orchestrateAutomation(lastPrompt, activeId, isResend: true);
+      await _orchestrateAutomation(
+        lastPrompt,
+        activeId,
+        targetProviderId: targetProviderId,
+        isResend: true,
+      );
     } else {
       talker.error(
         'Could not retry: last prompt or active conversation ID is null.',
