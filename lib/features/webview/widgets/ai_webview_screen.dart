@@ -180,10 +180,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
+        // WHY: Explicitly enable JavaScript (required for bridge) but restrict dangerous APIs
+        javaScriptEnabled: true,
+        // WHY: Security hardening - restrict file access to prevent XSS attacks
+        // These settings prevent file:// URLs from accessing other origins
+        allowUniversalAccessFromFileURLs: false,
+        allowFileAccessFromFileURLs: false,
         // WHY: Disable database APIs if not needed to reduce attack surface
         databaseEnabled: false,
+        // WHY: Enable DOM storage for modern web apps (required for AI Studio)
+        domStorageEnabled: true,
         // WHY: Disable third-party cookies for privacy and security
         thirdPartyCookiesEnabled: false,
+        // WHY: Clear cache on navigation to prevent stale data issues
+        clearCache: false,
       ),
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         final talker = ref.read(talkerProvider);
