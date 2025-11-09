@@ -287,12 +287,6 @@ class ConversationActions extends _$ConversationActions {
       await Future<void>.delayed(Duration.zero);
       if (!ref.mounted) return;
 
-      // This now waits for the *newly loaded* page's bridge to be ready.
-      // This call is now redundant because we already called it after loadUrl, but keeping it is safe.
-      await bridge.waitForBridgeReady();
-
-      if (!ref.mounted) return;
-
       // Get console logs to debug selector issues (captured before automation starts)
       final logs = await bridge.getCapturedLogs();
       if (logs.isNotEmpty) {

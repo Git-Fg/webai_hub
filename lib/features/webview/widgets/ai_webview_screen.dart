@@ -171,6 +171,12 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       key: ValueKey('ai_webview_$webViewKey'),
       initialUrlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       initialSettings: InAppWebViewSettings(
+        // WHY: Setting a standard desktop User-Agent is crucial for compatibility.
+        // Many modern web apps, especially login pages, block or fail to render
+        // for unknown or default WebView user agents.
+        userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        applicationNameForUserAgent: 'AIHybridHub',
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
@@ -179,6 +185,12 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // WHY: Disable third-party cookies for privacy and security
         thirdPartyCookiesEnabled: false,
       ),
+      shouldOverrideUrlLoading: (controller, navigationAction) async {
+        final talker = ref.read(talkerProvider);
+        final uri = navigationAction.request.url;
+        talker.info('[WebView] Navigation request to: $uri');
+        return NavigationActionPolicy.ALLOW;
+      },
       onWebViewCreated: (controller) {
         webViewController = controller;
         ref.read(webViewControllerProvider.notifier).setController(controller);
@@ -230,7 +242,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                 case BridgeConstants.eventTypeLoginRequired:
                   // Read the prompt from the automation state notifier
                   // This works even if state has transitioned from sending to observing
-                  final automationState = ref.read(automationStateProvider.notifier);
+                  final automationState = ref.read(
+                    automationStateProvider.notifier,
+                  );
                   final pendingPrompt = automationState.currentPrompt;
                   if (pendingPrompt != null) {
                     // Pass the entire resumption logic as a callback.
@@ -306,6 +320,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         setState(() {
           _progress = 0;
         });
+        // WHY: This is critical to prevent race conditions. Whenever a new page starts
+        // loading, we must consider the bridge not ready until the new page explicitly
+        // signals its readiness via the 'bridgeReady' handler.
         ref.read(bridgeReadyProvider.notifier).reset();
       },
       onLoadStop: (controller, url) async {
@@ -313,12 +330,23 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           _progress = 1.0;
         });
 
+        final talker = ref.read(talkerProvider);
+        final currentUrl = url?.toString() ?? 'unknown';
+        talker.info('[WebView] Page finished loading: $currentUrl');
+
         // WHY: This check is now stricter. It verifies the exact host of the URL,
         // preventing the bridge script from being injected into cross-origin
         // redirect pages like the Google login page.
         if (url?.host == WebViewConstants.aiStudioDomain ||
-            (url?.toString() ?? '').startsWith('file://')) {
+            currentUrl.startsWith('file://')) {
+          talker.info(
+            '[WebView] URL matches AI Studio domain, injecting bridge script...',
+          );
           await _injectBridgeScript(controller, bridgeScript);
+        } else {
+          talker.warning(
+            '[WebView] URL does not match AI Studio domain, bridge script NOT injected.',
+          );
         }
 
         final bridge = ref.read(javaScriptBridgeProvider);
