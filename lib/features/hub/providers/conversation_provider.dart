@@ -12,8 +12,10 @@ import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
@@ -227,6 +229,19 @@ class ConversationActions extends _$ConversationActions {
         );
       }
 
+      // === START FIX: RELOAD WEBVIEW TO A CLEAN STATE ===
+      // WHY: Reset the WebView to the "new chat" URL before each automation run.
+      // This ensures the automation engine always operates on the correct page,
+      // preventing selector timeouts when attempting to run on a previous conversation's result page.
+      await controller.loadUrl(
+        urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
+      );
+      // After reloading, we must wait for the new page to be fully initialized.
+      // The existing onLoadStop handler will re-inject the bridge script.
+      await bridge.waitForBridgeReady();
+      if (!ref.mounted) return;
+      // === END FIX ===
+
       // Switch to the WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
 
@@ -234,9 +249,8 @@ class ConversationActions extends _$ConversationActions {
       await Future<void>.delayed(Duration.zero);
       if (!ref.mounted) return;
 
-      // Wait for the bridge to be ready. The WebView's onLoadStop and
-      // onUpdateVisitedHistory handlers are responsible for ensuring the bridge
-      // script is injected on the correct page.
+      // This now waits for the *newly loaded* page's bridge to be ready.
+      // This call is now redundant because we already called it after loadUrl, but keeping it is safe.
       await bridge.waitForBridgeReady();
 
       if (!ref.mounted) return;
