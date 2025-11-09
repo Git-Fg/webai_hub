@@ -7,6 +7,6 @@ class WebViewConstants {
 
   static const String kimiUrl = 'https://kimi.com/';
   static const String kimiDomain = 'kimi.com';
-  static const String kimiDomainAlt =
-      'www.kimi.com'; // WHY: Kimi redirects to www.kimi.com
+  // WHY: Kimi redirects to www.kimi.com, so we need to support both domains
+  static const String kimiDomainAlt = 'www.kimi.com';
 }

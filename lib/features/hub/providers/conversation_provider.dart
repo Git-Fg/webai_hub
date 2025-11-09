@@ -247,48 +247,47 @@ class ConversationActions extends _$ConversationActions {
       if (!ref.mounted) return;
       await Future<void>.delayed(const Duration(milliseconds: 200));
       if (!ref.mounted) return;
-      
-      // Step 2: Reset bridge ready state AFTER switching tabs
-      // WHY: We reset after switching to ensure we wait for the bridge in the NEW tab,
-      // not the old one. This ensures the ready signal we receive is from the correct WebView.
+
+      // Step 2: Reset bridge ready state
+      // WHY: Ensure we wait for the bridge in the new tab, not the old one.
       ref.read(bridgeReadyProvider.notifier).reset();
-      
-      // Step 3: Try to trigger bridge ready signal if bridge is already injected
-      // WHY: The WebView may already have its bridge injected, but the ready signal
-      // may not have been sent yet after our reset. We try to trigger it manually.
+
+      // Step 3: Trigger bridge ready signal if bridge is already injected
+      // WHY: After reset, the bridge may be ready but hasn't signaled yet. Trigger it manually.
       final bridge = ref.read(javaScriptBridgeProvider);
       final controller = ref.read(webViewControllerProvider);
       if (controller != null) {
         try {
-          // Try to trigger the ready signal if bridge is initialized
-          await controller.evaluateJavascript(source: '''
+          await controller
+              .evaluateJavascript(
+                source: '''
             if (window.__AI_HYBRID_HUB_INITIALIZED__ && window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
               window.flutter_inappwebview.callHandler('bridgeReady');
             }
-          ''').timeout(const Duration(milliseconds: 500));
-          // Give it a moment to process the ready signal
+          ''',
+              )
+              .timeout(const Duration(milliseconds: 500));
           await Future<void>.delayed(const Duration(milliseconds: 100));
-        } catch (e) {
-          // If evaluation fails, bridge is not ready, continue to normal wait flow
-          talker.debug('[Orchestration] Could not trigger ready signal, will wait: $e');
+        } on Object catch (e) {
+          talker.debug(
+            '[Orchestration] Could not trigger ready signal, will wait: $e',
+          );
         }
       }
 
-      // Step 4: Ensure bridge is ready for the target WebView tab
-      // WHY: After switching tabs and resetting the ready state, we need to wait
-      // for the bridge in the new WebView instance to signal ready.
+      // Step 4: Wait for bridge to be ready
+      // WHY: Ensure the bridge in the new WebView instance is ready before proceeding.
       await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
 
-      // Step 3: Build automation options
+      // Step 5: Build automation options
       final automationOptions = _buildAutomationOptions(promptWithContext);
-
       talker.info(
         '[ConversationProvider LOG] Sending automation options to bridge: $automationOptions',
       );
 
-      // Step 4: Delegate the full automation cycle to TypeScript
-      // WHY: The TypeScript engine now handles resetState, waitForReady, applyAllSettings,
+      // Step 6: Delegate automation cycle to TypeScript
+      // WHY: TypeScript handles resetState, waitForReady, applyAllSettings,
       // sendPrompt, and startObserving in a single autonomous cycle.
       await bridge.startAutomation(automationOptions);
 
