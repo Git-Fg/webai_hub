@@ -59,62 +59,58 @@ ts_src/
     4. Kimi
 - **Navigation:** An `IndexedStack` manages 5 persistent views: 1 native Hub + 4 dedicated `WebView`s.
 
-### 3.2. The "Assist & Validate" Meta-Conversation Workflow
+### 3.2. The "Orchestrate, Compare, Synthesize" Meta-Workflow
 
-The core user experience is building a "meta-conversation" within the native Hub. This is orchestrated through a state-driven cycle that supports two distinct operational modes, configurable by the user:
+The core user experience evolves from a single conversation into an orchestration dashboard. The user crafts one prompt in the Hub, which is then broadcast to a user-defined set of "Presets". The responses are aggregated back into the Hub for direct comparison, and potentially, AI-driven synthesis into a single, superior answer.
 
-- **"YOLO" Mode (Default):** A fully automated, streamlined workflow for rapid interaction. When enabled, the app sends the prompt, waits for the AI to finish generating its response, and immediately extracts the result back into the native Hub UI in a single, seamless operation. This mode is for rapid, trusted interaction.
+#### 3.2.1. Presets and Groups: The Core Units of Orchestration
 
-- **Manual Refinement Mode:** The original, step-by-step workflow. When "YOLO" mode is disabled, the app sends the prompt and then pauses in the `refining` state. This allows the user to manually interact with the WebView, guide the AI through several iterations, and decide exactly when to click "Extract & View Hub" to bring the final, curated response back into the Hub. This mode provides maximum control for complex tasks.
+Inspired by proven systems like CodeWebChat, the application's core logic is built around "Presets" and "Groups". This provides a powerful and flexible way for users to manage and compare AI interactions.
 
-#### 3.2.1. Building the Conversation: Contextual Seeding & Iterative Refinement (XML-Driven)
+**A. Presets**
 
-The workflow is now driven by a structured XML prompt that ensures clarity, eliminates ambiguity, and provides extensibility. While a simpler plain‑text format remains available as a fallback, the default is the following XML schema:
+A Preset is a named, persistent configuration that defines a complete context for an AI interaction. It includes:
 
-```xml
-<prompt>
-  <!-- System instructions provide high-level guidance for the entire conversation. -->
-  <system>
-    You are an expert Flutter developer. All code examples must be sound and null-safe.
-  </system>
+- **Provider:** The target web service (e.g., `ai_studio`).
+- **Model:** The specific model to use (e.g., `Gemini 2.5 Flash`).
+- **Parameters:** A full set of settings like `temperature`, `topP`, etc.
+- **Affixes:** An optional `prompt_prefix` and `prompt_suffix` to frame the user's input.
+- **UI State:** Flags like `is_pinned` for prioritizing in the UI.
 
-  <!-- The history provides the full conversational context as a single block of text. -->
-  <history>
-User: How do I implement a Riverpod provider with keepAlive?
+**B. Groups**
 
-Assistant: To keep a provider's state, you can use the `@Riverpod(keepAlive: true)` annotation. Here is an example...
-  </history>
+A Group is structurally a Preset **without a `provider` or `model` defined**. Its purpose is twofold:
 
-  <!-- The user's current, specific request. -->
-  <user_input>
-    Thank you. Now, show me how to test it.
-  </user_input>
-</prompt>
-```
+1. **UI Organization:** In the user interface, Groups act as collapsible headers, allowing users to organize their Presets thematically (e.g., "Creative Writing", "Code Generation").
+2. **Settings Inheritance:** Groups can define their own `prompt_prefix` and `prompt_suffix`. When a Preset under a Group is used, its affixes are intelligently combined with those of its parent Group, allowing for powerful, layered prompt engineering.
 
-Key principles of this structure:
+#### 3.2.2. The Three Phases of the Workflow
 
-- CDATA encapsulation for all user/assistant/system content to avoid breaking XML on `<`/`>` characters.
-- Clear separation of roles via `<system>`, `<history>`, and `<user_input>` tags to improve instruction adherence. History is formatted as flat text inside `<history>` tags for natural readability.
-- Unchanged automation engine: the TypeScript bridge still receives a single `prompt` string and injects it; prompt construction logic lives in Dart.
-- Provider capability nuance: for providers with a reliable, native "system prompt" field, the `<system>` section MAY be omitted from the XML and provided natively instead (see §4.6 Exception).
+**A. Phase 1: Orchestration (Multi-Dispatch)**
 
-Flow remains centered on two actions:
+1. **Preset Selection:** In the Hub UI, the user is presented with their list of Presets and Groups. They can select one or multiple Presets via checkboxes.
 
-#### A. Starting a New Turn (Contextual Seeding)
+2. **Prompt Dispatch:** The user writes a single prompt and clicks "Send".
 
-1. **Context Compilation (XML):** The Dart layer composes `<system>`, `<history>` (containing flat text format of conversation turns), and the new `<user_input>` into a single XML string.
-2. **Session Reset:** The `WebView` is reloaded to a "new chat" URL to ensure a clean slate prior to injection.
-3. **Automation Kick-off:** The XML string is passed to `startAutomation(prompt)` in the JavaScript bridge for injection and submission.
-4. **State Transition:** `idle` → `sending` → `observing` as the AI generates its response in the `WebView`.
+3. **Parallel Automation:** The orchestration logic iterates through each selected Preset. For each one, it:
 
-#### B. Refining the Current Turn (Iterative Refinement Loop)
+   a. Finds its parent Group (by looking upwards in the list order).
 
-1. **Initial Extraction:** The user triggers "Extract & View Hub"; Dart calls `extractFinalResponse()` and updates the last AI message in the Hub while remaining in `refining`.
-2. **Review & Re‑engage:** The user reviews in the Hub, then returns to the `WebView` to request changes if needed.
-3. **Manual Refinement:** The user continues the conversation directly in the `WebView`.
-4. **Re‑extraction:** After the AI updates its response, the user extracts again; Dart replaces the same AI message’s content in the Hub. Repeat as needed.
-5. **Finalization:** The "Done" action finalizes the turn and returns automation state to `idle`.
+   b. Constructs the final prompt string by combining the Group's affixes and the Preset's affixes with the user's input (`group_prefix + preset_prefix + user_input + preset_suffix + group_suffix`).
+
+   c. Initiates a dedicated automation cycle for the corresponding WebView, passing the final prompt and all other parameters from the Preset.
+
+**B. Phase 2: Comparison**
+
+1. **Response Aggregation:** As each WebView's automation completes, the extracted response is sent back to the Hub, tagged with the name of the Preset that generated it.
+
+2. **Comparison View:** The Hub UI displays the responses side-by-side (or in a tabbed view on smaller screens) under the original user prompt, allowing for immediate comparison of different models' or settings' outputs.
+
+**C. Phase 3: Synthesis & Curation**
+
+1. **Manual Curation:** The user selects the best response, which is then committed to the permanent conversation history as the definitive assistant message for that turn.
+
+2. **(Roadmap) Intelligent Synthesis:** The user can select multiple responses and ask a primary "synthesis" Preset to analyze, critique, and merge them into a single, superior answer.
 
 ### 3.3. Advanced User Controls
 
@@ -229,23 +225,23 @@ To achieve maximum performance and responsiveness, the application has evolved f
 
 - **Current Model (High-Performance):**
 
-  1.  **Single Point of Entry:** The Dart `ConversationProvider` is now only responsible for gathering all user settings and context into a single `AutomationOptions` object.
+  1. **Single Point of Entry:** The Dart `ConversationProvider` is now only responsible for gathering all user settings and context into a single `AutomationOptions` object.
 
-  2.  **Total Delegation:** It makes a **single call** to a master `startAutomation(options)` function in the JavaScript bridge.
+  2. **Total Delegation:** It makes a **single call** to a master `startAutomation(options)` function in the JavaScript bridge.
 
-  3.  **Autonomous TypeScript Orchestrator:** The `automation_engine.ts` script takes full control of the end-to-end workflow within the WebView:
+  3. **Autonomous TypeScript Orchestrator:** The `automation_engine.ts` script takes full control of the end-to-end workflow within the WebView:
 
-      *   It autonomously resets the UI to a clean state (e.g., by clicking "New Chat").
+      - It autonomously resets the UI to a clean state (e.g., by clicking "New Chat").
 
-      *   It applies all settings (model, temperature, etc.).
+      - It applies all settings (model, temperature, etc.).
 
-      *   It enters the prompt and validates UI readiness (e.g., token count).
+      - It enters the prompt and validates UI readiness (e.g., token count).
 
-      *   It submits the prompt.
+      - It submits the prompt.
 
-      *   It begins observing for the response.
+      - It begins observing for the response.
 
-  4.  **Final Notification:** The script only communicates back to Dart upon final success (`NEW_RESPONSE_DETECTED`) or failure (`AUTOMATION_FAILED`, `LOGIN_REQUIRED`), eliminating all intermediate chatter.
+  4. **Final Notification:** The script only communicates back to Dart upon final success (`NEW_RESPONSE_DETECTED`) or failure (`AUTOMATION_FAILED`, `LOGIN_REQUIRED`), eliminating all intermediate chatter.
 
 This architecture dramatically reduces the perceived latency for the user, as the entire complex automation sequence runs natively within the high-performance JavaScript environment of the WebView, free from the overhead of multiple asynchronous bridge crossings. The Dart layer's role is simplified to that of a delegator, not an orchestrator.
 
@@ -519,6 +515,58 @@ Intermittent failures should be diagnosed systematically, not by attempting loca
 4. **Verify:** Re-run in CI environment, not locally
 
 **Reference:** This methodology is based on industry best practices from leading test automation frameworks (Playwright, Cypress) and modern web automation research.
+
+### 4.11. Architectural Evolution for Preset-Based Orchestration
+
+This vision requires extending our already robust architecture to support dynamic, multi-target automation.
+
+#### 4.11.1. Preset Persistence with Drift
+
+Presets and their organization will be stored in the local database.
+
+- **Schema Evolution:** A new `Presets` table will be added to `lib/core/database/database.dart`. The schema will be:
+
+  - `id`: `IntColumn` (auto-incrementing primary key).
+  - `name`: `TextColumn` (must be unique).
+  - `providerId`: `TextColumn` (nullable; `NULL` identifies a Group).
+  - `displayOrder`: `IntColumn` (to manage user-defined order for grouping).
+  - `is_pinned`: `BoolColumn`.
+  - `is_collapsed`: `BoolColumn` (UI state for groups).
+  - `settings`: `TextColumn` (stores a JSON blob containing model, temperature, affixes, etc.).
+
+- **Data Access:** The `AppDatabase` class will expose CRUD methods for presets, including a `watchAllPresets()` stream ordered by `displayOrder`.
+
+#### 4.11.2. State Management and Orchestration Logic
+
+The Riverpod layer will be extended to manage the new entities and workflow.
+
+- **State Providers:**
+
+  - `presetsProvider`: A `StreamProvider` that watches `db.watchAllPresets()`.
+  - `selectedPresetsProvider`: A `StateProvider<Set<int>>` that holds the IDs of the presets checked by the user for the next dispatch.
+
+- **Orchestration Logic (`ConversationActions`):**
+
+  - The `sendPromptToAutomation` method will be refactored. It will no longer take a simple prompt.
+  - Its new logic will be:
+
+    1. Read the `selectedPresetsProvider` to get the target preset IDs.
+    2. Read the full list of presets from `presetsProvider`.
+    3. For each selected preset ID:
+
+       a. Find the preset object and its parent group (by iterating backwards on `displayOrder`).
+
+       b. Call a new private method, `_dispatchAutomationForPreset`, passing the combined prompt and settings.
+
+  - `_dispatchAutomationForPreset` will contain the logic to launch a single automation cycle, similar to the current implementation.
+
+#### 4.11.3. UI for Preset Management
+
+A new, dedicated UI will be created for managing presets, likely accessible from the Hub screen.
+
+- **Features:** Inspired by `Presets.tsx`, it will use a library like `reorderable_list` to allow drag-and-drop reordering. It will support creating presets/groups, editing, duplicating, and pinning.
+
+- **Selection:** The main Hub UI will display the list of presets with checkboxes, allowing the user to easily select targets for the multi-dispatch.
 
 ### 5.1. Native Conversation Persistence
 

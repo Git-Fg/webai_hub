@@ -109,17 +109,20 @@ This project is under active development.
 
 #### 🚀 On the Roadmap
 
-- **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.).
-- **Automated Provider Comparison** - Send the same prompt to multiple providers simultaneously and compare their responses side-by-side.
-- **Intelligent Response Synthesis** - Use a "main agent" (like Google AI Studio) to classify, compare, and synthesize responses from multiple providers, leveraging the best aspects of each answer.
+- **Preset-Based Orchestration System** - Create, save, and manage "Presets" (a combination of provider, model, and parameters). Group presets for organization and settings inheritance.
+
+- **Multi-Preset Broadcasting** - Send a single prompt to multiple presets simultaneously and view their responses side-by-side for direct comparison.
+
+- **Intelligent Response Synthesis** - Use a primary AI model to analyze, critique, and merge the best parts of multiple responses into one superior answer.
+
 - **Smart Meta-Chat Management** - Advanced conversation management features:
   - Message reordering and reorganization within conversations.
-  - Enhanced message editing capabilities with context preservation.
-  - Intelligent message condensation - Use a web UI to automatically condense multiple messages (messages x to x+n) into a single, concise summary, helping to maintain context while reducing token usage.
+  - Intelligent message condensation - Use an AI to summarize parts of a conversation to reduce token usage while preserving context.
   - Conversation pruning and optimization tools.
+
 - **Advanced Chat Features** - Conversation export (Markdown), multi-message selection, bulk operations.
+
 - **File Attachments** - Support for TXT, PDF files for context augmentation.
-- **Provider Settings UI** - Manage provider-specific settings (model selection, temperature, etc.).
 
 ### 🛠️ Technology Stack
 

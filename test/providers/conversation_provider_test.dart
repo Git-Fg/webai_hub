@@ -881,7 +881,7 @@ void main() {
         Future.delayed(const Duration(milliseconds: 30), () {
           try {
             resilienceContainer.read(bridgeReadyProvider.notifier).markReady();
-          } catch (_) {
+          } on Object {
             // Container may be disposed, ignore
           }
         }),

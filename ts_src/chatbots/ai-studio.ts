@@ -435,7 +435,11 @@ export class AiStudioChatbot implements Chatbot {
         const startTime = Date.now();
         while (document.body.contains(oldSettingsButton)) {
           if (Date.now() - startTime > timeout) {
-            throw new Error('Old settings button did not disappear within timeout.');
+            throw this.createErrorWithContext(
+              'resetState',
+              'Old settings button did not disappear within timeout.',
+              `Timeout=${timeout}ms`
+            );
           }
           await new Promise(resolve => setTimeout(resolve, 50));
         }
@@ -690,7 +694,11 @@ export class AiStudioChatbot implements Chatbot {
     if (!extractedContent) {
         const errorMessage = `Textarea was found but it was empty.`;
         console.error(`[AI Studio LOG] ${errorMessage}`);
-        throw new Error(errorMessage);
+        throw this.createErrorWithContext(
+          'extractResponse',
+          errorMessage,
+          'Textarea was found but contained no content'
+        );
     }
     
     console.log(`[AI Studio LOG] Extracted ${extractedContent.length} chars successfully.`);

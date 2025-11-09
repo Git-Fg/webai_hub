@@ -45,12 +45,9 @@ class CompanionOverlay extends ConsumerWidget {
   Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final screenSize = MediaQuery.of(context).size;
-    final content = status.when(
-      idle: () => const SizedBox.shrink(),
-      sending: (prompt) =>
-          const SizedBox.shrink(), // Handled by AutomationStateObserver
-      observing: () =>
-          const SizedBox.shrink(), // Handled by AutomationStateObserver
+    // WHY: Parent DraggableCompanionOverlay ensures this widget is only built for refining and needsLogin states.
+    // Therefore, we only need to handle those two cases here.
+    final content = status.maybeWhen(
       refining: (messageCount, isExtracting) => _buildStatusUI(
         context: context,
         status: status,
@@ -74,8 +71,8 @@ class CompanionOverlay extends ConsumerWidget {
           ),
         ),
       ),
-      failed: () =>
-          const SizedBox.shrink(), // Handled by AutomationStateObserver
+      orElse: () =>
+          const SizedBox.shrink(), // Safety fallback (should never be reached)
     );
 
     // WHY: Constrain overlay width to prevent it from growing too large
@@ -156,11 +153,9 @@ class CompanionOverlay extends ConsumerWidget {
               ),
             ),
             Container(
-              padding: status.maybeWhen(
-                idle: () => EdgeInsets.zero,
-                // Reduced padding for a more compact look
-                orElse: () => const EdgeInsets.all(kMediumSpacing),
-              ),
+              // WHY: Parent ensures this widget is only built for refining and needsLogin states,
+              // so we always apply padding (idle state cannot occur).
+              padding: const EdgeInsets.all(kMediumSpacing),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: const BorderRadius.only(
@@ -168,23 +163,19 @@ class CompanionOverlay extends ConsumerWidget {
                   bottomRight: Radius.circular(kMediumBorderRadius),
                 ),
                 // Apply border and shadow here, where it belongs.
-                border: status.maybeWhen(
-                  idle: () => null,
-                  orElse: () => Border.all(
-                    color: status.color.withValues(alpha: 0.3),
-                    width: 2,
+                // WHY: Parent ensures this widget is only built for refining and needsLogin states,
+                // so we always apply border and shadow (idle state cannot occur).
+                border: Border.all(
+                  color: status.color.withValues(alpha: 0.3),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: kDefaultBlurRadius,
+                    offset: kMediumShadowOffset,
                   ),
-                ),
-                boxShadow: status.maybeWhen(
-                  idle: () => null,
-                  orElse: () => [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: kDefaultBlurRadius,
-                      offset: kMediumShadowOffset,
-                    ),
-                  ],
-                ),
+                ],
               ),
               child: content,
             ),

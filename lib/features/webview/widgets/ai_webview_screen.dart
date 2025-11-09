@@ -184,7 +184,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       initialSettings: InAppWebViewSettings(
         userAgent: userAgent,
         applicationNameForUserAgent: 'AIHybridHub',
-        supportZoom: false,
+        supportZoom: settings.webViewSupportZoom,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
         // WHY: Disable database APIs if not needed to reduce attack surface

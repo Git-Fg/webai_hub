@@ -121,4 +121,12 @@ class GeneralSettings extends _$GeneralSettings {
       return currentSettings.copyWith(customUserAgent: userAgent);
     });
   }
+
+  // WHY: Allows users to control whether the WebView supports zoom gestures.
+  // This makes the WebView configuration more flexible and user-configurable.
+  Future<void> toggleWebViewZoom({required bool value}) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(webViewSupportZoom: value);
+    });
+  }
 }

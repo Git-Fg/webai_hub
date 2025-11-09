@@ -173,9 +173,13 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
         vertical: 10,
       ),
       decoration: BoxDecoration(
-        color: widget.message.isFromUser
-            ? Colors.blue.shade500
-            : Colors.grey.shade200,
+        color: _isEditing
+            ? (widget.message.isFromUser
+                ? Colors.blue.shade700
+                : Colors.grey.shade300)
+            : (widget.message.isFromUser
+                ? Colors.blue.shade500
+                : Colors.grey.shade200),
         borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
           bottomLeft: Radius.circular(
             widget.message.isFromUser

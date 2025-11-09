@@ -34,6 +34,9 @@ sealed class GeneralSettingsData with _$GeneralSettingsData {
     // WHY: Allows advanced users to override the WebView's default User Agent.
     // If empty, the platform-specific default UA from flutter_inappwebview is used.
     @Default('') String customUserAgent,
+    // WHY: Controls whether the WebView supports zoom gestures (pinch-to-zoom).
+    // Defaults to false to prevent accidental zooming during automation.
+    @Default(false) bool webViewSupportZoom,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>

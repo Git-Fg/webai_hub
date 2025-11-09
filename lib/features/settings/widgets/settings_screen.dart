@@ -241,6 +241,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
+                  'WebView Settings',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              SwitchListTile(
+                title: const Text('Enable WebView Zoom'),
+                subtitle: const Text(
+                  'Allows pinch-to-zoom in the provider WebView.',
+                ),
+                value: settings.webViewSupportZoom,
+                onChanged: (bool value) {
+                  unawaited(settingsNotifier.toggleWebViewZoom(value: value));
+                },
+              ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
                   'Advanced Settings',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
