@@ -47,16 +47,10 @@ class CompanionOverlay extends ConsumerWidget {
     final screenSize = MediaQuery.of(context).size;
     final content = status.when(
       idle: () => const SizedBox.shrink(),
-      sending: (prompt) => _buildStatusUI(
-        context: context,
-        status: status,
-        isLoading: true,
-      ),
-      observing: () => _buildStatusUI(
-        context: context,
-        status: status,
-        isLoading: true,
-      ),
+      sending: (prompt) =>
+          const SizedBox.shrink(), // Handled by AutomationStateObserver
+      observing: () =>
+          const SizedBox.shrink(), // Handled by AutomationStateObserver
       refining: (messageCount, isExtracting) => _buildStatusUI(
         context: context,
         status: status,
@@ -80,21 +74,8 @@ class CompanionOverlay extends ConsumerWidget {
           ),
         ),
       ),
-      failed: () => _buildStatusUI(
-        context: context,
-        status: status,
-        actionButton: ElevatedButton.icon(
-          icon: const Icon(Icons.close),
-          label: const Text('Dismiss'),
-          onPressed: () {
-            ref.read(automationStateProvider.notifier).returnToIdle();
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[600],
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ),
+      failed: () =>
+          const SizedBox.shrink(), // Handled by AutomationStateObserver
     );
 
     // WHY: Constrain overlay width to prevent it from growing too large

@@ -3,6 +3,7 @@ import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
@@ -11,6 +12,7 @@ import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provi
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -47,17 +49,21 @@ void main() async {
 
   // WHY: Create ProviderContainer before runApp to perform startup logic.
   // This allows us to access providers synchronously during initialization.
-  // WHY: Create a temporary Talker instance for the observer setup.
-  // The observer needs a Talker instance before the provider-managed one is available.
-  // WHY: Explicitly disable Talker in release builds for performance and security.
-  final tempTalker = TalkerFlutter.init(
+  // WHY: Create a single Talker instance for both the observer and provider override.
+  // This ensures a single source of truth for the logger instance from the very beginning.
+  final talker = TalkerFlutter.init(
     settings: TalkerSettings(),
   );
   final container = ProviderContainer(
+    overrides: [
+      // WHY: Override the provider with the instance we just created to ensure
+      // consistency between the observer and any code that reads the provider.
+      talkerProvider.overrideWithValue(talker),
+    ],
     observers: [
       // WHY: This observer automatically logs all Riverpod provider state changes
       // and errors, providing comprehensive visibility into the app's state management.
-      TalkerRiverpodObserver(talker: tempTalker),
+      TalkerRiverpodObserver(talker: talker),
     ],
   );
 
@@ -73,36 +79,22 @@ void main() async {
 }
 
 // WHY: This function handles all startup tasks that need to run before the app UI is displayed.
-// It cleans up corrupted dates, prunes old conversations, and optionally restores the last active conversation.
+// It prunes old conversations and optionally restores the last active conversation.
 Future<void> _runStartupLogic(ProviderContainer container) async {
   try {
     final settings = await container.read(generalSettingsProvider.future);
     final db = container.read(appDatabaseProvider);
     final talker = container.read(talkerProvider);
 
-    // 1. Clean up corrupted DateTime values in the database
-    // WHY: This fixes any corrupted date formats before we try to read conversations.
-    // Errors in cleanup are logged but don't prevent startup from continuing.
-    try {
-      final fixedCount = await db.cleanupCorruptedDates();
-      if (fixedCount > 0) {
-        talker.info(
-          'Cleaned up $fixedCount conversation(s) with corrupted dates',
-        );
-      }
-    } on Exception catch (e, st) {
-      // WHY: Log cleanup errors but don't fail startup - pruning will handle corrupted data safely
-      talker.handle(e, st, 'Date cleanup error (non-fatal)');
-    }
-
-    // 2. Prune old conversations if count exceeds maxConversationHistory
+    // 1. Prune old conversations if count exceeds maxConversationHistory
     await db.pruneOldConversations(settings.maxConversationHistory);
 
-    // 3. Load last session if enabled
-    // WHY: Use safe reading to handle any remaining corrupted dates gracefully.
+    // 2. Load last session if enabled
     if (settings.persistSessionOnRestart) {
       try {
-        final allConversations = await db.safeReadConversations();
+        final allConversations = await (db.select(
+          db.conversations,
+        )..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])).get();
         if (allConversations.isNotEmpty) {
           final lastConversation = allConversations.first;
           container
@@ -194,43 +186,45 @@ class _MainScreenState extends ConsumerState<MainScreen>
     final currentIndex = ref.watch(currentTabIndexProvider);
     final overlayState = ref.watch(overlayManagerProvider);
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: currentIndex,
-            sizing: StackFit.expand,
-            children: const [
-              HubScreen(),
-              AiWebviewScreen(),
-            ],
-          ),
-          // WHY: This declarative structure is robust.
-          // The overlay's base position is aligned to the top-center,
-          // and the provider's offset is applied as a pure delta from that point.
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Transform.translate(
-                offset: overlayState.position,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: kDefaultPadding),
-                  child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+    return AutomationStateObserver(
+      child: Scaffold(
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: currentIndex,
+              sizing: StackFit.expand,
+              children: const [
+                HubScreen(),
+                AiWebviewScreen(),
+              ],
+            ),
+            // WHY: This declarative structure is robust.
+            // The overlay's base position is aligned to the top-center,
+            // and the provider's offset is applied as a pure delta from that point.
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Transform.translate(
+                  offset: overlayState.position,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: kDefaultPadding),
+                    child: DraggableCompanionOverlay(overlayKey: _overlayKey),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: TabBar(
-        controller: _tabController,
-        tabs: const [
-          Tab(icon: Icon(Icons.chat), text: 'Hub'),
-          Tab(icon: Icon(Icons.web), text: 'AI Studio'),
-        ],
-        labelColor: Colors.blue,
-        unselectedLabelColor: Colors.grey,
-        indicatorColor: Colors.blue,
+          ],
+        ),
+        bottomNavigationBar: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.chat), text: 'Hub'),
+            Tab(icon: Icon(Icons.web), text: 'AI Studio'),
+          ],
+          labelColor: Colors.blue,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.blue,
+        ),
       ),
     );
   }
@@ -248,22 +242,57 @@ class DraggableCompanionOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final currentTabIndex = ref.watch(currentTabIndexProvider);
+    final overlayState = ref.watch(overlayManagerProvider);
+
+    // Determine if overlay should be visible at all.
+    // It only shows for 'refining' and 'needsLogin' states on WebView tab.
     final shouldShow =
-        status != const AutomationStateData.idle() && currentTabIndex == 1;
+        (status.maybeWhen(
+          refining: (messageCount, isExtracting) => true,
+          needsLogin: (onResume) => true,
+          orElse: () => false,
+        )) &&
+        currentTabIndex == 1;
+
+    // Determine alignment based on state.
+    final alignment = status.maybeWhen(
+      needsLogin: (onResume) => Alignment.center, // Centered for login prompt
+      orElse: () => Alignment.topCenter, // Draggable from the top for refining
+    );
+
+    // Determine if dragging is enabled.
+    final isDraggable = status.maybeWhen(
+      refining: (messageCount, isExtracting) => true,
+      orElse: () => false,
+    );
 
     return AnimatedOpacity(
       opacity: shouldShow ? 1.0 : 0.0,
       duration: kShortAnimationDuration,
       child: IgnorePointer(
         ignoring: !shouldShow,
-        child: GestureDetector(
-          onPanUpdate: (details) {
-            // The provider now simply accumulates the raw drag delta.
-            ref
-                .read(overlayManagerProvider.notifier)
-                .updatePosition(details.delta);
-          },
-          child: CompanionOverlay(overlayKey: overlayKey),
+        child: Positioned.fill(
+          child: Align(
+            alignment: alignment,
+            child: Transform.translate(
+              // Only apply the draggable offset if in refining state.
+              offset: isDraggable ? overlayState.position : Offset.zero,
+              child: Padding(
+                padding: const EdgeInsets.only(top: kDefaultPadding),
+                // Conditionally wrap with GestureDetector for dragging.
+                child: isDraggable
+                    ? GestureDetector(
+                        onPanUpdate: (details) {
+                          ref
+                              .read(overlayManagerProvider.notifier)
+                              .updatePosition(details.delta);
+                        },
+                        child: CompanionOverlay(overlayKey: overlayKey),
+                      )
+                    : CompanionOverlay(overlayKey: overlayKey),
+              ),
+            ),
+          ),
         ),
       ),
     );
