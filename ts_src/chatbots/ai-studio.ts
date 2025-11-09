@@ -16,20 +16,22 @@ const DEFAULT_TIMEOUT_MS = 10000;
 // --- Constants for Timing and Timeouts ---
 const TIMING = {
   READINESS_CHECK_INTERVAL_MS: 100,
-  TOKEN_COUNT_UPDATE_TIMEOUT_MS: 5000,
+  TOKEN_COUNT_UPDATE_TIMEOUT_MS: 10000, 
   TOKEN_COUNT_CHECK_INTERVAL_MS: 100,
+  UI_STABILIZE_AFTER_TOKEN_COUNT_MS: 30, 
   FINALIZED_TURN_TIMEOUT_MS: 15000,
   FINALIZED_TURN_CHECK_INTERVAL_MS: 1000,
   EDIT_BUTTON_WAIT_TIMEOUT_MS: 2000,
   TEXTAREA_APPEAR_TIMEOUT_MS: 5000,
-  UI_STABILIZE_DELAY_MS: 300,
-  PANEL_ANIMATION_MS: 400,
+  UI_STABILIZE_DELAY_MS: 150,
+  PANEL_ANIMATION_MS: 250,
   POLL_INTERVAL_MS: 100,
   POLL_TIMEOUT_MS: 5000,
 } as const;
 
 // --- Selectors (enhanced fallbacks) ---
 const SELECTORS = {
+    NEW_CHAT_BUTTON: 'a[href="/prompts/new_chat"]',
     RUN_SETTINGS_TOGGLE_MOBILE: 'button.runsettings-toggle-button',
     MODEL_SELECTOR_DESKTOP: 'button.model-selector-card',
     PROMPT_INPUTS: [
@@ -75,6 +77,7 @@ const SELECTORS = {
     SYSTEM_PROMPT_CARD: 'button[data-test-system-instructions-card]',
     SYSTEM_PROMPT_TEXTAREA: 'ms-system-instructions textarea',
     DIALOG_CLOSE_BUTTON: 'mat-dialog-container button[data-test-close-button]',
+    MODEL_DIALOG_CONTAINER: 'mat-dialog-container',
     ADVANCED_SETTINGS_TOGGLE: 'div.settings-item',
     THINKING_TOGGLE: 'mat-slide-toggle[data-test-toggle="enable-thinking"] button',
     MANUAL_BUDGET_TOGGLE: 'mat-slide-toggle[data-test-toggle="manual-budget"] button',
@@ -180,28 +183,24 @@ export class AiStudioChatbot implements Chatbot {
 
   private async closeSettingsPanel(): Promise<void> {
     if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
+      if (!document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
+        console.log('[AI Studio LOG] Settings panel appears to be already closed.');
+        return;
+      }
+
       try {
         const closeButtonEl = await waitForActionableElement<HTMLButtonElement>(
           [SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON],
           'Settings panel close button',
-          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
+          getModifiedTimeout(2000),
           0
         );
         const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Settings panel close button');
-        if (closeButton) {
-          closeButton.click();
-          await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-          
-          // Verify panel is actually closed
-          const panelClosed = !document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON);
-          if (!panelClosed) {
-            console.warn('[AI Studio LOG] Settings panel may not have closed properly. Waiting longer...');
-            await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-          }
-          console.log('[AI Studio LOG] Settings panel closed successfully.');
-        }
+        closeButton.click();
+        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+        console.log('[AI Studio LOG] Settings panel closed successfully.');
       } catch (error) {
-        throw this.createErrorWithContext('closeSettingsPanel', `Failed to close settings panel: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn('[AI Studio LOG] Could not close settings panel, but continuing:', error);
       }
     }
   }
@@ -246,8 +245,8 @@ export class AiStudioChatbot implements Chatbot {
         return;
       }
       modelSelector.click();
-      // WHY: Wait longer for dialog to fully open and become interactive (dialogs may have animations/overlays)
-      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS * 2));
+      // WHY: Dynamically wait for the model selection dialog to appear instead of using a fixed delay.
+      await waitForElement([SELECTORS.MODEL_DIALOG_CONTAINER], getModifiedTimeout(3000));
 
       // WHY: Try to find the element, and if occluded, wait a bit more and try clicking anyway
       let allFilterEl: HTMLButtonElement | null = null;
@@ -303,20 +302,15 @@ export class AiStudioChatbot implements Chatbot {
       }
 
       // WHY: Check if dialog is still open before trying to close it (some dialogs close automatically)
-      const dialogContainer = document.querySelector('mat-dialog-container');
-      if (dialogContainer) {
+      if (document.querySelector('mat-dialog-container')) {
         try {
-          const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 0);
+          const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(2000), 0);
           const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
           closeButton.click();
           await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-          console.log('[AI Studio LOG] Dialog closed successfully.');
-        } catch (error) {
-          // Dialog might have closed automatically or close button not found - this is OK
-          console.log('[AI Studio LOG] Dialog close button not found or dialog already closed. Continuing...');
+        } catch {
+          console.log('[AI Studio LOG] Model dialog seems to have closed automatically.');
         }
-      } else {
-        console.log('[AI Studio LOG] Dialog already closed (not found in DOM).');
       }
     }, '_setModel', 2, 300);
   }
@@ -414,12 +408,61 @@ export class AiStudioChatbot implements Chatbot {
 
   // --- Public Chatbot Interface Implementation ---
 
+  async resetState(): Promise<void> {
+    console.log('[AI Studio] Preparing to reset UI state...');
+    try {
+      // Étape 1 : Obtenir une référence à l'instance ACTUELLE du bouton des paramètres.
+      const settingsToggleSelector = Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) 
+        ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE[0] 
+        : SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE;
+      const oldSettingsButton = settingsToggleSelector ? document.querySelector(settingsToggleSelector) : null;
+
+      const newChatButton = document.querySelector(SELECTORS.NEW_CHAT_BUTTON) as HTMLElement;
+      if (!newChatButton || newChatButton.offsetParent === null) {
+        console.warn('[AI Studio] "New Chat" button not found, assuming clean state and proceeding.');
+        await this.waitForReady(); // On s'assure quand même que l'état actuel est prêt.
+        return;
+      }
+
+      // Étape 2 : Déclencher la réinitialisation de l'UI.
+      newChatButton.click();
+      console.log('[AI Studio] "New Chat" clicked. Waiting for UI transition...');
+
+      // Étape 3 : Attendre que l'ANCIENNE instance du bouton disparaisse.
+      // C'est le signal le plus fiable que la page est en train de se décharger.
+      if (oldSettingsButton) {
+        const timeout = getModifiedTimeout(5000);
+        const startTime = Date.now();
+        while (document.body.contains(oldSettingsButton)) {
+          if (Date.now() - startTime > timeout) {
+            throw new Error('Old settings button did not disappear within timeout.');
+          }
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        console.log('[AI Studio] Old UI elements have been removed.');
+      }
+
+      // Étape 4 : Maintenant que l'ancien état est parti, attendre que le NOUVEL état soit pleinement prêt.
+      await this.waitForReady();
+      console.log('[AI Studio] State reset completed successfully.');
+
+    } catch (error) {
+      console.error('[AI Studio] A non-critical error occurred during state reset. Continuing under assumption that UI is ready.', error);
+      // En cas d'échec, on tente quand même un waitForReady comme filet de sécurité.
+      await this.waitForReady();
+    }
+  }
+
   async waitForReady(): Promise<void> {
-    await waitForElement<HTMLElement>([
-        SELECTORS.MODEL_SELECTOR_DESKTOP,
-        SELECTORS.RUN_SETTINGS_TOGGLE_MOBILE,
-    ]);
-    console.log('[AI Studio] UI is ready.');
+    // WHY: The prompt input area is one of the last elements to become fully
+    // interactive after a page load or reset. Waiting for it to be actionable
+    // is a much more reliable signal that the entire UI is ready for automation
+    // than waiting for the settings toggle button, which can appear prematurely.
+    await waitForActionableElement<HTMLElement>(
+      SELECTORS.PROMPT_INPUTS,
+      'Prompt Input Area'
+    );
+    console.log('[AI Studio] UI is fully actionable and ready (prompt input is available).');
   }
   
   // WHY: setSystemPrompt remains a separate public method because it opens a different modal
@@ -511,20 +554,21 @@ export class AiStudioChatbot implements Chatbot {
         throw this.createErrorWithContext('sendPrompt', 'Input area is not a valid textarea or input element.', `ElementType=${elementType}`);
       }
       
-      await new Promise<void>((resolve) => {
-        const timeout = TIMING.TOKEN_COUNT_UPDATE_TIMEOUT_MS;
+      await new Promise<void>((resolve, reject) => {
+        const timeout = getModifiedTimeout(TIMING.TOKEN_COUNT_UPDATE_TIMEOUT_MS);
         const startTime = Date.now();
         
         const checkTokenCount = () => {
           const elapsed = Date.now() - startTime;
           if (elapsed > timeout) {
-            console.warn('[AI Studio LOG] Token count timeout - proceeding anyway');
-            resolve();
+            // Instead of resolving, we now reject with a clear error.
+            reject(new Error(`Token count did not update within ${timeout}ms.`));
             return;
           }
           
           const tokenCountElement = document.querySelector(SELECTORS.TOKEN_COUNT);
           const text = tokenCountElement?.textContent?.trim();
+          // The condition remains the same: wait for a non-zero token count.
           if (text && !text.startsWith('0')) {
             console.log(`[AI Studio LOG] Token count updated: ${text}`);
             resolve();
@@ -534,6 +578,16 @@ export class AiStudioChatbot implements Chatbot {
         };
         checkTokenCount();
       });
+
+      // WHY: Add a small delay after token count updates to allow the UI to stabilize
+      // before attempting to click the send button, preventing potential race conditions.
+      await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_AFTER_TOKEN_COUNT_MS));
+      console.log('[AI Studio LOG] UI stabilized after token count, proceeding to send.');
+
+      // WHY: This is the critical fix inspired by the original logic.
+      // Ensure the settings panel is closed before attempting to click the send
+      // button to prevent it from being occluded, especially on mobile views.
+      await this.closeSettingsPanel();
       
       return this.retryOperation(async () => {
         const sendButtonEl = await waitForActionableElement<HTMLElement>(SELECTORS.SEND_BUTTONS, 'Send button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);

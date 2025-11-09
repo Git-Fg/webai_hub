@@ -2,7 +2,7 @@
 import { Chatbot, AutomationOptions } from './types/chatbot';
 import { AiStudioChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
-import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
+import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_AUTOMATION_RETRY_REQUIRED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
 
 const BRIDGE_READY_RETRY_ATTEMPTS = 100;
 const BRIDGE_READY_RETRY_DELAY_MS = 300;
@@ -94,7 +94,10 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
 
   // Global function called by Dart to start automation
   window.startAutomation = async function(options: AutomationOptions): Promise<void> {
-    console.log('[Engine LOG] >>> startAutomation called by Dart. Processing options:', JSON.stringify(options, null, 2));
+    console.log('[Engine LOG] >>> Full automation cycle started by Dart. Options:', JSON.stringify(options, null, 2));
+    
+    // WHY: Reset the retry flag for each new automation run.
+    window.__hasAttemptedRetry = false;
     
     // Set the global modifier for this run
     window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
@@ -110,11 +113,20 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
     let currentPhase = 'Initialization';
     
     try {
-      currentPhase = 'Phase 1: Waiting for UI to be ready';
+      // Phase 1: Reset the UI to a clean state (e.g., click "New Chat").
+      if (chatbot.resetState) {
+        currentPhase = 'Phase 1: Resetting UI state';
+        console.log(`[Engine LOG] ${currentPhase}...`);
+        await chatbot.resetState();
+      }
+
+      // Phase 2: Wait for the main UI to be ready and interactive.
+      currentPhase = 'Phase 2: Waiting for UI to be ready';
       console.log(`[Engine LOG] ${currentPhase}...`);
       await chatbot.waitForReady();
       
-      currentPhase = 'Phase 2: Applying configurations';
+      // Phase 3: Apply all configurations (Model, Temperature, System Prompt, etc.).
+      currentPhase = 'Phase 3: Applying configurations';
       console.log(`[Engine LOG] ${currentPhase}...`);
       // WHY: System prompt often involves a separate dialog; handle it first
       if (options.systemPrompt && chatbot.setSystemPrompt) {
@@ -126,12 +138,18 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         await chatbot.applyAllSettings(options);
       }
 
-      currentPhase = 'Phase 3: Sending prompt';
+      // Phase 4: Enter the prompt and click the send button.
+      currentPhase = 'Phase 4: Entering and sending prompt';
       console.log(`[Engine LOG] ${currentPhase}...`);
       await chatbot.sendPrompt(options.prompt);
       
+      // Phase 5: Start observing for the response.
+      currentPhase = 'Phase 5: Starting response observer';
+      console.log(`[Engine LOG] ${currentPhase}...`);
+      startObserving();
+      
       const elapsedTime = Date.now() - startTime;
-      console.log(`[Engine LOG] All steps completed successfully in ${elapsedTime}ms.`);
+      console.log(`[Engine LOG] Full automation cycle initiated successfully in ${elapsedTime}ms. Now observing for response.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const elapsedTime = Date.now() - startTime;
@@ -141,7 +159,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         visibleElements: document.querySelectorAll('*').length,
       };
       
-      console.error(`[Engine LOG] Automation failed in ${currentPhase} after ${elapsedTime}ms!`, error);
+      console.error(`[Engine LOG] Full automation cycle failed in ${currentPhase} after ${elapsedTime}ms!`, error);
       
       const diagnostics: Record<string, unknown> = {
         phase: currentPhase,
@@ -159,7 +177,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       
       notifyDart({
         type: EVENT_TYPE_AUTOMATION_FAILED,
-        errorCode: 'AUTOMATION_EXECUTION_FAILED',
+        errorCode: 'FULL_CYCLE_FAILED',
         location: 'startAutomation',
         payload: errorMessage,
         diagnostics: diagnostics,
@@ -372,6 +390,21 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
 
     // WHY: Launch new timer. If no new mutation arrives for 250ms, execute the check.
     debounceTimer = window.setTimeout(() => {
+      // --- START: ERROR DETECTION LOGIC ---
+      // WHY: Check for a known transient error state before checking for success.
+      // This allows the system to trigger a self-healing retry.
+      const errorElement = document.querySelector('.model-error mat-icon');
+      if (errorElement && errorElement.textContent?.trim() === 'error') {
+        if (!window.__hasAttemptedRetry) {
+          window.__hasAttemptedRetry = true; // Set flag to prevent loops
+          console.warn('[Observer] Detected transient model error. Requesting retry from Dart.');
+          notifyDart({ type: EVENT_TYPE_AUTOMATION_RETRY_REQUIRED });
+          stopObserving();
+          return; // Stop further checks
+        }
+      }
+      // --- END: ERROR DETECTION LOGIC ---
+
       // WHY: Use the same chat turn selector as ai-studio.ts for consistency
       const CHAT_TURN_SELECTOR = '[id^="turn-"], ms-chat-turn';
       const EDIT_BUTTON_SELECTOR = 'button[aria-label="Edit"]';
@@ -484,9 +517,6 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       debounceTimer = null;
     }
   }
-
-  // WHY: Expose global function for Dart to start observation
-  window.startResponseObserver = startObserving;
 
   console.log('[Engine] Bridge script injected. Waiting for flutter_inappwebview...');
 

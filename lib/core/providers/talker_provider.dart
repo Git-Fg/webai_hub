@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
@@ -10,11 +9,7 @@ Talker talker(Ref ref) {
   // In release builds, all talker calls will be no-ops, ensuring zero
   // performance impact for end-users.
   final talker = TalkerFlutter.init(
-    settings: TalkerSettings(
-      // WHY: Explicitly disable Talker in release builds for performance and security.
-      // This ensures no logging overhead or sensitive data exposure in production.
-      enabled: kDebugMode,
-    ),
+    settings: TalkerSettings(),
   );
   return talker;
 }

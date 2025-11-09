@@ -5,7 +5,8 @@ import 'dart:io';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 
 // Export ConversationData from generated drift file for use in Riverpod providers
 export 'database.drift.dart' show ConversationData;
@@ -46,6 +47,9 @@ class Messages extends Table {
   TextColumn get content => text()();
   BoolColumn get isFromUser => boolean()();
   TextColumn get status => text().map(const MessageStatusConverter())();
+  // WHY: Timestamp column ensures reliable ordering of messages, independent of ID generation.
+  // This is critical for _updateLastMessage which needs to find the most recent message.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -53,25 +57,28 @@ class Messages extends Table {
 
 // WHY: LazyDatabase ensures the database connection is only opened when needed.
 // This is important for platform-specific path resolution.
+// Uses sqflite's getDatabasesPath() for mobile platforms, which provides the
+// standard database directory on Android/iOS.
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File('${dbFolder.path}/db.sqlite');
+    final dbFolder = await getDatabasesPath();
+    final file = File(p.join(dbFolder, 'db.sqlite'));
     return NativeDatabase.createInBackground(file);
   });
 }
 
 @DriftDatabase(tables: [Conversations, Messages])
 class AppDatabase extends _$AppDatabase {
-  // WHY: This constructor uses NativeDatabase with a platform-agnostic path.
-  // The database file will be stored in the app's documents directory.
+  // WHY: This constructor uses sqflite's getDatabasesPath() for mobile platforms,
+  // which provides the standard database directory on Android/iOS. The database
+  // file will be stored in the platform's standard database location.
   AppDatabase() : super(_openConnection());
 
   // WHY: Test constructor that uses in-memory database for fast, isolated tests.
   AppDatabase.test() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   // WHY: A migration strategy is essential for any production application.
   // It ensures that when you change your database schema in future versions (e.g., add a new column),
@@ -83,6 +90,7 @@ class AppDatabase extends _$AppDatabase {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
+        final db = m.database as AppDatabase;
         // WHY: Migration from schema version 1 to 2 adds Conversations table and conversationId column.
         // Existing messages are assigned to a default "Legacy" conversation to preserve user data.
         if (from < 2) {
@@ -90,7 +98,6 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(conversations);
 
           // Step 2: Create default "Legacy" conversation for existing messages
-          final db = m.database as AppDatabase;
           final legacyId = await db
               .into(db.conversations)
               .insert(
@@ -124,6 +131,22 @@ class AppDatabase extends _$AppDatabase {
           // Step 5: Drop old table
           await db.customStatement('DROP TABLE messages_old');
         }
+        // WHY: Migration from schema version 2 to 3 adds createdAt column to Messages table.
+        // This ensures reliable ordering of messages independent of ID generation.
+        if (from < 3) {
+          // Add createdAt column (nullable first to allow existing rows)
+          await db.customStatement(
+            'ALTER TABLE messages ADD COLUMN createdAt INTEGER',
+          );
+          // Update all existing rows with current timestamp in milliseconds
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          await db.customStatement(
+            'UPDATE messages SET createdAt = $nowMs WHERE createdAt IS NULL',
+          );
+          // Make the column NOT NULL (SQLite doesn't support this directly, but
+          // since we've updated all rows, this is safe for future inserts)
+          // Note: The default value is handled by Drift's withDefault() in the schema
+        }
       },
       // WHY: Foreign keys must be explicitly enabled in SQLite for referential integrity.
       // This ensures cascade deletes work correctly and prevents orphaned records.
@@ -156,147 +179,6 @@ class AppDatabase extends _$AppDatabase {
       (update(conversations)..where((t) => t.id.equals(id))).write(
         ConversationsCompanion(updatedAt: Value(timestamp)),
       );
-
-  // WHY: This method safely reads conversations by catching FormatException
-  // when parsing corrupted DateTime values. It uses raw SQL to read date strings
-  // first, then manually parses them, allowing us to handle corrupted data gracefully.
-  Future<List<ConversationData>> safeReadConversations() async {
-    final results = await customSelect(
-      'SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC',
-      readsFrom: {conversations},
-    ).get();
-
-    final validConversations = <ConversationData>[];
-    final now = DateTime.now();
-
-    for (final row in results) {
-      try {
-        final id = row.read<int>('id');
-        final title = row.read<String>('title');
-        final createdAtStr = row.read<String>('created_at');
-        final updatedAtStr = row.read<String>('updated_at');
-
-        DateTime? createdAt;
-        DateTime? updatedAt;
-
-        // Try to parse createdAt
-        try {
-          createdAt = _parseDateTime(createdAtStr);
-        } on FormatException {
-          // If parsing fails, use current time as fallback
-          createdAt = now;
-        }
-
-        // Try to parse updatedAt
-        try {
-          updatedAt = _parseDateTime(updatedAtStr);
-        } on FormatException {
-          // If parsing fails, use current time as fallback
-          updatedAt = now;
-        }
-
-        validConversations.add(
-          ConversationData(
-            id: id,
-            title: title,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-          ),
-        );
-      } on Exception {
-        // Skip corrupted records entirely if we can't even read basic fields
-        continue;
-      }
-    }
-
-    return validConversations;
-  }
-
-  // WHY: This helper method attempts to parse DateTime strings, handling
-  // corrupted formats like Unix timestamps with 'Z' suffix (e.g., "1762611824Z").
-  DateTime _parseDateTime(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) {
-      throw const FormatException('Empty date string');
-    }
-
-    // Try standard ISO 8601 parsing first
-    try {
-      return DateTime.parse(dateStr);
-    } on FormatException {
-      // Handle corrupted Unix timestamp format (e.g., "1762611824Z")
-      final cleaned = dateStr.replaceAll(RegExp('[^0-9]'), '');
-      if (cleaned.isNotEmpty) {
-        try {
-          final timestamp = int.tryParse(cleaned);
-          if (timestamp != null) {
-            // Assume seconds if < year 2100, milliseconds otherwise
-            if (timestamp < 4102444800) {
-              // Less than year 2100 in seconds
-              return DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-            } else {
-              // Likely milliseconds
-              return DateTime.fromMillisecondsSinceEpoch(timestamp);
-            }
-          }
-        } on FormatException {
-          // Fall through to throw FormatException
-        }
-      }
-      throw FormatException('Invalid date format', dateStr);
-    }
-  }
-
-  // WHY: This method cleans up corrupted DateTime values in the database.
-  // It finds conversations with invalid date formats and fixes them by
-  // converting them to proper DateTime values.
-  Future<int> cleanupCorruptedDates() async {
-    final results = await customSelect(
-      'SELECT id, created_at, updated_at FROM conversations',
-      readsFrom: {conversations},
-    ).get();
-
-    var fixedCount = 0;
-    final now = DateTime.now();
-
-    for (final row in results) {
-      final id = row.read<int>('id');
-      final createdAtStr = row.read<String>('created_at');
-      final updatedAtStr = row.read<String>('updated_at');
-
-      DateTime? fixedCreatedAt;
-      DateTime? fixedUpdatedAt;
-      var needsUpdate = false;
-
-      // Check and fix createdAt
-      try {
-        fixedCreatedAt = _parseDateTime(createdAtStr);
-      } on FormatException {
-        fixedCreatedAt = now;
-        needsUpdate = true;
-      }
-
-      // Check and fix updatedAt
-      try {
-        fixedUpdatedAt = _parseDateTime(updatedAtStr);
-      } on FormatException {
-        fixedUpdatedAt = now;
-        needsUpdate = true;
-      }
-
-      // Update the record if it was corrupted
-      if (needsUpdate) {
-        await (update(conversations)..where((t) => t.id.equals(id))).write(
-          ConversationsCompanion(
-            createdAt: Value(fixedCreatedAt),
-            updatedAt: Value(fixedUpdatedAt),
-          ),
-        );
-        fixedCount++;
-      }
-    }
-
-    return fixedCount;
-  }
 
   Future<void> pruneOldConversations(int maxCount) async {
     // WHY: This query efficiently finds the IDs of the oldest conversations
@@ -354,6 +236,7 @@ class AppDatabase extends _$AppDatabase {
         content: message.text,
         isFromUser: message.isFromUser,
         status: message.status,
+        createdAt: Value(DateTime.now()),
       ),
     );
   }

@@ -3,6 +3,7 @@
 import { 
   AUTOMATION_HANDLER,
   EVENT_TYPE_AUTOMATION_FAILED,
+  EVENT_TYPE_AUTOMATION_RETRY_REQUIRED,
   EVENT_TYPE_LOGIN_REQUIRED,
   EVENT_TYPE_NEW_RESPONSE
 } from './bridge-constants';
@@ -16,7 +17,7 @@ interface WindowWithFlutterInAppWebView extends Window {
 }
 
 export function notifyDart(event: { 
-  type: typeof EVENT_TYPE_AUTOMATION_FAILED | typeof EVENT_TYPE_LOGIN_REQUIRED | typeof EVENT_TYPE_NEW_RESPONSE, 
+  type: typeof EVENT_TYPE_AUTOMATION_FAILED | typeof EVENT_TYPE_AUTOMATION_RETRY_REQUIRED | typeof EVENT_TYPE_LOGIN_REQUIRED | typeof EVENT_TYPE_NEW_RESPONSE, 
   payload?: string,
   errorCode?: string,
   location?: string,

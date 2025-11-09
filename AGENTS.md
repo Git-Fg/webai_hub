@@ -6,11 +6,11 @@ Your primary mission is to assist in the development of the AI Hybrid Hub, a Flu
 
 ---
 
-### 1. The Two Core Workflows
+## 1. The Two Core Workflows
 
 Your work on this project is divided into two distinct, high-level workflows. Always identify which workflow you are in.
 
-#### **Workflow A: Code Development & Modification**
+### **Workflow A: Code Development & Modification**
 
 This workflow applies when you are writing or changing feature code (e.g., adding a new setting, refactoring a provider).
 
@@ -23,7 +23,7 @@ This workflow applies when you are writing or changing feature code (e.g., addin
 
 ---
 
-##### Version Control Protocol (VCP)
+#### Version Control Protocol (VCP)
 
 **Goal:** To create an atomic, traceable history of changes, allowing for easy rollbacks and clear understanding of development process.
 
@@ -58,29 +58,29 @@ commit message : "refactor(aistudio): Consolidate settings logic into applyAllSe
 
 commit message : "docs(agents): Add Version Control Protocol with never-push rule"
 
-**3. 🛑 ABSOLUTE CONSTRAINT: NEVER PUSH and NEVER USE GIT CLI**
+### 3. ABSOLUTE CONSTRAINT: NEVER PUSH and NEVER USE GIT CLI
 
 You MUST NEVER use directly `git` cli command and never push by yourself : use your native tool `git`. Your role is to build a clean, logical commit history on the local branch. The human user is solely responsible for reviewing, squashing (if necessary), and pushing changes to the remote repository. This is a critical safety boundary.
 
 ---
 
-##### Sub-Workflow: TypeScript Modification Protocol
+#### Sub-Workflow: TypeScript Modification Protocol
 
 When modifying any file in `ts_src/**`, you MUST follow this strict, four-step protocol.
 
-**Step 1: Analyze Types First**
+#### Step 1: Analyze Types First
 
 Before writing code, read the relevant type definitions (`ts_src/types/**`) to understand the existing contracts.
 
-**Step 2: Modify Types Before Logic**
+#### Step 2: Modify Types Before Logic
 
 If a change is required, update the type definition file (`.ts` or `.d.ts`) **FIRST**.
 
-**Step 3: Implement Logic Changes**
+#### Step 3: Implement Logic Changes
 
 Modify the implementation logic, adhering to the standards in Section 3.4.
 
-**Step 4: Verify and Build**
+#### Step 4: Verify and Build
 
 This is a mandatory verification process, now consolidated into a single command.
 
@@ -88,8 +88,9 @@ This is a mandatory verification process, now consolidated into a single command
 npm run validate:ts
 ```
 
-This single command will automatically handle linting, static type checking, and building the asset bundle. You MUST resolve all errors it reports.
-    * See [Available Commands Reference](#2-available-commands-reference) for detailed command information.
+This single command will automatically handle linting, static type checking, and building of asset bundle. You MUST resolve all errors it reports.
+
+* See [Available Commands Reference](#2-available-commands-reference) for detailed command information.
 
 #### **Workflow B: Autonomous Feature Validation**
 
@@ -99,9 +100,9 @@ This workflow applies when you need to perform a full, end-to-end "manual" test 
     * **Example:** `@autonomous-validator aistudio`
 2. **Execute:** The `@autonomous-validator` rule is the **single source of truth** for this entire process. It will guide you through:
     * Analyzing the codebase to generate a test plan.
-    * Using the `run_and_log.sh` and `terminate_run.sh` scripts to manage the test environment.
+    * Using the unified `reports/run_session.sh` script to manage the test environment.
     * Executing the test plan.
-    * Diagnosing and attempting to fix any failures by analyzing `reports/run.log`.
+    * Diagnosing and attempting to fix any failures by analyzing session-specific log files.
     * Generating a final report with results and suggestions.
 3. **Do Not Deviate:** You must follow the `@autonomous-validator` protocol exactly. It has superseded all previous manual debugging instructions.
 
@@ -126,7 +127,7 @@ This section provides a comprehensive reference of all available commands in the
 
 #### 2.2. Command Usage Flowchart
 
-```
+```text
 Start
  │
  ├─ Did you modify TypeScript files?
@@ -208,6 +209,32 @@ Start
 * Required after modifying any files with `@riverpod` or `@freezed` annotations
 * Use with `--delete-conflicting-outputs` to avoid conflicts
 
+#### 2.4. Autonomous Validation Scripts
+
+The autonomous validation workflow relies on a single, powerful script for managing the application's lifecycle.
+
+**`bash reports/run_session.sh`**
+
+* **Purpose:** The unified script for starting, stopping, and managing a validation session.
+
+* **Behavior:**
+
+  * If no session is running, it builds the TypeScript assets and launches the Flutter app in the background. It stores the process ID and waits until the app is ready.
+
+  * If a session is already running (detected via a `flutter.pid` file), it first terminates that old session before starting a new one.
+
+* **Usage:**
+
+  * To **start a new session** (or restart a stuck one): `bash reports/run_session.sh`
+
+  * To **stop the current session**: `bash reports/run_session.sh` (The script's self-cleaning logic will handle the termination).
+
+* **Output:**
+
+  * The script outputs a unique `SESSION_ID` to stdout (format: `YYYY-MM-DD_HH-MM-SS`).
+
+  * All session output is logged to `reports/run_${SESSION_ID}.log`.
+
 ---
 
 ### 3. Technical Best Practices & Anti-Patterns (The Unchanging Rules)
@@ -235,7 +262,7 @@ These are the fundamental principles of quality code in this project. They apply
 
 **Guiding Principle:** Logs are for diagnosing state, not just printing strings. To ensure failures are immediately diagnosable and success is verifiable, all `console.log` and `console.error` calls within the TypeScript automation engine (`ts_src/**`) MUST adhere to this structured protocol.
 
-**1. Prefixed and Scoped Messages**
+### 1. Prefixed and Scoped Messages
 
 All logs must be prefixed with a scope in square brackets to provide immediate context about their origin.
 
@@ -248,7 +275,7 @@ All logs must be prefixed with a scope in square brackets to provide immediate c
 
 * **Why:** In a hybrid app, this is the only way to quickly differentiate between logs from the general engine, a specific chatbot module, and a low-level utility.
 
-**2. The Intent-Action-Result (IAR) Pattern**
+### 2. The Intent-Action-Result (IAR) Pattern
 
 For any significant operation, log the flow using three distinct phases to make the sequence of events clear.
 
@@ -272,7 +299,7 @@ For any significant operation, log the flow using three distinct phases to make 
 
 * **Why:** This pattern makes it trivial to follow the automation script's execution path and pinpoint exactly where an operation hung or failed.
 
-**3. Data-Rich Payloads, Not Verbose Dumps**
+### 3. Data-Rich Payloads, Not Verbose Dumps
 
 When logging objects or variables, log a curated summary of key properties, not the entire object. This keeps logs readable.
 
@@ -295,7 +322,7 @@ When logging objects or variables, log a curated summary of key properties, not 
   });
   ```
 
-**4. Structured Error Diagnostics (The Critical Rule)**
+## 4. Structured Error Diagnostics (The Critical Rule)
 
 When an operation fails, the `console.error` log **MUST** be a complete diagnostic report, not just an error message. It must include:
 
@@ -326,262 +353,29 @@ When an operation fails, the `console.error` log **MUST** be a complete diagnost
 
 * **Why:** This turns a simple failure log into a full bug report, drastically reducing the time needed for a developer (or another AI) to diagnose and fix the issue. It was this exact structure that allowed us to quickly solve the last regression.
 
-#### 3.2. State Management (Riverpod 3.0+)
+### 3.2. State Management (Riverpod 3.0+)
 
 * **Use Modern Notifiers:** **ALWAYS** use code-generated `@riverpod` notifiers. **NEVER** use legacy `StateNotifier` or `ChangeNotifier`.
 * **Check `ref.mounted` After `await`:** **ALWAYS** add `if (!ref.mounted) return;` after any `await` call in a provider method to prevent "use after dispose" errors.
 * **Safely Access AsyncValue State:** When reading the state of an `AsyncNotifier` in a callback or non-reactive context, **ALWAYS** use `ref.read(provider).valueOrNull` or pattern matching to avoid runtime exceptions if the state is `AsyncLoading` or `AsyncError`.
-* **Critical Anti-Pattern: `TabController` for Business Logic:**
-  * ❌ **NEVER:** `ref.read(tabControllerProvider)?.animateTo(1);`
-  * ✅ **ALWAYS:** `ref.read(currentTabIndexProvider.notifier).changeTo(index);`
-  * **Why:** `TabController` is a UI concern. `currentTabIndexProvider` is the single source of truth for navigation state.
+* **Critical Anti-Pattern: `TabController`
 
 #### 3.3. Hybrid Development (Timing, Delays, and Performance)
 
-**Guiding Principle:** The application must remain performant and reliable on low-end devices and slow networks. Hardcoded, fixed timings are an anti-pattern. All asynchronous operations must be adaptable.
+**Guiding Principle:** The application must remain performant and reliable on low-end devices and slow networks. To achieve this, we follow two core strategies: TypeScript-centric orchestration for speed, and configurable modifiers for resilience.
 
-##### **The "Observe, Don't Poll" Mandate**
+##### **The "Task Delegation" Mandate for Performance**
 
-* ❌ **NEVER:** Use `setInterval` or recursive `setTimeout` to poll for DOM elements. This is the primary cause of silent WebView crashes on mobile due to CPU exhaustion.
+- **Guiding Principle:** To minimize latency, the Dart layer's role is to **delegate**, not to **micro-manage**. All sequential automation logic that occurs within the WebView MUST be orchestrated by the TypeScript engine (`automation_engine.ts`).
 
-* ✅ **ALWAYS:** Use `MutationObserver` (`waitForElement`) for DOM structure changes and `IntersectionObserver` for visibility checks. These native APIs are event-driven and highly efficient.
+- ✅ **ALWAYS:** Consolidate all parameters (prompt, model, settings) into a single options object in Dart and pass it to a master `startAutomation` function in TypeScript with a single bridge call. The TypeScript layer is then responsible for the entire sequence (resetting state, applying settings, entering prompt, submitting).
 
-* ✅ **ALWAYS:** Follow the **"Observe Narrowly, Process Lightly"** principle: observe the smallest possible DOM subtree and disconnect the observer immediately after its condition is met to conserve resources.
+- ❌ **NEVER:** Create a "chatty" bridge where Dart sends a sequence of individual commands to the WebView to execute a workflow (e.g., `await bridge.applyModel()`, then `await bridge.setTemperature()`, then `await bridge.sendPrompt()`). This introduces unnecessary latency at each step and is considered an anti-pattern.
 
-**Critical Anti-Pattern: `setInterval` for DOM Polling**
+##### **The Mandatory Timeout Modifier Pattern for Resilience**
 
-* ❌ **NEVER:** Use `setInterval` or recursive `setTimeout` loops to poll for existence or state of a DOM element.
+- **Concept:** All timeouts within the TypeScript automation engine **MUST** be scalable via a `timeoutModifier` parameter passed from Dart. This allows users on slower devices or networks to increase timeouts without code changes.
 
-  * `// ANTI-PATTERN: Inefficient and causes silent crashes on mobile`
+- **Implementation:** The `AutomationOptions` object includes a `timeoutModifier` field (default: `1.0`). All timeout calculations in TypeScript multiply base timeouts by this modifier (e.g., `baseTimeout * options.timeoutModifier`).
 
-  * `setInterval(() => { if (document.querySelector('#foo')) { ... } }, 100);`
-
-* ✅ **ALWAYS:** Use correct, modern, event-driven API for specific wait condition. This is a non-negotiable performance and stability requirement.
-
-  * **Use `MutationObserver` (`waitForElement`)** for waiting on elements to be added, removed, or changed in the DOM.
-
-  * **Use `IntersectionObserver` (`waitForVisibleElement`)** for waiting on elements to scroll into view.
-
-* **Why:** `setInterval` polling is extremely inefficient. It forces the browser's JavaScript engine to perform expensive query operations hundreds of times per second, even when nothing on the page has changed. On mobile devices with constrained CPU and memory, this resource exhaustion leads to the WebView's JavaScript context crashing silently, which is extremely difficult to debug. `MutationObserver` is a native, highly optimized browser API that solves this problem by only executing code when a relevant DOM change actually occurs.
-
-##### **The Mandatory Timeout Modifier Pattern**
-
-* **Concept:** All timeouts within the TypeScript automation engine **MUST** be scalable. A user-configurable `timeoutModifier` is passed from Dart to TypeScript with every automation task.
-
-* **Implementation Rule:**
-
-  * A global `timeoutModifier` is stored on the `window` object by the `startAutomation` function.
-
-  * All timing-sensitive utilities (e.g., `waitForActionableElement`) **MUST NOT** use hardcoded default timeouts directly.
-
-  * They **MUST** call a shared utility function, `getModifiedTimeout(defaultTimeout)`, which applies the global `timeoutModifier` before executing the wait.
-
-* **Why:** This pattern makes the entire automation engine's timing user-configurable. It is our primary strategy for ensuring compatibility with low-end devices and is not optional.
-
-* **Diagnose First:** Before adding a `Future.delayed`, always investigate alternatives (callbacks, `Promise`, `MutationObserver`).
-* **Justify and Document:** Delays are a last resort. If one is necessary, it **MUST** be documented with a `// TIMING:` comment explaining the justification and the date.
-
-**Modern Waiting Patterns (TypeScript/JavaScript):**
-
-The automation engine uses event-driven APIs instead of polling. Follow these patterns:
-
-* **`waitForElement`**: Use for DOM structural changes (elements being added/removed). Uses `MutationObserver` as primary strategy.
-* **`waitForVisibleElement`**: Use for visibility checks, especially for lazy-loaded content and virtualized lists. Uses `IntersectionObserver`.
-* **`waitForActionableElement`**: Use before ALL critical interactions (clicks, value setting). Performs comprehensive 5-point check:
-  1. Attached (in DOM)
-  2. Visible (checkVisibility API or offsetParent)
-  3. Stable (no ongoing animations)
-  4. Enabled (not disabled/inert)
-  5. Unoccluded (not covered by another element)
-
-**Mobile Performance Checklist: The "Observe, Don't Poll" Mandate**
-
-When waiting for DOM changes, `MutationObserver` is mandatory, but it must be used correctly to preserve battery and performance. The core principle is **"Observe Narrowly, Process Lightly"**.
-
-* ✅ **DO:** Observe the smallest possible DOM subtree (e.g., a specific chat container like `#chat-history` instead of `document.body`).
-
-* ✅ **DO:** Filter mutations aggressively inside your callback. Only process changes relevant to your goal.
-
-* ✅ **DO:** Disconnect observer (`observer.disconnect()`) immediately after the condition is met. Leaving observers running is a common cause of memory leaks.
-
-* ✅ **DO:** Limit observation types in the config (`{ childList: true }`). Only watch what you need.
-
-* ❌ **NEVER:** Use `setInterval` to poll the DOM. This is the primary cause of silent WebView crashes.
-
-* ❌ **NEVER:** Observe `document.body` with `subtree: true` unless absolutely necessary and combined with aggressive filtering.
-
-* ❌ **NEVER:** Leave an observer connected after its task is complete.
-
-**Actionability vs Simple Waiting:**
-
-* **Use `waitForActionableElement`** before ALL critical interactions (clicks, value setting). Performs comprehensive 5-point check:
-  1. Attached (in DOM)
-  2. Visible (checkVisibility API or offsetParent)
-  3. Stable (no ongoing animations)
-  4. Enabled (not disabled/inert)
-  5. Unoccluded (not covered by another element)
-
----
-
-#### **3.4. UI & Layout (Spacing with `gap`)**
-
-* **Guiding Principle:** Use the `gap` package for all vertical and horizontal spacing within `Column`, `Row`, and other `Flex`-based layouts.
-
-* ✅ **ALWAYS:** Use `const Gap(...)`.
-
-    ```dart
-
-    Row(
-
-      children: [
-
-        const Icon(Icons.info),
-
-        const Gap(8), // Correct: clean, readable, and explicit.
-
-        const Text('Information'),
-
-      ],
-
-    )
-
-    ```
-
-* ❌ **NEVER:** Use `SizedBox` for spacing.
-
-    ```dart
-
-    // ANTI-PATTERN: Verbose and less clear about intent.
-
-    const SizedBox(width: 8),
-
-    ```
-
-* **Why:** The `Gap` widget is a simple, `const`-_friendly_ abstraction that makes layout code more readable and self-documenting by clearly stating its purpose is to create space.
-
-#### **3.5. Navigation (`auto_route`)**
-
-* **Guiding Principle:** All navigation between screens MUST be handled by the `auto_route` package. The routing configuration is centralized in `lib/core/router/app_router.dart`.
-
-* ✅ **ALWAYS:** Use the generated `Route` objects and the `context.router` extension.
-
-    ```dart
-
-    // Correct: Type-safe, centralized, and easy to refactor.
-
-    unawaited(context.router.push(const SettingsRoute()));
-
-    ```
-
-* ❌ **NEVER:** Use manual `Navigator.push` with `MaterialPageRoute`.
-
-    ```dart
-
-    // ANTI-PATTERN: Brittle, not type-safe, and decentralizes navigation logic.
-
-    Navigator.push(
-
-      context,
-
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
-
-    );
-
-    ```
-
-* **Why:** `auto_route` provides compile-time safety for route arguments, eliminates boilerplate, and creates a single source of truth for all navigation paths in the app. This makes the codebase more robust and easier to maintain.
-
-#### **3.6. Dependency Management (CLI Commands Only)**
-
-* **Guiding Principle:** All dependency modifications MUST be performed using CLI commands. Manual editing of dependency files is strictly forbidden.
-
-* ✅ **ALWAYS:** Use CLI commands to manage dependencies.
-
-  * **For Dart/Flutter packages:**
-    * `flutter pub add <package_name>` to add a dependency
-    * `flutter pub remove <package_name>` to remove a dependency
-    * `flutter pub upgrade <package_name>` to upgrade a specific package
-    * `flutter pub upgrade` to upgrade all packages
-
-  * **For npm/TypeScript packages:**
-    * `npm install <package_name>` or `npm install <package_name> --save-dev` to add a dependency
-    * `npm uninstall <package_name>` to remove a dependency
-    * `npm update <package_name>` to update a specific package
-
-* ❌ **NEVER:** Manually edit `pubspec.yaml` or `package.json` to add, remove, or modify dependencies.
-
-  ```yaml
-  # ANTI-PATTERN: Manual editing bypasses dependency resolution and version locking.
-  dependencies:
-    some_package: ^1.0.0  # ❌ NEVER do this
-  ```
-
-  ```json
-  // ANTI-PATTERN: Manual editing bypasses dependency resolution and version locking.
-  {
-    "dependencies": {
-      "some-package": "^1.0.0"  // ❌ NEVER do this
-    }
-  }
-  ```
-
-* **Why:** CLI commands ensure proper dependency resolution, version locking, and consistency across the project. They automatically update lock files (`pubspec.lock` and `package-lock.json`), resolve version conflicts, and maintain the integrity of the dependency tree. Manual editing can lead to inconsistent states, unresolved dependencies, and difficult-to-debug issues.
-
-#### 3.7. Modeling (Freezed 3.0+)
-
-* **Guiding Principle:** For classes with factory constructors, you **MUST** use the `sealed` or `abstract` keyword. `sealed` is the recommended modern choice as it enables exhaustive pattern matching. Omitting these keywords will cause build errors.
-
-* ✅ **ALWAYS (Recommended):** Use `sealed` for classes with factories.
-
-  ```dart
-  @freezed
-  sealed class Message with _$Message {
-    const factory Message({ required String id, /*... */ }) = _Message;
-  }
-  ```
-
-* ❌ **NEVER:** Omit `sealed` or `abstract` on classes with factories.
-
-  ```dart
-  // ANTI-PATTERN: This will fail to compile with freezed: ^3.0.0
-  @freezed
-  class Message with _$Message {
-    const factory Message({ required String id, /*... */ }) = _Message;
-  }
-  ```
-
-#### 3.8. Data Persistence (Drift)
-
-* **Guiding Principle:** Use the modern, platform-aware `NativeDatabase` constructor to abstract away file path management. This removes unnecessary dependencies on `path_provider`.
-
-* ✅ **ALWAYS:** Use `NativeDatabase.inDatabaseFolder` for database initialization.
-
-  ```dart
-  // In your database class constructor
-  AppDatabase() : super(NativeDatabase.inDatabaseFolder(path: 'db.sqlite'));
-  ```
-
-* ❌ **AVOID (Legacy):** Manual path construction with `path_provider`.
-
-  ```dart
-  // LEGACY PATTERN: Verbose and requires extra dependencies.
-  LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'db.sqlite'));
-    return NativeDatabase(file);
-  });
-  ```
-
-#### 3.9. Data Persistence & Management (Drift)
-
-**Guiding Principle:** The on-device database must remain efficient and its size must be managed to prevent performance degradation over time.
-
-* **Cascading Deletes:** When defining foreign key relationships, **ALWAYS** use `onDelete: KeyAction.cascade`. This offloads the responsibility of cleaning up related data (e.g., deleting a conversation's messages) to the database itself, which is more efficient and reliable than manual Dart code.
-
-* **Automatic History Pruning:** To protect device storage, a history pruning mechanism **MUST** be implemented.
-
-  * **Trigger:** Pruning should occur once on application startup to avoid performance overhead during user interaction.
-
-  * **Logic:** The process must fetch the user-configured `maxConversationHistory` setting, identify all conversation records exceeding this limit (ordered by creation date), and delete them in a single, efficient batch operation.
-
-* **Atomic Operations:** Any sequence of related database writes (e.g., creating a new conversation and its first message) **MUST** be wrapped in a `db.transaction()` block. This guarantees data integrity by ensuring that either all operations complete successfully or all are rolled back in case of an error.
+- **Rationale:** This pattern ensures the app remains performant by default (fast timeouts) while providing a simple configuration path for users who need more patience on slower hardware or networks.

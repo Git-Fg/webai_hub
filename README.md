@@ -21,11 +21,9 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 ### ✨ Key Features
 
 - ✅ **Native Chat Experience** - A modern, intuitive chat UI for sending prompts and viewing conversations, complete with message editing and system prompt management.
-
 - ✅ **"YOLO" Mode for Streamlined Workflow** - An optional, default-on mode that fully automates the send-and-extract cycle. Get answers back in the native UI as fast as possible with zero manual intervention. Disable it for full manual control over the refinement process.
-
-- ✅ **Contextual "Assist & Validate" Workflow** - Build a "meta-conversation" in the native UI. The app compiles the entire chat history into a structured XML prompt, enabling complex, multi-turn dialogues while you visually validate each step in a fresh, clean WebView session.
-
+- ✅ **Contextual "Assist & Validate" Workflow** - Build a "meta-conversation" in the native UI while visually validating each step in a fresh, clean WebView session.
+- ✅ **Intelligent UI Feedback** - Employs a smart UI that uses non-intrusive notifications for background status updates, reserving an interactive overlay only for when user action is needed. This provides a clear, unobstructed view of the web automation.
 - ✅ **Customizable Prompt Engineering** - Fine-tune how the AI receives context with customizable settings, including the ability to edit the instruction text that introduces the conversation history.
 
 - ✅ **Resilient Automation Engine** - A powerful TypeScript-based engine pilots web interfaces. It uses modern, event-driven APIs (`MutationObserver`) instead of inefficient polling to prevent crashes and ensure stability on mobile devices.
@@ -40,13 +38,15 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 
 AI Hybrid Hub is engineered to be reliable across a wide range of devices and network conditions. We believe that a powerful tool should not require the latest hardware.
 
--   **Lightweight State Management:** Built on Riverpod, ensuring efficient and predictable state updates without unnecessary overhead.
+- **High-Speed TypeScript Orchestration:** To maximize responsiveness, the app delegates the entire automation workflow to a powerful TypeScript engine that runs directly inside the WebView. By minimizing communication between the native UI and the web content, perceived latency is drastically reduced.
 
--   **Efficient DOM Interaction:** The TypeScript automation engine avoids inefficient polling (`setInterval`) in favor of modern, event-driven APIs like `MutationObserver`. This drastically reduces CPU and battery usage on mobile devices, preventing common WebView crashes.
+- **Lightweight State Management:** Built on Riverpod, ensuring efficient and predictable state updates without unnecessary overhead.
 
--   **User-Configurable Timeouts:** Recognizing that not all devices are equal, the app includes a **"Timeout Modifier"** in the settings. Users can easily increase the patience of the automation engine, making the app viable and reliable even on older phones or slow Wi-Fi connections.
+- **Efficient DOM Interaction:** The TypeScript automation engine avoids inefficient polling (`setInterval`) in favor of modern, event-driven APIs like `MutationObserver`. This drastically reduces CPU and battery usage on mobile devices, preventing common WebView crashes.
 
--   **Automatic History Pruning:** To manage storage space, the app automatically keeps only the most recent conversations (defaulting to 10, but configurable), preventing indefinite database growth and keeping the app feeling fast.
+- **User-Configurable Timeouts:** Recognizing that not all devices are equal, the app includes a **"Timeout Modifier"** in the settings. Users can easily increase the patience of the automation engine, making the app viable and reliable even on older phones or slow Wi-Fi connections.
+
+- **Automatic History Pruning:** To manage storage space, the app automatically keeps only the most recent conversations (defaulting to 10, but configurable), preventing indefinite database growth and keeping the app feeling fast.
 
 ### 🤖 AI Development Workflow
 
@@ -88,11 +88,11 @@ This system is designed to be self-contained, providing any compatible AI agent 
 
 - **Key Artifacts:**
 
-  - `run.log`: The **single source of truth for process output**. The agent reads this log to determine the success or failure of its actions.
+  - `run_${SESSION_ID}.log`: Session-specific log files that serve as the **single source of truth for process output**. Each validation session generates a unique log file (format: `run_YYYY-MM-DD_HH-MM-SS.log`). The agent reads these logs to determine the success or failure of its actions.
 
   - `aistudio_state_*.json`: A structured log of the validation session, including the test plan, results, and any fix attempts. This file is written to and updated by the agent throughout the process.
 
-  - `run_and_log.sh` & `terminate_run.sh`: Scripts that provide a hermetic environment for each test run, ensuring clean setup and teardown.
+  - `run_session.sh`: A unified script that provides a hermetic environment for each test run, ensuring clean setup and teardown. The script automatically handles termination of previous sessions and manages the application lifecycle.
 
 This structured approach transforms the AI from a simple code generator into an autonomous partner capable of executing complex, stateful tasks with a clear feedback loop.
 
@@ -110,7 +110,6 @@ This project is under active development.
 #### 🚀 On the Roadmap
 
 - **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.).
-- **Multi-Provider Support** - Adding more AI providers (ChatGPT, Claude, Qwen, Zai, Kimi, etc.). This will be enabled by a robust remote JSON configuration for CSS selectors, allowing updates without requiring an app release.
 - **Automated Provider Comparison** - Send the same prompt to multiple providers simultaneously and compare their responses side-by-side.
 - **Intelligent Response Synthesis** - Use a "main agent" (like Google AI Studio) to classify, compare, and synthesize responses from multiple providers, leveraging the best aspects of each answer.
 - **Smart Meta-Chat Management** - Advanced conversation management features:

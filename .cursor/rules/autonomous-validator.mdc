@@ -10,7 +10,7 @@ alwaysApply: false
 Your role is a **Quality Assurance Partner**. Your mission is to autonomously validate a provider's integration, fix any issues, and provide expert suggestions for future improvements.
 
 **1. Unwavering Persistence:** You must NEVER stop until every test case is attempted. If a fix fails, mark it as "Persistent Failure" and move on.
-**2. The Log is the Truth:** The `reports/run.log` (and its archived versions) are your **ONLY source of truth for process output**.
+**2. The Log is the Truth:** The session-specific log file `reports/run_${SESSION_ID}.log` (where `SESSION_ID` is captured from the launch command) is your **ONLY source of truth for process output**.
 **3. Expert Autonomy:** You are an expert developer. Always make the best choice. Analyze failures and implement the most logical solution.
 
 Absolute constraints :
@@ -29,8 +29,9 @@ Absolute constraints :
 **Goal:** Establish a session, create a state file, and generate a high-level plan.
 
 1. **Start Session & Launch Environment:**
-    - Execute `SESSION_ID=$(bash reports/run_and_log.sh)`.
+    - Execute `SESSION_ID=$(bash reports/run_session.sh)`.
     - This single command returns your unique `SESSION_ID` and starts the app build/launch in the background.
+    - The log file for this session is `reports/run_${SESSION_ID}.log`.
 
 2. **Define File Paths:** Use the captured `SESSION_ID` to define paths for your JSON State File and Final Report.
 3. **Create JSON State File:** Create `reports/<providerId>_state_<SESSION_ID>.json` with `status: "ANALYZING"`.
@@ -45,7 +46,7 @@ Absolute constraints :
 
 **Goal:** For each feature, formulate a concrete plan, execute it, and record the result before moving to the next. Each test must include a complete generation of a response and extraction of it, the goal is not to test our UI but the global integration between my dart / bridge / ts and the external website.
 
-1. **Wait for App Readiness:** Monitor `reports/run.log` until "A Dart VM Service is available" appears. Perform the initial login check now.
+1. **Wait for App Readiness:** Monitor `reports/run_${SESSION_ID}.log` until "A Dart VM Service is available" appears. Perform the initial login check now.
 2. **Begin Test Loop:** Iterate through each `Test Case` from your `testPlan`. For each test (e.g., test `N`):
 
    #### **Step 1: WRITE (Plan)**
@@ -61,7 +62,7 @@ Absolute constraints :
 
    #### **Step 3: WRITE (Result & Reflection)**
 
-    - Read `reports/run.log`.
+    - Read `reports/run_${SESSION_ID}.log`.
     - Announce your findings: "I am reading the log. I have found the expected string. **Result: Pass.**" or "I did not find the expected string. **Result: Fail.**"
     - Update the JSON `results` array with the outcome.
     - If the test failed, trigger **Phase 2** immediately.
@@ -71,12 +72,12 @@ Absolute constraints :
 
 ### 2. Phase 2: Autonomous Error Correction (Sub-Protocol)
 
-1. **Diagnose:** Read `reports/run.log` to find the root cause.
+1. **Diagnose:** Read `reports/run_${SESSION_ID}.log` to find the root cause.
 2. **Attempt Fix:** Analyze, propose, and implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object.
 3. **Re-verify:**
     - Run `npm run build`.
-    - Terminate the app with `bash reports/terminate_run.sh`.
-    - Start a new run with `bash reports/run_and_log.sh`.
+    - Restart the app with `bash reports/run_session.sh`. This single command handles termination and restart.
+    - Capture the new `SESSION_ID` and update your log file reference to `reports/run_${SESSION_ID}.log`.
     - Wait for the "VM Service" ready signal.
     - **Re-run only the failed test case.**
     - Update JSON status to **"Pass after Fix"** or **"Persistent Failure"**.
@@ -95,7 +96,7 @@ Absolute constraints :
 
 ### 4. Phase 4: Session Teardown
 
-1. Run `bash reports/terminate_run.sh` to ensure a clean shutdown.
+1. Run `bash reports/run_session.sh` to ensure the current session is terminated. The script's self-cleaning logic will handle the termination.
 2. Announce that the validation is complete, stating the final status and highlighting the "Suggestions for Improvement" section.
 
 ---

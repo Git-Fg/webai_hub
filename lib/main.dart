@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
@@ -9,6 +11,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provide
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
@@ -181,10 +184,29 @@ class _MainScreenState extends ConsumerState<MainScreen>
       if (_tabController.index != next) {
         _tabController.animateTo(next);
       }
+
+      // WHY: Pre-warm the JavaScript bridge as soon as the user switches to the WebView tab.
+      // This eliminates the bridge-ready wait time when the user sends a prompt,
+      // making the UI feel significantly more responsive.
+      if (next == 1) {
+        // 1 is the index of the WebView tab
+        unawaited(
+          Future(() async {
+            try {
+              await ref.read(javaScriptBridgeProvider).waitForBridgeReady();
+              ref.read(talkerProvider).info('[Pre-warm] Bridge is ready.');
+            } on Object catch (e) {
+              // WHY: Silently ignore errors, as this is a non-critical optimization.
+              ref
+                  .read(talkerProvider)
+                  .debug('[Pre-warm] Bridge pre-warm failed silently: $e');
+            }
+          }),
+        );
+      }
     });
 
     final currentIndex = ref.watch(currentTabIndexProvider);
-    final overlayState = ref.watch(overlayManagerProvider);
 
     return AutomationStateObserver(
       child: Scaffold(
@@ -198,21 +220,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 AiWebviewScreen(),
               ],
             ),
-            // WHY: This declarative structure is robust.
-            // The overlay's base position is aligned to the top-center,
-            // and the provider's offset is applied as a pure delta from that point.
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Transform.translate(
-                  offset: overlayState.position,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: kDefaultPadding),
-                    child: DraggableCompanionOverlay(overlayKey: _overlayKey),
-                  ),
-                ),
-              ),
-            ),
+            DraggableCompanionOverlay(overlayKey: _overlayKey),
           ],
         ),
         bottomNavigationBar: TabBar(
@@ -244,53 +252,43 @@ class DraggableCompanionOverlay extends ConsumerWidget {
     final currentTabIndex = ref.watch(currentTabIndexProvider);
     final overlayState = ref.watch(overlayManagerProvider);
 
-    // Determine if overlay should be visible at all.
-    // It only shows for 'refining' and 'needsLogin' states on WebView tab.
     final shouldShow =
-        (status.maybeWhen(
+        status.maybeWhen(
           refining: (messageCount, isExtracting) => true,
           needsLogin: (onResume) => true,
           orElse: () => false,
-        )) &&
+        ) &&
         currentTabIndex == 1;
-
-    // Determine alignment based on state.
-    final alignment = status.maybeWhen(
-      needsLogin: (onResume) => Alignment.center, // Centered for login prompt
-      orElse: () => Alignment.topCenter, // Draggable from the top for refining
-    );
-
-    // Determine if dragging is enabled.
     final isDraggable = status.maybeWhen(
       refining: (messageCount, isExtracting) => true,
       orElse: () => false,
     );
+    final isCentered = status.maybeWhen(
+      needsLogin: (onResume) => true,
+      orElse: () => false,
+    );
 
-    return AnimatedOpacity(
-      opacity: shouldShow ? 1.0 : 0.0,
-      duration: kShortAnimationDuration,
-      child: IgnorePointer(
-        ignoring: !shouldShow,
-        child: Positioned.fill(
-          child: Align(
-            alignment: alignment,
-            child: Transform.translate(
-              // Only apply the draggable offset if in refining state.
-              offset: isDraggable ? overlayState.position : Offset.zero,
-              child: Padding(
-                padding: const EdgeInsets.only(top: kDefaultPadding),
-                // Conditionally wrap with GestureDetector for dragging.
-                child: isDraggable
-                    ? GestureDetector(
-                        onPanUpdate: (details) {
-                          ref
-                              .read(overlayManagerProvider.notifier)
-                              .updatePosition(details.delta);
-                        },
-                        child: CompanionOverlay(overlayKey: overlayKey),
-                      )
-                    : CompanionOverlay(overlayKey: overlayKey),
-              ),
+    return Align(
+      alignment: isCentered ? Alignment.center : Alignment.topCenter,
+      child: AnimatedOpacity(
+        opacity: shouldShow ? 1.0 : 0.0,
+        duration: kShortAnimationDuration,
+        child: IgnorePointer(
+          ignoring: !shouldShow,
+          child: Transform.translate(
+            offset: isDraggable ? overlayState.position : Offset.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(kDefaultPadding),
+              child: isDraggable
+                  ? GestureDetector(
+                      onPanUpdate: (details) {
+                        ref
+                            .read(overlayManagerProvider.notifier)
+                            .updatePosition(details.delta);
+                      },
+                      child: CompanionOverlay(overlayKey: overlayKey),
+                    )
+                  : CompanionOverlay(overlayKey: overlayKey),
             ),
           ),
         ),

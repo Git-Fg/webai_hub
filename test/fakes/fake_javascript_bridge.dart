@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 enum ErrorType {
   none,
@@ -52,28 +51,9 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
-  Future<void> loadUrlAndWaitForReady(URLRequest urlRequest) async {
-    // WHY: In a test environment, this action should be considered instantaneous and successful.
-    // The previous implementation created a deadlock by waiting for a completer
-    // that it never completed. This version simply resolves immediately.
-    // For tests that need to check the waiting logic, `simulateReload()` can be
-    // called explicitly before the provider action.
-    if (!_readyCompleter.isCompleted) {
-      _readyCompleter.complete();
-    }
-    await Future<void>.delayed(Duration.zero);
-  }
-
-  @override
   Future<void> waitForBridgeReady() async {
     // Explicitly wait until tests mark the bridge as ready
     await _readyCompleter.future;
-  }
-
-  @override
-  Future<void> startResponseObserver() async {
-    // In tests, simply simulate that the observer starts
-    await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 
   @override
@@ -129,6 +109,7 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // REMOVED: waitForResponseCompletion is no longer needed
 
   // Method to simulate getCapturedLogs (used by conversation_provider)
+  @override
   Future<List<Map<String, dynamic>>> getCapturedLogs() async {
     return [];
   }

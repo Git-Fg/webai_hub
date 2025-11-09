@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
@@ -71,26 +70,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
     // Listen for explicit scroll-to-bottom requests (e.g., after extraction)
     ref.listen(scrollToBottomRequestProvider, (previous, next) {
       _scrollToBottom();
-    });
-
-    ref.listen<AsyncValue<List<Message>>>(conversationProvider, (
-      previous,
-      next,
-    ) {
-      next.maybeWhen(
-        data: (conversation) {
-          final previousLength =
-              previous?.maybeWhen(
-                data: (prev) => prev.length,
-                orElse: () => 0,
-              ) ??
-              0;
-          if (conversation.length > previousLength) {
-            _scrollToBottom();
-          }
-        },
-        orElse: () {},
-      );
     });
 
     return Scaffold(
@@ -171,13 +150,16 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         ),
                         TextButton(
                           child: const Text('Confirm'),
-                          onPressed: () {
-                            unawaited(
-                              ref
-                                  .read(conversationActionsProvider.notifier)
-                                  .clearConversation(),
-                            );
+                          onPressed: () async {
                             Navigator.of(context).pop();
+                            await Future<void>.delayed(
+                              const Duration(milliseconds: 300),
+                            );
+                            if (context.mounted) {
+                              await ref
+                                  .read(conversationActionsProvider.notifier)
+                                  .clearConversation();
+                            }
                           },
                         ),
                       ],

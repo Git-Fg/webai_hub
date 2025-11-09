@@ -22,4 +22,7 @@ class BridgeConstants {
 
   /// Event type: Automation failed with an error
   static const String eventTypeAutomationFailed = 'AUTOMATION_FAILED';
+
+  /// Event type: Automation retry required due to transient error
+  static const String eventTypeAutomationRetryRequired = 'AUTOMATION_RETRY_REQUIRED';
 }

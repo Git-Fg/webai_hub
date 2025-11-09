@@ -12,10 +12,8 @@ import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
-import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
@@ -168,9 +166,10 @@ class ConversationActions extends _$ConversationActions {
     bool isResend = false,
     String? excludeMessageId,
   }) async {
-    // ADD THIS: Get the logger instance at the start
     final talker = ref.read(talkerProvider);
-    talker.info('[Orchestration] Starting...');
+    talker.info(
+      '[Orchestration] Delegating full automation cycle to TypeScript...',
+    );
 
     final db = ref.read(appDatabaseProvider);
 
@@ -228,86 +227,32 @@ class ConversationActions extends _$ConversationActions {
 
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
-      final controller = ref.read(webViewControllerProvider);
 
-      // This is the critical check
-      if (controller == null) {
-        talker.error(
-          '[Orchestration] CRITICAL FAILURE: WebView controller is null.',
-        );
-        throw AutomationError(
-          errorCode: AutomationErrorCode.webViewNotReady,
-          location: '_orchestrateAutomation',
-          message: 'WebView controller is not available to start automation.',
-        );
-      }
-
-      // === START FIX: RELOAD WEBVIEW TO A CLEAN STATE ===
-      // WHY: Reset the WebView to the "new chat" URL before each automation run.
-      // This ensures the automation engine always operates on the correct page,
-      // preventing selector timeouts when attempting to run on a previous conversation's result page.
-      talker.debug(
-        '[Orchestration] Step 1: Reloading WebView to clean state...',
-      );
-      await controller.loadUrl(
-        urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
-      );
-      talker.debug('[Orchestration] Step 1 SUCCESS: WebView reloaded.');
-      // After reloading, we must wait for the new page to be fully initialized.
-      // The existing onLoadStop handler will re-inject the bridge script.
-
-      if (!ref.mounted) {
-        talker.warning(
-          '[Orchestration] Bailed out: ref not mounted after reload.',
-        );
-        return;
-      }
-
-      talker.debug(
-        '[Orchestration] Step 2: Waiting for bridge to be ready on new page...',
-      );
+      // Step 1: Ensure bridge is ready (pre-warming may have already done this)
       await bridge.waitForBridgeReady();
-      talker.debug('[Orchestration] Step 2 SUCCESS: Bridge is ready.');
-      // === END FIX ===
+      if (!ref.mounted) return;
 
-      if (!ref.mounted) {
-        talker.warning(
-          '[Orchestration] Bailed out: ref not mounted after bridge wait.',
-        );
-        return;
-      }
-
-      talker.debug(
-        '[Orchestration] Step 3: Requesting tab switch to WebView (index 1)...',
-      );
-      // Switch to the WebView tab
+      // Step 2: Switch to WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
-      talker.info('[Orchestration] Step 3 SUCCESS: Tab switch requested.');
+      talker.info('[Orchestration] Tab switch requested.');
 
       // TIMING: Yield to event loop to ensure widget tree updates before WebView is touched.
       await Future<void>.delayed(Duration.zero);
       if (!ref.mounted) return;
 
-      // Get console logs to debug selector issues (captured before automation starts)
-      final logs = await bridge.getCapturedLogs();
-      if (logs.isNotEmpty) {
-        talker.debug(
-          '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
-        );
-      }
-
+      // Step 3: Build automation options
       final automationOptions = _buildAutomationOptions(promptWithContext);
 
       talker.info(
         '[ConversationProvider LOG] Sending automation options to bridge: $automationOptions',
       );
 
-      talker.debug(
-        '[Orchestration] Step 4: Starting automation script in WebView...',
-      );
-      // Start the automation with all configuration options.
+      // Step 4: Delegate the full automation cycle to TypeScript
+      // WHY: The TypeScript engine now handles resetState, waitForReady, applyAllSettings,
+      // sendPrompt, and startObserving in a single autonomous cycle.
       await bridge.startAutomation(automationOptions);
-      talker.info('[Orchestration] Step 4 SUCCESS: Automation script started.');
+
+      talker.info('[Orchestration] Full cycle delegated successfully.');
 
       if (ref.mounted) {
         await _updateLastMessage(
@@ -317,12 +262,6 @@ class ConversationActions extends _$ConversationActions {
         );
 
         ref.read(automationStateProvider.notifier).moveToObserving();
-
-        talker.debug('[Orchestration] Step 5: Starting response observer...');
-        await bridge.startResponseObserver();
-        talker.info(
-          '[Orchestration] Step 5 SUCCESS: Response observer started.',
-        );
       }
     } on Object catch (e, st) {
       if (!ref.mounted) return;
@@ -470,6 +409,33 @@ class ConversationActions extends _$ConversationActions {
       conversationId: activeId,
     );
     ref.read(automationStateProvider.notifier).moveToFailed();
+  }
+
+  Future<void> retryLastAutomation() async {
+    final talker = ref.read(talkerProvider);
+    talker.warning(
+      '[ConversationProvider] Received retry request from bridge.',
+    );
+
+    final automationNotifier = ref.read(automationStateProvider.notifier);
+    final lastPrompt = automationNotifier.currentPrompt;
+    final activeId = ref.read(activeConversationIdProvider);
+
+    if (lastPrompt != null && activeId != null) {
+      talker.info('Retrying automation with prompt: "$lastPrompt"');
+      await _updateLastMessage(
+        'A transient error occurred. Retrying...',
+        MessageStatus.sending,
+        conversationId: activeId,
+      );
+      // Re-run the full orchestration logic from the start.
+      await _orchestrateAutomation(lastPrompt, activeId, isResend: true);
+    } else {
+      talker.error(
+        'Could not retry: last prompt or active conversation ID is null.',
+      );
+      await onAutomationFailed('Could not perform automatic retry.');
+    }
   }
 
   Future<void> _updateLastMessage(

@@ -13,7 +13,6 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_inappwebview: ^6.0.0
-  flutter_markdown_plus: ^1.0.5
   flutter_riverpod: ^3.0.1
   freezed_annotation: ^3.0.0
   gap: ^3.0.1
@@ -22,9 +21,10 @@ dependencies:
   hive_ce: ^2.15.1
   hive_flutter: ^1.1.0
   json_annotation: ^4.9.0
-  path_provider: ^2.1.5
+  path: ^1.9.1
   popover: ^0.4.0
   riverpod_annotation: ^3.0.1
+  sqflite: ^2.4.2
   sqlite3_flutter_libs: ^0.5.40
   talker_flutter: ^5.0.2
   talker_riverpod_logger: ^5.0.2

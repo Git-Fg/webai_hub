@@ -642,26 +642,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       );
     }
   }
-
-  @override
-  Future<void> startResponseObserver() async {
-    try {
-      await _waitForWebViewToBeCreated();
-      final controller = _controller;
-      await controller.evaluateJavascript(
-        source: 'window.startResponseObserver();',
-      );
-    } on Object catch (e, stackTrace) {
-      throw AutomationError(
-        errorCode: AutomationErrorCode.automationExecutionFailed,
-        location: 'startResponseObserver',
-        message: 'Failed to start response observer script',
-        diagnostics: _getBridgeDiagnostics(),
-        originalError: e,
-        stackTrace: stackTrace,
-      );
-    }
-  }
 }
 
 @Riverpod(keepAlive: true)

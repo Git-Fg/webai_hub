@@ -12,6 +12,9 @@ declare global {
     /** Internal counter for tracking processed response footers. */
     __processedFootersCount?: number;
 
+    /** Flag to prevent infinite retry loops for transient errors. */
+    __hasAttemptedRetry?: boolean;
+
     /** Entry point for automation. Called from Dart. */
     startAutomation: (options: AutomationOptions) => Promise<void>;
 
@@ -20,9 +23,6 @@ declare global {
 
     /** Triggers DOM analysis for debugging. Called from Dart. */
     inspectDOMForSelectors: () => Record<string, unknown>;
-    
-    /** Starts a MutationObserver to watch for new responses. Called from Dart. */
-    startResponseObserver: () => void;
 
     /** The communication bridge injected by `flutter_inappwebview`. */
     flutter_inappwebview?: {

@@ -136,9 +136,9 @@ Users can customize the instruction text that introduces the conversation histor
 
 ### 4.1. Configuration-Driven DOM Automation Engine
 
-- **Remote Configuration:** CSS selectors are **NOT** hardcoded. They are defined in a **remote JSON file**, versioned per provider.
-  - **JSON Structure:** Each selector definition includes a `primary` selector and an ordered array of `fallbacks`.
-  - **Management:** The Dart layer is responsible for fetching (with `ETag`), caching locally, and injecting this configuration into the `WebView` on startup.
+- **Hardcoded Selectors:** CSS selectors are defined directly in the TypeScript automation engine files, organized per provider in the `ts_src/chatbots/` directory.
+  - **Selector Structure:** Each provider implementation uses an array of selectors with a `primary` selector and ordered `fallbacks` for resilience.
+  - **Management:** Selectors are maintained in the codebase and updated via app releases when provider UIs change.
 
 - **"Defense in Depth" Fallback Strategy:** The TS engine sequentially iterates through selectors (`primary`, then `fallbacks`) until an "actionable" (visible, not-disabled) element is found. See §4.10.1 for the Selector Priority Pyramid that guides selector choice.
 
@@ -148,7 +148,7 @@ Users can customize the instruction text that introduces the conversation histor
 
 - **Modern Waiting Patterns:** The engine uses event-driven APIs (`MutationObserver`, `IntersectionObserver`) instead of polling. See §4.10.2 for the "Sensor Array" pattern and §4.10.3 for comprehensive actionability checks.
 
-This configuration-driven approach directly supports the README's Multi-Provider Support goal: by relying on a remotely fetched JSON (with ETag-based caching), providers can be added or updated (selectors and behaviors) without requiring a new app release.
+This modular architecture supports the README's Multi-Provider Support goal: new providers can be added by implementing the `Chatbot` interface in a new file within `ts_src/chatbots/`, following the established patterns for selector management and fallback strategies.
 
 **For comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies, see §4.10.**
 
@@ -174,13 +174,13 @@ The JavaScript bridge implements a multi-layered defense system to handle the ep
 
 - **Multi-Stage Verification:** The `waitForBridgeReady()` method uses a robust, four-stage protocol instead of simple polling. It sequentially waits for:
 
-  1.  **Native Controller:** The Flutter `InAppWebViewController` widget is initialized.
+  1. **Native Controller:** The Flutter `InAppWebViewController` widget is initialized.
 
-  2.  **Page Load:** The web page's `document.readyState` is `'complete'`. This prevents race conditions where the script is checked before the page has finished loading.
+  2. **Page Load:** The web page's `document.readyState` is `'complete'`. This prevents race conditions where the script is checked before the page has finished loading.
 
-  3.  **Script Injection:** The `window.__AI_HYBRID_HUB_INITIALIZED__` flag is present, confirming the JavaScript bundle has executed.
+  3. **Script Injection:** The `window.__AI_HYBRID_HUB_INITIALIZED__` flag is present, confirming the JavaScript bundle has executed.
 
-  4.  **Final Signal:** The JavaScript bridge sends an explicit "ready" signal to Dart, confirming all handlers are active.
+  4. **Final Signal:** The JavaScript bridge sends an explicit "ready" signal to Dart, confirming all handlers are active.
 
 - **Integration:** This comprehensive check is performed before any critical operation (`startAutomation`, `extractFinalResponse`), guaranteeing the bridge is in a valid state.
 
@@ -221,13 +221,39 @@ The JavaScript bridge implements a multi-layered defense system to handle the ep
   - **Login:** Displays a message indicating reconnection is needed.
   - **Selector:** Informs the user of temporary unavailability and logs the error for maintenance.
 
-### 4.4. State-Driven Workflow Orchestration (Dart-side)
+### 4.4. Workflow Orchestration: TypeScript-Centric Task Delegation
 
-The complex "Assist & Validate" workflow is orchestrated entirely within the Dart layer, primarily in the `ConversationProvider`. The JavaScript bridge remains a simple "driver" for the web page.
+To achieve maximum performance and responsiveness, the application has evolved from a Dart-driven orchestration model to a **TypeScript-centric task delegation model**. The guiding principle is to minimize the latency of the Dart-JavaScript bridge by reducing communication to a single, comprehensive command.
 
-- **Context Management:** The private method `_buildPromptWithContext` is responsible for generating the XML prompt string. It composes `<system>`, `<history>` (flat text format), and `<user_input>` from current state. A robust XML construction approach will be used (library vs. safe builder to be decided). A legacy plain‑text format may be retained as a user‑selectable fallback. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
+- **Previous Model (Anti-Pattern):** The Dart layer acted as a "micro-manager," sending a sequence of individual commands to the WebView (`loadUrl`, `waitForReady`, `startAutomation`, `startResponseObserver`), with each step introducing bridge latency.
 
-- **WebView Lifecycle Control:** Before starting any new conversation turn (Contextual Seeding), the `_orchestrateAutomation` method explicitly calls `webViewController.loadUrl()` with the provider's "new chat" URL. This is a critical step to ensure each turn is hermetic and contextually clean.
+- **Current Model (High-Performance):**
+
+  1.  **Single Point of Entry:** The Dart `ConversationProvider` is now only responsible for gathering all user settings and context into a single `AutomationOptions` object.
+
+  2.  **Total Delegation:** It makes a **single call** to a master `startAutomation(options)` function in the JavaScript bridge.
+
+  3.  **Autonomous TypeScript Orchestrator:** The `automation_engine.ts` script takes full control of the end-to-end workflow within the WebView:
+
+      *   It autonomously resets the UI to a clean state (e.g., by clicking "New Chat").
+
+      *   It applies all settings (model, temperature, etc.).
+
+      *   It enters the prompt and validates UI readiness (e.g., token count).
+
+      *   It submits the prompt.
+
+      *   It begins observing for the response.
+
+  4.  **Final Notification:** The script only communicates back to Dart upon final success (`NEW_RESPONSE_DETECTED`) or failure (`AUTOMATION_FAILED`, `LOGIN_REQUIRED`), eliminating all intermediate chatter.
+
+This architecture dramatically reduces the perceived latency for the user, as the entire complex automation sequence runs natively within the high-performance JavaScript environment of the WebView, free from the overhead of multiple asynchronous bridge crossings. The Dart layer's role is simplified to that of a delegator, not an orchestrator.
+
+**Implementation Details:**
+
+- **Context Management:** The private method `_buildPromptWithContext` in `ConversationProvider` is responsible for generating the XML prompt string. It composes `<system>`, `<history>` (flat text format), and `<user_input>` from current state. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
+
+- **WebView Lifecycle Control:** The TypeScript engine is now responsible for resetting the UI. At the beginning of each automation cycle, it calls its internal `resetState()` method, which simulates a click on the "New Chat" button within the web page. This in-page navigation is significantly faster than the previous full-page reload (`loadUrl`) initiated by Dart.
 
 - **State Machine Logic:** The `AutomationState` provider acts as the central state machine.
 
@@ -290,28 +316,28 @@ This pattern is a proven technique for maintaining model focus in complex prompt
 
 ### 4.8. Advanced UI/UX Patterns
 
-To create a fluid and non-obstructive user experience, the application adopts several advanced UI patterns managed by dedicated Riverpod state providers.
+To create a fluid and non-obstructive user experience, the application adopts a clear paradigm: **Notifications for Status, Overlay for Interaction**. This separates informational feedback from interactive controls.
 
-#### 4.7.1. Draggable & Minimizable Companion Overlay
+#### 4.8.1. Ephemeral Notifications for Status Updates
 
-The automation overlay is not a static banner. It is a fully interactive floating panel designed to maximize visibility of the underlying WebView.
+For purely informational states where no user action is required, the app uses ephemeral, non-occluding notifications. This prevents the UI from interfering with the automation engine and provides clear, temporary feedback.
+
+- **Problem:** A persistent overlay shown during the automation's setup phase (`sending`) can physically block (occlude) web elements that the script needs to click, causing automation to fail.
+
+- **Solution:**
+  - A dedicated `AutomationStateObserver` widget listens for changes in the `AutomationState`.
+  - For informational states (`sending`, `observing`, `failed`), it programmatically displays an `ElegantNotification`.
+  - These notifications inform the user of the current status without blocking interaction with the underlying WebView. They are automatically managed (shown and dismissed) as the state transitions.
+
+##### 4.8.2. Interactive Companion Overlay for User Actions
+
+The draggable `CompanionOverlay` is now reserved exclusively for states that require direct user interaction.
 
 - **Implementation:**
-  - A `GestureDetector` with an `onPanUpdate` callback tracks drag movements. This is preferred over the `Draggable` widget for real-time positional control.
-  - A dedicated `OverlayStateNotifier` provider (`@Riverpod(keepAlive: true)`) manages the overlay's state, including its `Offset` (position) and a boolean `isMinimized`. `keepAlive` is essential to preserve the panel's position when switching between tabs.
-  - The panel's position is clamped to the screen's boundaries. This is achieved in the UI layer (`main.dart`) by measuring the overlay's `RenderBox` size via a `GlobalKey` and the screen's `MediaQuery` size, then passing these constraints to a clamping method in the notifier.
-  - An `AnimatedSwitcher` handles the smooth visual transition between the full-sized panel and its minimized `FloatingActionButton` state.
-
-#### 4.7.2. Decoupled Error & Status Messaging
-
-To provide non-destructive user feedback (e.g., an extraction error) without polluting the permanent conversation history, the application uses a dedicated provider for ephemeral messages.
-
-- **Problem:** An extraction failure should not overwrite the "Assistant is responding..." message, as this would prevent the user from retrying the extraction.
-- **Solution:**
-  - An `EphemeralMessageProvider` (`@riverpod`) holds a single, nullable `Message` object.
-  - When an error occurs (e.g., in `ConversationProvider.extractAndReturnToHub`), it posts the error message to this provider instead of altering its own state list.
-  - The `HubScreen` UI listens to `EphemeralMessageProvider`. If the state is not null, it renders the message as a temporary `ChatBubble` at the end of the `ListView`.
-  - The ephemeral message is cleared automatically on the next user action (like starting a new extraction or finalizing the automation).
+  - The overlay's visibility is strictly tied to interactive states: `refining` and `needsLogin`.
+  - **`refining` State:** The overlay appears as a full, draggable panel, allowing the user to position it conveniently while accessing the "Extract & View Hub" and "Done" buttons.
+  - **`needsLogin` State:** The overlay appears as a simplified, non-draggable, centered modal dialog, presenting the "I'm logged in, Continue" button for a clear, focused action.
+  - This conditional behavior ensures the UI component matches the required user task, reducing confusion and improving usability.
 
 #### 4.7.3. Signal-Based UI Actions (Auto-Scrolling)
 
@@ -542,7 +568,7 @@ By evolving the schema (e.g., adding attributes or new sections), the prompt bec
 | :------------------ | :------------------------------ | :----------------------------------------------------- |
 | **Scope**           | 1 Provider (Google AI Studio)   | 4+ Providers                                           |
 | **Database**        | **None** (in-memory state)      | ✅ **Drift** for history                               |
-| **CSS Selectors**   | **Hardcoded** in TypeScript     | ✅ **Remote JSON Configuration**                       |
+| **CSS Selectors**   | **Hardcoded** in TypeScript     | ✅ **Hardcoded** in TypeScript                          |
 | **Conversation Model**| Linear (single shot per prompt) | ✅ **Multi-Turn (Contextual Seeding)**                 |
 | **Extraction Process**| One-time per prompt             | ✅ **Iterative Refinement & Replacement**              |
 | **WebView State**   | Persistent session              | ✅ **Reloaded per turn for clean context**             |

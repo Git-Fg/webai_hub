@@ -480,14 +480,21 @@ This model has now been evolved into the "meta-conversation" builder originally 
 
 These enhancements successfully transition the project from "proving the automation" to "building the product," fully realizing the core workflow described in `BLUEPRINT_FULL.md`.
 
-### 7.8. UI Pattern: Draggable & Minimizable Companion Overlay
+### 7.8. UI Pattern Evolution: From Unified Overlay to "Notification for Status, Overlay for Interaction"
 
-To maximize the visible area of the provider `WebView`, the automation panel is implemented as a draggable, minimizable overlay instead of a static banner. A dedicated `OverlayStateNotifier` (keepAlive) manages position and minimized state so the overlay persists across tab switches.
+The MVP implemented a single, unified `CompanionOverlay` for all automation states ("Sending...", "Refining...", "Failed"). While functional, this created a critical flaw: the overlay would appear immediately and could physically block (occlude) web elements that the automation script needed to interact with during its setup phase.
 
-### 7.9. UI Pattern: Decoupled Error Messaging
+The full version resolves this with a more sophisticated, two-part UI paradigm:
 
-Errors during extraction or automation are surfaced via an ephemeral message provider rather than altering the permanent conversation history. This preserves the ability to retry without losing context, while making transient issues visible to the user.
+1. **Ephemeral Notifications (`ElegantNotification`):** Used for non-interactive, informational states like `sending`, `observing`, and `failed`. These provide feedback without interfering with the WebView.
+2. **Interactive Overlay:** The `CompanionOverlay` is now reserved exclusively for states requiring user action (`refining`, `needsLogin`), ensuring it only appears when it's genuinely needed.
+
+This evolution solved the occlusion bug at an architectural level and created a cleaner, more intuitive user experience.
+
+### 7.9. UI Pattern: Decoupled Error Messaging (via Notifications)
+
+The principle of decoupling error messages from permanent conversation history remains. The implementation, however, has evolved from using a custom `EphemeralMessageProvider` to leveraging the new notification system. When an error occurs (e.g., during extraction), it is now surfaced as an error-styled `ElegantNotification`, which is consistent with how all other non-interactive feedback is presented.
 
 ### 7.10. UI Pattern: Signal-Based UI Actions
 
-Business logic (e.g., `ConversationProvider`) emits a lightweight signal (e.g., `ScrollToBottomRequestProvider`) when UI actions like scrolling should occur. The UI layer listens to the signal and performs the action locally. This decouples state management from widget-specific controllers.
+This pattern remains unchanged and is a core principle. Business logic (e.g., `ConversationProvider`) emits a lightweight signal (e.g., `ScrollToBottomRequestProvider`) when UI actions like scrolling should occur. The UI layer listens to the signal and performs the action locally. This effectively decouples state management from widget-specific controllers.

@@ -20,28 +20,23 @@ export interface AutomationOptions {
  * 
  * **Best Practices:**
  * 
- * - **Selector Strategy:** Follow the Selector Priority Pyramid (see BLUEPRINT_FULL.md §4.10.1):
- *   - Tier 1: User-facing locators (ARIA roles, accessible names)
- *   - Tier 2: Stable test hooks (`data-testid`)
- *   - Tier 3: Structural relationships (`:has()`, `.closest()`)
- *   - Never: Auto-generated classes, fragile DOM paths
+ * - **Sequence:** Implementations should follow the "Prepare Environment, then Act" principle.
+ *   All configuration (model, settings) should be done before interacting with the prompt input.
  * 
- * - **Waiting Strategies:** Use event-driven APIs instead of polling (see BLUEPRINT_FULL.md §4.10.2):
- *   - `waitForElement`: For DOM structural changes (uses `MutationObserver`)
- *   - `waitForVisibleElement`: For visibility checks (uses `IntersectionObserver`)
- *   - `waitForActionableElement`: For comprehensive actionability validation before interactions
+ * - **Actionability:** Always use `waitForActionableElement` before critical interactions.
  * 
- * - **Actionability Checks:** Always use `waitForActionableElement` before critical interactions
- *   (clicks, value setting). This performs a 5-point check: Attached, Visible, Stable, Enabled, Unoccluded.
+ * - **Mobile Performance:** Follow "Observe Narrowly, Process Lightly" principles.
  * 
- * - **Mobile Performance:** Follow "Observe Narrowly, Process Lightly" principles (see BLUEPRINT_FULL.md §4.10.4):
- *   - Observe smallest possible DOM subtree
- *   - Filter mutations aggressively
- *   - Disconnect observers immediately after use
- * 
- * @see BLUEPRINT_FULL.md §4.10 for comprehensive documentation on selector strategies and waiting patterns
+ * @see BLUEPRINT_FULL.md §4.10 for comprehensive documentation on selector strategies and waiting patterns.
  */
 export interface Chatbot {
+  /**
+   * (Optional) Resets the web UI to a clean state, ready for a new prompt.
+   * Typically involves clicking a "New Chat" button. If not implemented,
+   * the engine assumes the UI is already in a clean state.
+   */
+  resetState?: () => Promise<void>;
+
   /**
    * Waits until the chatbot page is fully loaded and ready for automation.
    * 

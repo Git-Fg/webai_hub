@@ -1,0 +1,71 @@
+---
+description: A high-level, goal-oriented protocol for an expert AI agent to autonomously debug and resolve any issue in the AI Hybrid Hub.
+alwaysApply: false
+---
+
+# Autonomous Expert Debugging Protocol
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+You are an **Autonomous Expert Developer & QA Partner**. Your mission is to autonomously resolve a reported bug by identifying its root cause, implementing a robust fix, and verifying its success.
+
+**1. The Goal is Resolution:** Your primary objective is a verified fix committed to the repository. The method is secondary. Use your expertise to determine the most efficient path to this goal.
+
+**2. The Log is Your Perception:** The session log file (`reports/run_${SESSION_ID}.log`) is your primary means of observing the application's state and the outcome of your actions. It is your sensory input.
+
+**3. The Loop is Your Strategy:** You must operate within a "Reproduce -> Diagnose -> Fix -> Verify" cycle. Persist in this cycle until the bug is demonstrably eliminated.
+
+**4. Full Authority, Full Responsibility:** You have the authority to modify any part of the codebase (`.dart`, `.ts`, scripts) to aid in your investigation. This includes adding temporary logging, which you are responsible for removing before your final commit.
+
+---
+
+### Phase 1: Investigation & Iterative Remediation
+
+**Goal:** Understand, isolate, and fix the bug.
+
+#### **Step 1: Problem Comprehension & Initial Strategy**
+
+1. **Analyze the Bug Report:** Internalize the description of the bug you have been assigned.
+2. **Formulate an Initial Plan:** Outline your high-level strategy. This should include:
+    * How you plan to reliably reproduce the issue using `mobile-mcp` and other tools.
+    * The key areas of the codebase (`.dart` or `.ts` files) you suspect are involved.
+    * Your initial hypothesis about the root cause.
+
+#### **Step 2: The Debugging Loop (Execute until success)**
+
+You will now enter the core debugging loop. Iterate through these stages as many times as necessary.
+
+1. **Reproduce & Observe (The Experiment):**
+    * Start a clean session: `SESSION_ID=$(bash reports/run_session.sh)`.
+    * Execute your reproduction plan.
+    * Meticulously analyze the resulting `reports/run_${SESSION_ID}.log` to confirm the failure and gather evidence.
+
+2. **Diagnose & Hypothesize (The Analysis):**
+    * Based on the log evidence, refine or replace your hypothesis. Pinpoint the exact failure point.
+    * **If evidence is insufficient, enhance your perception.** Your primary tool for this is adding temporary, high-visibility logs to the code.
+        * **Action:** Modify the relevant `.dart` or `.ts` files to inject detailed "breadcrumb" logs (`talker.debug(...)` in Dart, `console.log(...)` in TypeScript) at critical points in the logic.
+        * **Re-run:** Restart the session (`bash reports/run_session.sh`) and repeat your reproduction steps.
+        * **Re-analyze:** The new, more detailed logs will provide the clarity needed to form a definitive hypothesis.
+
+3. **Implement a Fix (The Solution):**
+    * Based on your definitive hypothesis, design and implement a code change.
+    * Your fix should be robust, clean, and adhere to the project's best practices as defined in `AGENTS.md`.
+    * If you modified TypeScript, you MUST run `npm run build`.
+
+4. **Verify the Fix (The Confirmation):**
+    * Restart the session with `SESSION_ID=$(bash reports/run_session.sh)` to ensure a completely clean environment.
+    * Execute your original reproduction plan from the start.
+    * **Success Condition:** The bug no longer occurs. The application behaves as expected through the entire test sequence.
+    * **Failure Condition:** The bug persists, or a new bug appears.
+        * If it fails, **do not revert your changes immediately.** Analyze the new failure. Did your change alter the failure mode? This is valuable information. Refine your hypothesis based on this new evidence and **continue the loop.**
+
+---
+
+### Phase 2: Finalization & Integration
+
+**Goal:** Clean up your work and integrate the solution.
+
+1. **Code Cleanup:** Remove all temporary debugging logs or other diagnostic code you added during the investigation. The final commit must be clean.
+2. **Commit the Solution:** Use your `git` tool to commit the final, verified fix. Adhere strictly to the **Version Control Protocol (VCP)**. The commit message must be clear and follow the conventional commit format (e.g., `fix(webview): ...`).
+3. **Clean Shutdown:** Terminate the final test session by running `bash reports/run_session.sh`.
+4. **Final Report:** Announce that the mission is complete. State the initial bug, the root cause you discovered, and a summary of the implemented solution.
