@@ -1,4 +1,4 @@
-# Full Blueprint: AI Hybrid Hub (v2.0)
+# Blueprint: AI Hybrid Hub (v2.0)
 
 ## 1. Vision & Core Principles
 

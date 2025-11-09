@@ -125,7 +125,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'AI Hybrid Hub MVP',
+      title: 'AI Hybrid Hub',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -246,6 +246,13 @@ class DraggableCompanionOverlay extends ConsumerWidget {
 
   final GlobalKey overlayKey;
 
+  // WHY: This widget acts as a "controller" for the CompanionOverlay.
+  // It centralizes the complex logic for visibility, positioning, and interactivity
+  // based on the global AutomationState and current tab.
+  // - Visibility is tied to interactive states (`refining`, `needsLogin`) on the WebView tab.
+  // - Positioning logic switches between user-controlled (draggable) for `refining`
+  //   and fixed (centered) for `needsLogin`.
+  // This keeps the CompanionOverlay widget itself focused solely on its internal layout.
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
