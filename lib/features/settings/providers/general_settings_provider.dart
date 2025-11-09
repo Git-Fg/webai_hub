@@ -114,4 +114,11 @@ class GeneralSettings extends _$GeneralSettings {
       return currentSettings.copyWith(maxConversationHistory: max);
     });
   }
+
+  // WHY: Allows users to set a custom User Agent for the WebView.
+  Future<void> updateCustomUserAgent(String userAgent) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(customUserAgent: userAgent);
+    });
+  }
 }

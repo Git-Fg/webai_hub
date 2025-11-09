@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
@@ -166,34 +167,30 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     // WHY: Store bridge script for use in recovery methods
     _currentBridgeScript = bridgeScript;
     final webViewKey = ref.watch(webViewKeyProvider);
+    final settings = ref.watch(generalSettingsProvider).maybeWhen(
+          data: (data) => data,
+          orElse: () => const GeneralSettingsData(),
+        );
+
+    // WHY: If customUserAgent is non-empty, use it. Otherwise, pass null to
+    // InAppWebViewSettings to use the platform-specific default User Agent.
+    final userAgent = settings.customUserAgent.isNotEmpty
+        ? settings.customUserAgent
+        : null;
 
     return InAppWebView(
       key: ValueKey('ai_webview_$webViewKey'),
       initialUrlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       initialSettings: InAppWebViewSettings(
-        // WHY: Setting a standard desktop User-Agent is crucial for compatibility.
-        // Many modern web apps, especially login pages, block or fail to render
-        // for unknown or default WebView user agents.
-        userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        userAgent: userAgent,
         applicationNameForUserAgent: 'AIHybridHub',
         supportZoom: false,
         mediaPlaybackRequiresUserGesture: false,
         useShouldOverrideUrlLoading: true,
-        // WHY: Explicitly enable JavaScript (required for bridge) but restrict dangerous APIs
-        javaScriptEnabled: true,
-        // WHY: Security hardening - restrict file access to prevent XSS attacks
-        // These settings prevent file:// URLs from accessing other origins
-        allowUniversalAccessFromFileURLs: false,
-        allowFileAccessFromFileURLs: false,
         // WHY: Disable database APIs if not needed to reduce attack surface
         databaseEnabled: false,
-        // WHY: Enable DOM storage for modern web apps (required for AI Studio)
-        domStorageEnabled: true,
         // WHY: Disable third-party cookies for privacy and security
         thirdPartyCookiesEnabled: false,
-        // WHY: Clear cache on navigation to prevent stale data issues
-        clearCache: false,
       ),
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         final talker = ref.read(talkerProvider);
@@ -292,6 +289,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
                   }
 
                   unawaited(notifier.onAutomationFailed(errorMessage));
+                  return;
+                case BridgeConstants.eventTypeAutomationRetryRequired:
+                  unawaited(notifier.retryLastAutomation());
                   return;
                 default:
                   // Handle any unexpected event types

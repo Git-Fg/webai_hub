@@ -31,6 +31,9 @@ sealed class GeneralSettingsData with _$GeneralSettingsData {
     // WHY: Limits the number of conversations kept in history to prevent database bloat.
     // Defaults to 10 conversations, which balances usability with storage efficiency.
     @Default(10) int maxConversationHistory,
+    // WHY: Allows advanced users to override the WebView's default User Agent.
+    // If empty, the platform-specific default UA from flutter_inappwebview is used.
+    @Default('') String customUserAgent,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>

@@ -16,6 +16,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _historyInstructionController;
+  late final TextEditingController _customUserAgentController;
   late final FocusNode _focusNode;
 
   @override
@@ -30,6 +31,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     _historyInstructionController = TextEditingController(
       text: initialInstruction,
+    );
+
+    final initialUserAgent = ref.read(generalSettingsProvider).maybeWhen(
+      data: (settings) => settings.customUserAgent,
+      orElse: () => '',
+    );
+    _customUserAgentController = TextEditingController(
+      text: initialUserAgent,
     );
 
     // Initialize the FocusNode and add a listener to save on unfocus.
@@ -52,8 +61,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   void dispose() {
-    // Clean up the controller and the focus node listener.
+    // Clean up the controllers and the focus node listener.
     _historyInstructionController.dispose();
+    _customUserAgentController.dispose();
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     super.dispose();
@@ -64,7 +74,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settingsAsync = ref.watch(generalSettingsProvider);
     final settingsNotifier = ref.read(generalSettingsProvider.notifier);
 
-    // Listen for changes to update the controller if needed (e.g., reset to default)
+    // Listen for changes to update the controllers if needed (e.g., reset to default)
     // WHY: Use maybeWhen to safely access AsyncValue in listener callback.
     ref.listen(generalSettingsProvider, (_, next) {
       final newInstruction = next.maybeWhen(
@@ -73,6 +83,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       if (_historyInstructionController.text != newInstruction) {
         _historyInstructionController.text = newInstruction;
+      }
+
+      final newUserAgent = next.maybeWhen(
+        data: (settings) => settings.customUserAgent,
+        orElse: () => '',
+      );
+      if (_customUserAgentController.text != newUserAgent) {
+        _customUserAgentController.text = newUserAgent;
       }
     });
 
@@ -257,6 +275,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       },
                     ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: TextField(
+                  controller: _customUserAgentController,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom User Agent (Optional)',
+                    border: OutlineInputBorder(),
+                    helperText:
+                        "Leave empty to use the WebView's default User Agent.",
+                  ),
+                  onSubmitted: (value) {
+                    unawaited(
+                      settingsNotifier.updateCustomUserAgent(value.trim()),
+                    );
+                  },
                 ),
               ),
             ],
