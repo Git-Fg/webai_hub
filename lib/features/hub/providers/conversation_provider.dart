@@ -228,8 +228,8 @@ class ConversationActions extends _$ConversationActions {
     }
 
     try {
-      // Step 1: Switch to the CORRECT WebView tab using the map FIRST
-      // WHY: We must switch tabs before waiting for bridge, as each tab has its own WebView instance.
+      // Step 1: Switch to the target provider's WebView tab
+      // WHY: Each tab has its own WebView instance, so we must switch before accessing the bridge.
       final tabIndexMap = ref.read(providerTabIndexMapProvider);
       final tabIndex = tabIndexMap[targetProviderId];
       if (tabIndex == null) {
@@ -241,8 +241,7 @@ class ConversationActions extends _$ConversationActions {
         '[Orchestration] Tab switch to index $tabIndex requested for provider $targetProviderId.',
       );
 
-      // TIMING: Yield to event loop multiple times to ensure widget tree updates
-      // and the new WebView instance is created before we try to access it.
+      // TIMING: Allow widget tree to update and WebView to initialize
       await Future<void>.delayed(Duration.zero);
       if (!ref.mounted) return;
       await Future<void>.delayed(const Duration(milliseconds: 200));
