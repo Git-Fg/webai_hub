@@ -235,7 +235,7 @@ class ConversationActions extends _$ConversationActions {
       if (tabIndex == null) {
         throw StateError('No tab index found for provider: $targetProviderId');
       }
-      
+
       ref.read(currentTabIndexProvider.notifier).changeTo(tabIndex);
       talker.info(
         '[Orchestration] Tab switch to index $tabIndex requested for provider $targetProviderId.',
@@ -247,16 +247,36 @@ class ConversationActions extends _$ConversationActions {
       if (!ref.mounted) return;
       await Future<void>.delayed(const Duration(milliseconds: 200));
       if (!ref.mounted) return;
-
+      
       // Step 2: Reset bridge ready state AFTER switching tabs
       // WHY: We reset after switching to ensure we wait for the bridge in the NEW tab,
       // not the old one. This ensures the ready signal we receive is from the correct WebView.
       ref.read(bridgeReadyProvider.notifier).reset();
+      
+      // Step 3: Try to trigger bridge ready signal if bridge is already injected
+      // WHY: The WebView may already have its bridge injected, but the ready signal
+      // may not have been sent yet after our reset. We try to trigger it manually.
+      final bridge = ref.read(javaScriptBridgeProvider);
+      final controller = ref.read(webViewControllerProvider);
+      if (controller != null) {
+        try {
+          // Try to trigger the ready signal if bridge is initialized
+          await controller.evaluateJavascript(source: '''
+            if (window.__AI_HYBRID_HUB_INITIALIZED__ && window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+              window.flutter_inappwebview.callHandler('bridgeReady');
+            }
+          ''').timeout(const Duration(milliseconds: 500));
+          // Give it a moment to process the ready signal
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        } catch (e) {
+          // If evaluation fails, bridge is not ready, continue to normal wait flow
+          talker.debug('[Orchestration] Could not trigger ready signal, will wait: $e');
+        }
+      }
 
-      // Step 3: Ensure bridge is ready for the target WebView tab
+      // Step 4: Ensure bridge is ready for the target WebView tab
       // WHY: After switching tabs and resetting the ready state, we need to wait
       // for the bridge in the new WebView instance to signal ready.
-      final bridge = ref.read(javaScriptBridgeProvider);
       await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
 

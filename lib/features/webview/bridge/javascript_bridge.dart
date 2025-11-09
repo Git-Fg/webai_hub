@@ -220,7 +220,13 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         final readyState = await _controller.evaluateJavascript(
           source: 'document.readyState',
         );
-        if (readyState == 'complete') break;
+        // WHY: Also check that we're not on an error page (chrome-error://)
+        // This ensures the page has actually loaded the target URL, not an error page.
+        final currentUrl = await _controller.getUrl();
+        final urlString = currentUrl?.toString() ?? '';
+        if (readyState == 'complete' && !urlString.startsWith('chrome-error://') && !urlString.startsWith('about:')) {
+          break;
+        }
       } on Object catch (_) {
         // Ignore errors during page load check, continue polling
       }
