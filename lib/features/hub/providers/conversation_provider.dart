@@ -38,7 +38,8 @@ Stream<List<Message>> conversation(Ref ref) {
 
 // WHY: This NotifierProvider handles all actions that modify conversation state.
 // Separating actions from data streaming provides a cleaner architecture.
-@riverpod
+// WHY: KeepAlive ensures the provider persists across widget rebuilds during async operations.
+@Riverpod(keepAlive: true)
 class ConversationActions extends _$ConversationActions {
   @override
   void build() {} // No state to build
@@ -370,8 +371,6 @@ class ConversationActions extends _$ConversationActions {
       if (!ref.mounted) return;
       ref.read(activeConversationIdProvider.notifier).set(activeId);
     }
-
-    // Now, proceed with orchestration using the activeId.
     await _orchestrateAutomation(
       prompt,
       activeId,

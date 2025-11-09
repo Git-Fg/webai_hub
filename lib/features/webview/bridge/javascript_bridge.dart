@@ -331,9 +331,59 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 
       final controller = _controller;
 
-      dynamic isPageLoaded;
+      // WHY: Wait for page to be ready before starting automation.
+      // After reloading, there can be a race condition where the bridge is ready
+      // but the page hasn't finished loading yet.
+      var attempts = 0;
+      const maxAttempts = 20;
+      const checkDelay = Duration(milliseconds: 100);
+      
+      while (attempts < maxAttempts) {
+        if (!ref.mounted) {
+          throw AutomationError(
+            errorCode: AutomationErrorCode.webViewNotReady,
+            location: 'startAutomation',
+            message: 'Provider disposed while waiting for page to be ready',
+            diagnostics: _getBridgeDiagnostics(),
+          );
+        }
+
+        dynamic isPageLoaded;
+        try {
+          isPageLoaded = await controller.evaluateJavascript(
+            source:
+                "document.readyState === 'interactive' || document.readyState === 'complete'",
+          );
+          
+          if (isPageLoaded == true) {
+            break; // Page is ready, exit the loop
+          }
+        } on Object catch (e, stackTrace) {
+          // If we can't evaluate JavaScript, the page might still be loading
+          // Continue waiting unless we've exhausted attempts
+          if (attempts >= maxAttempts - 1) {
+            throw AutomationError(
+              errorCode: AutomationErrorCode.webViewNotReady,
+              location: 'startAutomation',
+              message: 'Failed to check page load state',
+              diagnostics: {
+                ..._getBridgeDiagnostics(),
+                'javascriptEvaluationError': e.toString(),
+              },
+              originalError: e,
+              stackTrace: stackTrace,
+            );
+          }
+        }
+
+        await Future<void>.delayed(checkDelay);
+        attempts++;
+      }
+
+      // Final check after waiting
+      dynamic finalCheck;
       try {
-        isPageLoaded = await controller.evaluateJavascript(
+        finalCheck = await controller.evaluateJavascript(
           source:
               "document.readyState === 'interactive' || document.readyState === 'complete'",
         );
@@ -341,7 +391,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         throw AutomationError(
           errorCode: AutomationErrorCode.webViewNotReady,
           location: 'startAutomation',
-          message: 'Failed to check page load state',
+          message: 'Failed to check page load state after waiting',
           diagnostics: {
             ..._getBridgeDiagnostics(),
             'javascriptEvaluationError': e.toString(),
@@ -351,7 +401,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
-      if (isPageLoaded != true) {
+      if (finalCheck != true) {
         throw AutomationError(
           errorCode: AutomationErrorCode.pageNotLoaded,
           location: 'startAutomation',
@@ -359,7 +409,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
               'WebView page not ready for DOM interaction (must be interactive or complete)',
           diagnostics: {
             ..._getBridgeDiagnostics(),
-            'documentReadyState': isPageLoaded.toString(),
+            'documentReadyState': finalCheck.toString(),
           },
         );
       }
