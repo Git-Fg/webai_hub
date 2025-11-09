@@ -14,7 +14,7 @@ Your work on this project is divided into two distinct, high-level workflows. Al
 
 This workflow applies when you are writing or changing feature code (e.g., adding a new setting, refactoring a provider).
 
-1. **Understand:** Consult `@blueprint_full` for architecture and `@conversation_provider` or `@automation_engine` for existing patterns.
+1. **Understand:** Consult `@blueprint` for architecture and `@conversation_provider` or `@automation_engine` for existing patterns.
 2. **Modify:** Write clean, self-documenting code. Adhere to best practices in Section 3.
 3. **Verify:** Before committing, you are responsible for ensuring all static analysis and code generation checks pass by running a single command:
     * Run `npm run validate` to check both Dart and TypeScript code and run code generation.

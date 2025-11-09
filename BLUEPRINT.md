@@ -339,7 +339,7 @@ The draggable `CompanionOverlay` is now reserved exclusively for states that req
   - **`needsLogin` State:** The overlay appears as a simplified, non-draggable, centered modal dialog, presenting the "I'm logged in, Continue" button for a clear, focused action.
   - This conditional behavior ensures the UI component matches the required user task, reducing confusion and improving usability.
 
-#### 4.7.3. Signal-Based UI Actions (Auto-Scrolling)
+#### 4.8.3. Signal-Based UI Actions (Auto-Scrolling)
 
 To maintain a clean separation between business logic and UI implementation, actions like scrolling are triggered via a signal-based provider rather than direct calls.
 
