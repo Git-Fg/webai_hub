@@ -167,6 +167,10 @@ class ConversationActions extends _$ConversationActions {
     bool isResend = false,
     String? excludeMessageId,
   }) async {
+    // ADD THIS: Get the logger instance at the start
+    final talker = ref.read(talkerProvider);
+    talker.info('[Orchestration] Starting...');
+
     final db = ref.read(appDatabaseProvider);
 
     // WHY: Delegating prompt creation to a dedicated class cleans up this
@@ -214,7 +218,12 @@ class ConversationActions extends _$ConversationActions {
         .read(automationStateProvider.notifier)
         .moveToSending(prompt: promptForContext);
 
-    if (!ref.mounted) return;
+    if (!ref.mounted) {
+      talker.warning(
+        '[Orchestration] Bailed out: ref is not mounted after setting state.',
+      );
+      return;
+    }
 
     try {
       final bridge = ref.read(javaScriptBridgeProvider);
@@ -222,6 +231,9 @@ class ConversationActions extends _$ConversationActions {
 
       // This is the critical check
       if (controller == null) {
+        talker.error(
+          '[Orchestration] CRITICAL FAILURE: WebView controller is null.',
+        );
         throw AutomationError(
           errorCode: AutomationErrorCode.webViewNotReady,
           location: '_orchestrateAutomation',
@@ -233,17 +245,43 @@ class ConversationActions extends _$ConversationActions {
       // WHY: Reset the WebView to the "new chat" URL before each automation run.
       // This ensures the automation engine always operates on the correct page,
       // preventing selector timeouts when attempting to run on a previous conversation's result page.
+      talker.debug(
+        '[Orchestration] Step 1: Reloading WebView to clean state...',
+      );
       await controller.loadUrl(
         urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
       );
+      talker.debug('[Orchestration] Step 1 SUCCESS: WebView reloaded.');
       // After reloading, we must wait for the new page to be fully initialized.
       // The existing onLoadStop handler will re-inject the bridge script.
+
+      if (!ref.mounted) {
+        talker.warning(
+          '[Orchestration] Bailed out: ref not mounted after reload.',
+        );
+        return;
+      }
+
+      talker.debug(
+        '[Orchestration] Step 2: Waiting for bridge to be ready on new page...',
+      );
       await bridge.waitForBridgeReady();
-      if (!ref.mounted) return;
+      talker.debug('[Orchestration] Step 2 SUCCESS: Bridge is ready.');
       // === END FIX ===
 
+      if (!ref.mounted) {
+        talker.warning(
+          '[Orchestration] Bailed out: ref not mounted after bridge wait.',
+        );
+        return;
+      }
+
+      talker.debug(
+        '[Orchestration] Step 3: Requesting tab switch to WebView (index 1)...',
+      );
       // Switch to the WebView tab
       ref.read(currentTabIndexProvider.notifier).changeTo(1);
+      talker.info('[Orchestration] Step 3 SUCCESS: Tab switch requested.');
 
       // TIMING: Yield to event loop to ensure widget tree updates before WebView is touched.
       await Future<void>.delayed(Duration.zero);
@@ -258,7 +296,6 @@ class ConversationActions extends _$ConversationActions {
       // Get console logs to debug selector issues (captured before automation starts)
       final logs = await bridge.getCapturedLogs();
       if (logs.isNotEmpty) {
-        final talker = ref.read(talkerProvider);
         talker.debug(
           '[ConversationProvider] JS Logs before automation: ${logs.map((log) => log['args']).toList()}',
         );
@@ -266,14 +303,16 @@ class ConversationActions extends _$ConversationActions {
 
       final automationOptions = _buildAutomationOptions(promptWithContext);
 
-      // DART-SIDE LOGGING FOR VERIFICATION
-      final talker = ref.read(talkerProvider);
       talker.info(
         '[ConversationProvider LOG] Sending automation options to bridge: $automationOptions',
       );
 
+      talker.debug(
+        '[Orchestration] Step 4: Starting automation script in WebView...',
+      );
       // Start the automation with all configuration options.
       await bridge.startAutomation(automationOptions);
+      talker.info('[Orchestration] Step 4 SUCCESS: Automation script started.');
 
       if (ref.mounted) {
         await _updateLastMessage(
@@ -284,12 +323,20 @@ class ConversationActions extends _$ConversationActions {
 
         ref.read(automationStateProvider.notifier).moveToObserving();
 
+        talker.debug('[Orchestration] Step 5: Starting response observer...');
         await bridge.startResponseObserver();
+        talker.info(
+          '[Orchestration] Step 5 SUCCESS: Response observer started.',
+        );
       }
     } on Object catch (e, st) {
       if (!ref.mounted) return;
-      final talker = ref.read(talkerProvider);
-      talker.handle(e, st, 'Automation orchestration failed.');
+      // talker is already defined at the start of the method
+      talker.handle(
+        e,
+        st,
+        '[Orchestration] CRITICAL FAILURE during orchestration.',
+      );
       if (ref.mounted) {
         String errorMessage;
         if (e is AutomationError) {

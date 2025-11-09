@@ -11,7 +11,10 @@ const INITIAL_PROCESSED_FOOTERS_COUNT = 0;
 const BUTTON_TEXT_PREVIEW_LENGTH = 100;
 
 function signalReady() {
-  if (window.flutter_inappwebview) {
+  // WHY: This is a robust defensive check. It verifies not only that the
+  // flutter_inappwebview object exists, but also that the callHandler
+  // method is present and is a function before attempting to call it.
+  if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
     try {
       window.flutter_inappwebview.callHandler(READY_HANDLER);
       console.log('[Engine] Bridge ready signal sent to Flutter.');
@@ -35,7 +38,9 @@ function trySignalReady(retries = BRIDGE_READY_RETRY_ATTEMPTS, delay = BRIDGE_RE
     return;
   }
   
-  if (window.flutter_inappwebview) {
+  // WHY: Using the same robust check ensures retry logic only proceeds when
+  // bridge is truly available and callHandler is accessible.
+  if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
     signalReady();
   } else {
     setTimeout(() => trySignalReady(retries - 1, delay), delay);
@@ -89,7 +94,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
 
   // Global function called by Dart to start automation
   window.startAutomation = async function(options: AutomationOptions): Promise<void> {
-    console.log('[Engine LOG] Received automation options:', JSON.stringify(options, null, 2));
+    console.log('[Engine LOG] >>> startAutomation called by Dart. Processing options:', JSON.stringify(options, null, 2));
     
     // Set the global modifier for this run
     window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
