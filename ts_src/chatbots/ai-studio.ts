@@ -246,10 +246,34 @@ export class AiStudioChatbot implements Chatbot {
         return;
       }
       modelSelector.click();
-      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+      // WHY: Wait longer for dialog to fully open and become interactive (dialogs may have animations/overlays)
+      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS * 2));
 
-      const allFilterEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_CATEGORIES_ALL_BUTTON], 'Model categories all button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
+      // WHY: Try to find the element, and if occluded, wait a bit more and try clicking anyway
+      let allFilterEl: HTMLButtonElement | null = null;
+      try {
+        allFilterEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_CATEGORIES_ALL_BUTTON], 'Model categories all button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
+      } catch (error) {
+        // If actionability check fails due to occlusion, try finding the element anyway and clicking it
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes('occluded')) {
+          console.log('[AI Studio LOG] Element found but occluded. Waiting longer and attempting click anyway...');
+          await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+          const foundElement = document.querySelector(SELECTORS.MODEL_CATEGORIES_ALL_BUTTON) as HTMLButtonElement;
+          if (foundElement && foundElement.offsetParent !== null) {
+            allFilterEl = foundElement;
+            console.log('[AI Studio LOG] Found element despite occlusion, will attempt click.');
+          } else {
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
       const allFilter = assertIsElement(allFilterEl, HTMLButtonElement, 'Model categories all button');
+      // WHY: Scroll element into view before clicking to help with occlusion issues
+      allFilter.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
       allFilter.click();
       await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
 
@@ -268,6 +292,8 @@ export class AiStudioChatbot implements Chatbot {
         }
         modelButton.click();
         console.log(`[AI Studio LOG] Success: Clicked model button for "${modelId}".`);
+        // WHY: Wait for dialog to close (it may close automatically after model selection)
+        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
       } else {
         const availableModels = modelOptions.map(opt => {
           const span = opt.querySelector(SELECTORS.MODEL_TITLE_TEXT);
@@ -276,10 +302,22 @@ export class AiStudioChatbot implements Chatbot {
         throw this.createErrorWithContext('_setModel', `Model button for "${modelId}" not found.`, `AvailableModels=[${availableModels}]`);
       }
 
-      const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
-      const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
-      closeButton.click();
-      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+      // WHY: Check if dialog is still open before trying to close it (some dialogs close automatically)
+      const dialogContainer = document.querySelector('mat-dialog-container');
+      if (dialogContainer) {
+        try {
+          const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 0);
+          const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
+          closeButton.click();
+          await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+          console.log('[AI Studio LOG] Dialog closed successfully.');
+        } catch (error) {
+          // Dialog might have closed automatically or close button not found - this is OK
+          console.log('[AI Studio LOG] Dialog close button not found or dialog already closed. Continuing...');
+        }
+      } else {
+        console.log('[AI Studio LOG] Dialog already closed (not found in DOM).');
+      }
     }, '_setModel', 2, 300);
   }
 
