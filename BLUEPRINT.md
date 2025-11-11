@@ -247,7 +247,7 @@ This architecture dramatically reduces the perceived latency for the user, as th
 
 **Implementation Details:**
 
-- **Context Management:** The private method `_buildPromptWithContext` in `ConversationProvider` is responsible for generating the XML prompt string. It composes `<system>`, `<history>` (flat text format), and `<user_input>` from current state. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
+- **Context Management:** A dedicated `PromptBuilder` service (`lib/features/hub/services/prompt_builder.dart`) is responsible for generating the prompt string. Its `buildPromptWithContext` method composes `<system>`, `<history>`, and `<user_input>` from the current state. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
 
 - **WebView Lifecycle Control:** The TypeScript engine is now responsible for resetting the UI. At the beginning of each automation cycle, it calls its internal `resetState()` method, which simulates a click on the "New Chat" button within the web page. This in-page navigation is significantly faster than the previous full-page reload (`loadUrl`) initiated by Dart.
 
@@ -400,6 +400,24 @@ trySignalReady();
 **Solution:** Bridge security should be configured to whitelist only trusted domains. The exact API varies by flutter_inappwebview version and should be configured when available to restrict bridge access to trusted domains only.
 
 **Reference:** These patterns are based on comprehensive research into flutter_inappwebview communication bridge best practices, citing specific GitHub issues and changelogs documenting failure modes and security vulnerabilities.
+
+#### 4.9.4. User Agent Management for OAuth Compatibility
+
+**Problem:** Google and other OAuth providers are increasingly blocking login requests from unidentified WebViews, returning a "disallowed_useragent" error. The default User Agent provided by `flutter_inappwebview` is often flagged.
+
+**Solution:** The application implements a multi-layered system to manage the WebView's User Agent identity, providing both user control and architectural robustness.
+
+1. **User-Configurable UA:** The `GeneralSettings` model allows the user to select from a list of standard, verified browser User Agents (e.g., 'Chrome on Windows') or provide their own custom string. This is managed via the `UserAgentSelector` widget in the settings screen.
+
+2. **Dynamic UA Application:** In `AiWebviewScreen`, the `_buildWebView` method reads the user's selection from `generalSettingsProvider` and dynamically constructs the `InAppWebViewSettings` with the appropriate `userAgent` string.
+
+3. **Forced WebView Recreation:** A User Agent can only be set when an `InAppWebView` is first created. To apply a changed setting, the existing WebView must be destroyed and a new one created. This is achieved reliably by:
+
+   * A `ref.listen` in `AiWebviewScreen` monitors `generalSettingsProvider` for changes to the User Agent fields.
+
+   * Upon detecting a change, it calls `ref.read(webViewKeyProvider.notifier).incrementKey()`.
+
+   * Incrementing this key forces Flutter to rebuild the `InAppWebView` widget, which then uses the new User Agent from its `initialSettings`.
 
 ### 4.10. Resilient Selector Strategy & Modern Waiting Patterns
 
@@ -576,8 +594,15 @@ A new, dedicated UI will be created for managing presets, likely accessible from
 
 ### 5.2. Web Session Persistence
 
-- **Technology:** The native singletons **`CookieManager`** and **`WebStorageManager`** from `flutter_inappwebview`.
-- **Implementation:** A Dart `SessionManager` service is responsible for managing cookies to maintain login sessions, including platform-specific workarounds for Android and iOS to ensure reliability across app restarts.
+- **Technology:** The WebView handles cookies automatically via its built-in `CookieManager`. No manual cookie management is performed.
+
+- **Implementation:** Cookies are managed entirely by the WebView's native cookie storage mechanism. Users authenticate directly within the WebView, and their session persists naturally through the WebView's cookie handling.
+
+- **Known Limitation - Google CookieMismatch Error:**
+  - Google services (including AI Studio) may display a "CookieMismatch" error page when accessed from embedded WebViews due to Google's security policies.
+  - This is a known limitation where Google detects the embedded WebView context and blocks access, even with `thirdPartyCookiesEnabled: true` configured.
+  - The app includes a redirect handler that attempts to navigate to the Google login page when this error is detected, but Google's security policies may still prevent successful authentication.
+  - **Workaround:** Users may need to authenticate in a regular browser first, or use Chrome Custom Tabs (future enhancement) instead of embedded WebViews for Google services.
 
 ### 5.7. Extensibility through XML Structure
 

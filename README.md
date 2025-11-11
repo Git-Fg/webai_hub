@@ -32,6 +32,8 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 
 - ✅ **Multi-Provider Ready** - Connects seamlessly to Google AI Studio with a modular architecture designed for easy expansion to other providers like ChatGPT, Claude, and more.
 
+- ⚠️ **Known Limitation** - Google AI Studio may show a CookieMismatch error due to Google's security policies that block embedded WebViews. The app includes workarounds, but authentication may require using a regular browser first.
+
 - ❤️ **Free and Open-Source** - Released under the GNU license.
 
 ### ⚙️ Performance & Adaptability
@@ -103,7 +105,7 @@ This project is under active development.
 #### ✅ Currently Functional
 
 - Core "Assist & Validate" workflow.
-- Integration with **Google AI Studio**.
+- Integration with **Google AI Studio** and **Kimi**.
 - Native chat interface with message history, editing, and copying.
 - Robust, modular TypeScript architecture for the automation engine.
 
@@ -167,7 +169,17 @@ This project is under active development.
     flutter run
     ```
 
-> Note on First Use: The application relies on persisted web sessions. On your first run, manually navigate to the "AI Studio" tab and log in to your Google account. Your session will be saved for future launches.
+> **Note on First Use & Google Login (Error 403)**
+>
+> The app uses your saved web sessions. The first time you use a provider, you will need to log in.
+>
+> **Important for Google AI Studio:** Google often blocks logins from unrecognized applications, showing a "disallowed_useragent" or "Error 403" message. This is expected. To fix this:
+>
+> 1. Go to the **Hub** tab and tap the **Settings** icon.
+> 2. Under "WebView Settings," find the **User Agent** dropdown.
+> 3. Change it from "Device Default" to a standard browser like **"Chrome (Windows)"**.
+>
+> The app will automatically reload the WebView with the new identity, allowing you to log in successfully. Your session will be saved for all future launches.
 
 ### 🏗️ Project Structure
 
