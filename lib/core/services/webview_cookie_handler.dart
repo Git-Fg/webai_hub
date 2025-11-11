@@ -39,10 +39,10 @@ class WebViewCookieHandler {
       // WHY: For Google services, inject cookies for the target domain first,
       // then for accounts.google.com. Use a specific order to avoid conflicts.
       final domainsToInject = <String>[];
-      
+
       // WHY: Always inject for the target URL first
       domainsToInject.add(url);
-      
+
       if (domain.contains('google.com')) {
         // WHY: For Google, also inject for accounts.google.com (where auth happens)
         // and the base domain
@@ -80,22 +80,23 @@ class WebViewCookieHandler {
           for (final injectionUrl in domainsToInject) {
             try {
               final injectionUri = Uri.parse(injectionUrl);
-              
+
               // WHY: Workaround for Google subdomain cookies - if cookie has domain
               // like .aistudio.google.com, also inject with .google.com so it works
               // across all Google subdomains (accounts.google.com, aistudio.google.com, etc.)
               final domainsToTry = <String>[];
-              
+
               if (cookie.domain != null) {
                 domainsToTry.add(cookie.domain!);
-                
+
                 // WHY: If cookie domain is a Google subdomain, also try with .google.com
                 if (cookie.domain!.contains('google.com')) {
                   // Extract base domain: .aistudio.google.com -> .google.com
                   final parts = cookie.domain!.split('.');
                   if (parts.length > 2) {
                     // Keep last two parts (.google.com)
-                    final baseDomain = '.${parts[parts.length - 2]}.${parts[parts.length - 1]}';
+                    final baseDomain =
+                        '.${parts[parts.length - 2]}.${parts[parts.length - 1]}';
                     if (baseDomain != cookie.domain) {
                       domainsToTry.add(baseDomain);
                     }
@@ -104,24 +105,24 @@ class WebViewCookieHandler {
               } else {
                 domainsToTry.add(injectionUri.host);
               }
-              
+
               // WHY: Try multiple injection strategies:
               // 1. With original domain
               // 2. With .google.com base domain (for Google subdomains)
               // 3. Without domain (let WebView infer from URL)
-              int successCount = 0;
-              
+              var successCount = 0;
+
               // Strategy 1 & 2: Try with domain variants
               for (final cookieDomain in domainsToTry) {
                 try {
                   debugPrint(
                     '[WebViewCookieHandler] Injecting ${cookie.name} for $injectionUrl with domain: $cookieDomain',
                   );
-                  
+
                   // WHY: For __Secure- cookies, ensure Secure flag is set
-                  final isSecureCookie = cookie.name.startsWith('__Secure-') || 
-                                       cookie.isSecure == true;
-                  
+                  final isSecureCookie = cookie.name.startsWith('__Secure-') ||
+                      (cookie.isSecure ?? false);
+
                   await cookieManager.setCookie(
                     url: WebUri(injectionUrl),
                     name: cookie.name,
@@ -140,21 +141,20 @@ class WebViewCookieHandler {
                   );
                 }
               }
-              
+
               // Strategy 3: Try without domain (let WebView infer it)
               // This works better for some cookie managers
-              if (cookie.domain != null && cookie.domain!.contains('google.com')) {
+              if (cookie.domain != null &&
+                  cookie.domain!.contains('google.com')) {
                 try {
                   debugPrint(
                     '[WebViewCookieHandler] Injecting ${cookie.name} for $injectionUrl WITHOUT domain (let WebView infer)',
                   );
-                  
+
                   await cookieManager.setCookie(
                     url: WebUri(injectionUrl),
                     name: cookie.name,
                     value: cookie.value.toString(),
-                    // WHY: Don't specify domain - let CookieManager infer from URL
-                    domain: null,
                     path: cookie.path ?? '/',
                     expiresDate: cookie.expiresDate,
                     isSecure: cookie.isSecure ?? false,
@@ -168,7 +168,7 @@ class WebViewCookieHandler {
                   );
                 }
               }
-              
+
               if (successCount == 0) {
                 debugPrint(
                   '[WebViewCookieHandler] Failed to inject cookie ${cookie.name} for $injectionUrl with any strategy',
@@ -215,7 +215,7 @@ class WebViewCookieHandler {
       debugPrint(
         '[WebViewCookieHandler] Attempting to inject ${cookies.length} cookies via JavaScript',
       );
-      
+
       for (final cookie in cookies) {
         try {
           // WHY: Build JavaScript cookie string
@@ -223,21 +223,22 @@ class WebViewCookieHandler {
           // NOTE: Cookies with __Secure- prefix MUST have Secure flag
           final cookieString = StringBuffer();
           cookieString.write('${cookie.name}=${cookie.value}');
-          
+
           if (cookie.domain != null) {
             cookieString.write('; domain=${cookie.domain}');
           }
-          
+
           if (cookie.path != null) {
             cookieString.write('; path=${cookie.path}');
           }
-          
-          // WHY: __Secure- cookies MUST be secure. Also set secure if cookie.isSecure is true
-          final mustBeSecure = cookie.name.startsWith('__Secure-') || cookie.isSecure == true;
+
+            // WHY: __Secure- cookies MUST be secure. Also set secure if cookie.isSecure is true
+            final mustBeSecure = cookie.name.startsWith('__Secure-') ||
+                (cookie.isSecure ?? false);
           if (mustBeSecure) {
             cookieString.write('; secure');
           }
-          
+
           // WHY: HttpOnly cookies can't be set via JavaScript, but we try anyway
           // Note: JavaScript can't set HttpOnly cookies, but CookieManager can
           if (cookie.isHttpOnly != true) {
@@ -246,9 +247,11 @@ class WebViewCookieHandler {
               final expiresDate = DateTime.fromMillisecondsSinceEpoch(
                 cookie.expiresDate! * 1000,
               );
-              cookieString.write('; expires=${expiresDate.toUtc().toIso8601String()}');
+              cookieString.write(
+                '; expires=${expiresDate.toUtc().toIso8601String()}',
+              );
             }
-            
+
             // WHY: SameSite attribute (if supported)
             if (cookie.sameSite != null) {
               final sameSiteStr = cookie.sameSite.toString().toUpperCase();
@@ -267,12 +270,13 @@ class WebViewCookieHandler {
             );
             continue;
           }
-          
+
           // WHY: Execute JavaScript to set cookie
           await controller.evaluateJavascript(
-            source: 'document.cookie = "${cookieString.toString().replaceAll('"', '\\"')}";',
+            source:
+                'document.cookie = "${cookieString.toString().replaceAll('"', r'\"')}";',
           );
-          
+
           debugPrint(
             '[WebViewCookieHandler] Set cookie via JS: ${cookie.name}',
           );
@@ -282,10 +286,14 @@ class WebViewCookieHandler {
           );
         }
       }
-      
-      debugPrint('[WebViewCookieHandler] JavaScript cookie injection completed');
+
+      debugPrint(
+        '[WebViewCookieHandler] JavaScript cookie injection completed',
+      );
     } on Exception catch (e) {
-      debugPrint('[WebViewCookieHandler] Error injecting cookies via JavaScript: $e');
+      debugPrint(
+        '[WebViewCookieHandler] Error injecting cookies via JavaScript: $e',
+      );
     }
   }
 
