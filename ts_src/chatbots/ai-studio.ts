@@ -411,7 +411,7 @@ export class AiStudioChatbot implements Chatbot {
   async resetState(): Promise<void> {
     console.log('[AI Studio] Preparing to reset UI state...');
     try {
-      // Étape 1 : Obtenir une référence à l'instance ACTUELLE du bouton des paramètres.
+      // Step 1: Get a reference to the CURRENT instance of the settings button.
       const settingsToggleSelector = Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) 
         ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE[0] 
         : SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE;
@@ -420,16 +420,16 @@ export class AiStudioChatbot implements Chatbot {
       const newChatButton = document.querySelector(SELECTORS.NEW_CHAT_BUTTON) as HTMLElement;
       if (!newChatButton || newChatButton.offsetParent === null) {
         console.warn('[AI Studio] "New Chat" button not found, assuming clean state and proceeding.');
-        await this.waitForReady(); // On s'assure quand même que l'état actuel est prêt.
+        await this.waitForReady(); // Still ensure the current state is ready.
         return;
       }
 
-      // Étape 2 : Déclencher la réinitialisation de l'UI.
+      // Step 2: Trigger the UI reset.
       newChatButton.click();
       console.log('[AI Studio] "New Chat" clicked. Waiting for UI transition...');
 
-      // Étape 3 : Attendre que l'ANCIENNE instance du bouton disparaisse.
-      // C'est le signal le plus fiable que la page est en train de se décharger.
+      // Step 3: Wait for the OLD button instance to disappear.
+      // This is the most reliable signal that the page is unloading.
       if (oldSettingsButton) {
         const timeout = getModifiedTimeout(5000);
         const startTime = Date.now();
@@ -446,13 +446,13 @@ export class AiStudioChatbot implements Chatbot {
         console.log('[AI Studio] Old UI elements have been removed.');
       }
 
-      // Étape 4 : Maintenant que l'ancien état est parti, attendre que le NOUVEL état soit pleinement prêt.
+      // Step 4: Now that the old state is gone, wait for the NEW state to be fully ready.
       await this.waitForReady();
       console.log('[AI Studio] State reset completed successfully.');
 
     } catch (error) {
       console.error('[AI Studio] A non-critical error occurred during state reset. Continuing under assumption that UI is ready.', error);
-      // En cas d'échec, on tente quand même un waitForReady comme filet de sécurité.
+      // On failure, still attempt a waitForReady as a safety net.
       await this.waitForReady();
     }
   }

@@ -3,6 +3,7 @@
 // WHY: Defines a strong type for the options passed from Dart.
 // This improves type safety and autocompletion when implementing a new chatbot.
 export interface AutomationOptions {
+  providerId: string;
   prompt: string;
   model?: string;
   systemPrompt?: string;

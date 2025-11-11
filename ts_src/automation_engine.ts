@@ -1,6 +1,6 @@
 // ts_src/automation_engine.ts
 import { Chatbot, AutomationOptions } from './types/chatbot';
-import { AiStudioChatbot } from './chatbots';
+import { AiStudioChatbot, kimiChatbot } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
 import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_AUTOMATION_RETRY_REQUIRED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
 
@@ -71,24 +71,26 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
   // Initialize global counter for tracking processed response footers
   window.__processedFootersCount = INITIAL_PROCESSED_FOOTERS_COUNT;
 
+  // WHY: Store the current providerId globally so extractFinalResponse can use it
+  // This avoids needing to pass providerId as a parameter to extractFinalResponse
+  let currentProviderId: string | null = null;
+
   const SUPPORTED_SITES = {
-    'https://aistudio.google.com': new AiStudioChatbot(),
-    // Future: Add other sites here
-    // 'https://chatgpt.com/': chatGptChatbot,
-    // 'https://claude.ai/': claudeChatbot,
+    'ai_studio': new AiStudioChatbot(),
+    'kimi': kimiChatbot,
+    // Future: Add other providers here
+    // 'chatgpt': chatGptChatbot,
+    // 'claude': claudeChatbot,
   };
 
-  // Finds the chatbot module corresponding to the current URL
-  function getChatbot(): Chatbot | null {
-    const currentUrl = window.location.href;
-    
-    for (const [baseUrl, chatbot] of Object.entries(SUPPORTED_SITES)) {
-      if (currentUrl.startsWith(baseUrl)) {
-        console.log(`[Engine] Matched site: ${baseUrl}. Using corresponding chatbot module.`);
-        return chatbot;
-      }
+  // Finds the chatbot module corresponding to the providerId
+  function getChatbot(providerId: string): Chatbot | null {
+    const chatbot = SUPPORTED_SITES[providerId as keyof typeof SUPPORTED_SITES];
+    if (chatbot) {
+      console.log(`[Engine] Matched providerId: "${providerId}". Using corresponding chatbot module.`);
+      return chatbot;
     }
-    console.error(`[Engine] No chatbot module found for current URL: ${currentUrl}`);
+    console.error(`[Engine] No chatbot module found for providerId: "${providerId}"`);
     return null;
   }
 
@@ -103,9 +105,12 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
     window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
     console.log(`[Engine] Using timeout modifier: ${window.__AI_TIMEOUT_MODIFIER__}x`);
     
-    const chatbot = getChatbot();
+    // WHY: Store providerId globally for use in extractFinalResponse
+    currentProviderId = options.providerId;
+    
+    const chatbot = getChatbot(options.providerId);
     if (!chatbot) {
-      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: 'This site is not supported.' });
+      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_PROVIDER', payload: `Provider "${options.providerId}" is not supported.` });
       return;
     }
 
@@ -190,11 +195,17 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
   // Global function called by Dart to extract the response
   window.extractFinalResponse = async function(): Promise<string> {
     console.log('[Engine LOG] extractFinalResponse called');
-    const chatbot = getChatbot();
+    if (!currentProviderId) {
+      const errorMsg = 'No providerId available for extraction. Automation must be started first.';
+      console.error('[Engine LOG] No providerId found for extraction');
+      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'NO_PROVIDER_ID', payload: errorMsg });
+      throw new Error(errorMsg);
+    }
+    const chatbot = getChatbot(currentProviderId);
     if (!chatbot) {
-      const errorMsg = 'This site is not supported for extraction.';
+      const errorMsg = `Provider "${currentProviderId}" is not supported for extraction.`;
       console.error('[Engine LOG] No chatbot found for extraction');
-      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_SITE', payload: errorMsg });
+      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_PROVIDER', payload: errorMsg });
       throw new Error(errorMsg);
     }
 

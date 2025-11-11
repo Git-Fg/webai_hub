@@ -36,6 +36,8 @@ dev_dependencies:
   drift_dev: ^2.29.0
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   freezed: ^3.0.0
   json_serializable: ^6.11.1
   mockito: ^5.5.0

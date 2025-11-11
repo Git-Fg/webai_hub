@@ -10,7 +10,7 @@
  * - Confirmed the structural selector for the response text is correct.
  *
  * To use:
- * 1. Open Kimi (https://kimi.moonshot.cn/) in a browser, log in, and start a new chat.
+ * 1. Open Kimi (https://kimi.com/) in a browser, log in, and start a new chat.
  * 2. Open Developer Tools (F12 or Cmd+Opt+I) and select the "Console" tab.
  * 3. Paste this entire script into the Console and press Enter.
  * 4. Observe the logs to see which steps pass or fail.
