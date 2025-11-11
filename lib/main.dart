@@ -1,21 +1,23 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/hub_screen.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
-import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -89,15 +91,17 @@ Future<void> _runStartupLogic(ProviderContainer container) async {
     final db = container.read(appDatabaseProvider);
     final talker = container.read(talkerProvider);
 
-    // 1. Prune old conversations if count exceeds maxConversationHistory
+    // 1. Seed presets if they don't exist
+    await seedPresets(container);
+
+    // 2. Prune old conversations if count exceeds maxConversationHistory
     await db.pruneOldConversations(settings.maxConversationHistory);
 
-    // 2. Load last session if enabled
+    // 3. Load last session if enabled
     if (settings.persistSessionOnRestart) {
       try {
-        final allConversations = await (db.select(
-          db.conversations,
-        )..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])).get();
+        final allConversations = await db.watchAllConversations().first;
+        allConversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         if (allConversations.isNotEmpty) {
           final lastConversation = allConversations.first;
           container
@@ -145,93 +149,150 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+    with TickerProviderStateMixin {
+  late final PageController _pageController;
+  TabController? _tabController;
   final GlobalKey _overlayKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    final initialIndex = ref.read(currentTabIndexProvider);
-    _tabController = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: initialIndex,
+    _pageController = PageController(
+      initialPage: ref.read(currentTabIndexProvider),
     );
-    _tabController.addListener(_onTabChanged);
-  }
-
-  void _onTabChanged() {
-    if (!mounted) return;
-    final newIndex = _tabController.index;
-    final currentProviderIndex = ref.read(currentTabIndexProvider);
-    if (currentProviderIndex != newIndex) {
-      ref.read(currentTabIndexProvider.notifier).changeTo(newIndex);
-    }
   }
 
   @override
   void dispose() {
-    _tabController
-      ..removeListener(_onTabChanged)
-      ..dispose();
+    _pageController.dispose();
+    _tabController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(currentTabIndexProvider, (previous, next) {
-      if (_tabController.index != next) {
-        _tabController.animateTo(next);
-      }
+    final presetsAsync = ref.watch(presetsProvider);
 
-      // WHY: Pre-warm the JavaScript bridge as soon as the user switches to the WebView tab.
-      // This eliminates the bridge-ready wait time when the user sends a prompt,
-      // making the UI feel significantly more responsive.
-      if (next == 1) {
-        // 1 is the index of the WebView tab
+    // WHY: Reactively sync TabController when presets change
+    // This ensures the TabController is always in sync with the actual preset count
+    ref.listen(presetsProvider, (_, next) {
+      next.whenData((presets) {
+        final totalTabs = 1 + presets.length;
+        if (_tabController?.length != totalTabs) {
+          // Recreate TabController only when needed
+          setState(() {
+            _tabController?.dispose();
+            _tabController = TabController(
+              length: totalTabs,
+              vsync: this,
+              initialIndex: ref
+                  .read(currentTabIndexProvider)
+                  .clamp(0, totalTabs - 1),
+            );
+          });
+        }
+      });
+    });
+
+    ref.listen(currentTabIndexProvider, (_, next) {
+      if (_pageController.hasClients && _pageController.page?.round() != next) {
         unawaited(
-          Future(() async {
-            try {
-              await ref.read(javaScriptBridgeProvider).waitForBridgeReady();
-              ref.read(talkerProvider).info('[Pre-warm] Bridge is ready.');
-            } on Object catch (e) {
-              // WHY: Silently ignore errors, as this is a non-critical optimization.
-              ref
-                  .read(talkerProvider)
-                  .debug('[Pre-warm] Bridge pre-warm failed silently: $e');
-            }
-          }),
+          _pageController.animateToPage(
+            next,
+            duration: kShortAnimationDuration,
+            curve: Curves.easeInOut,
+          ),
         );
+      }
+      if (_tabController?.index != next) {
+        _tabController?.animateTo(next);
       }
     });
 
-    final currentIndex = ref.watch(currentTabIndexProvider);
+    // WHY: Reactively switch to the correct preset tab when a single-preset automation request is dispatched.
+    // This keeps UI logic in the UI layer, separate from business logic.
+    ref.listen<Map<int, AutomationRequest>>(automationRequestProvider, (
+      _,
+      next,
+    ) {
+      if (next.keys.length == 1) {
+        // Only switch tabs for single-preset workflow
+        final presetId = next.keys.first;
+        final presets = presetsAsync.maybeWhen(
+          data: (value) => value,
+          orElse: () => <PresetData>[],
+        );
+        final presetIndex = presets.indexWhere(
+          (PresetData p) => p.id == presetId,
+        );
+        if (presetIndex != -1) {
+          // Switch to the correct preset's tab (+1 for the Hub tab)
+          ref.read(currentTabIndexProvider.notifier).changeTo(presetIndex + 1);
+          ref.read(automationStateProvider.notifier).moveToObserving();
+        }
+      }
+    });
 
     return AutomationStateObserver(
       child: Scaffold(
         body: Stack(
           children: [
-            IndexedStack(
-              index: currentIndex,
-              sizing: StackFit.expand,
-              children: const [
-                HubScreen(),
-                AiWebviewScreen(),
-              ],
+            presetsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, st) => Center(child: Text('Error: $err')),
+              data: (presets) {
+                return PageView(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    ref.read(currentTabIndexProvider.notifier).changeTo(index);
+                  },
+                  children: [
+                    const HubScreen(),
+                    ...presets.map((preset) {
+                      return AiWebviewScreen(
+                        key: ValueKey(preset.id), // CRITICAL
+                        preset: preset,
+                      );
+                    }),
+                  ],
+                );
+              },
             ),
             DraggableCompanionOverlay(overlayKey: _overlayKey),
           ],
         ),
-        bottomNavigationBar: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.chat), text: 'Hub'),
-            Tab(icon: Icon(Icons.web), text: 'AI Studio'),
-          ],
-          labelColor: Colors.blue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blue,
+        bottomNavigationBar: presetsAsync.when(
+          data: (presets) {
+            if (_tabController == null) {
+              // Initial creation of TabController
+              final totalTabs = 1 + presets.length;
+              _tabController = TabController(
+                length: totalTabs,
+                vsync: this,
+                initialIndex: ref
+                    .read(currentTabIndexProvider)
+                    .clamp(0, totalTabs - 1),
+              );
+            }
+
+            final tabs = [
+              const Tab(icon: Icon(Icons.chat), text: 'Hub'),
+              ...presets.map((p) => Tab(text: p.name)),
+            ];
+            return TabBar(
+              controller: _tabController,
+              isScrollable: tabs.length > 4,
+              tabs: tabs,
+              onTap: (index) {
+                ref.read(currentTabIndexProvider.notifier).changeTo(index);
+              },
+              labelColor: Colors.blue,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Colors.blue,
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
         ),
       ),
     );
@@ -261,13 +322,13 @@ class DraggableCompanionOverlay extends ConsumerWidget {
 
     final shouldShow =
         status.maybeWhen(
-          refining: (messageCount, isExtracting) => true,
+          refining: (activePresetId, messageCount, isExtracting) => true,
           needsLogin: (onResume) => true,
           orElse: () => false,
         ) &&
-        currentTabIndex == 1;
+        (currentTabIndex > 0); // Show on any WebView tab (not Hub)
     final isDraggable = status.maybeWhen(
-      refining: (messageCount, isExtracting) => true,
+      refining: (activePresetId, messageCount, isExtracting) => true,
       orElse: () => false,
     );
     final isCentered = status.maybeWhen(
