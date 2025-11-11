@@ -6,12 +6,63 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 // WebView instances. This enables integration tests to use pre-captured
 // authentication cookies and ensures cookies are refreshed during normal usage.
 class WebViewCookieHandler {
+  // WHY: Transform cookie domains for Google services to enable cross-subdomain auth.
+  // Cookies with domain .aistudio.google.com are transformed to .google.com so they
+  // work across all Google subdomains (accounts.google.com, aistudio.google.com, etc.)
+  List<Cookie> _transformGoogleCookieDomains(List<Cookie> cookies) {
+    return cookies.map((cookie) {
+      if (cookie.domain != null && cookie.domain!.contains('google.com')) {
+        // WHY: Extract base domain from subdomain cookies
+        // .aistudio.google.com -> .google.com
+        final parts = cookie.domain!.split('.');
+        if (parts.length > 2) {
+          final baseDomain = '.${parts[parts.length - 2]}.${parts[parts.length - 1]}';
+          if (baseDomain != cookie.domain) {
+            debugPrint(
+              '[WebViewCookieHandler] Transforming cookie ${cookie.name} domain from ${cookie.domain} to $baseDomain',
+            );
+            // WHY: Create new cookie with transformed domain
+            return Cookie(
+              name: cookie.name,
+              value: cookie.value,
+              domain: baseDomain,
+              path: cookie.path,
+              expiresDate: cookie.expiresDate,
+              isSecure: cookie.isSecure,
+              isHttpOnly: cookie.isHttpOnly,
+              sameSite: cookie.sameSite,
+            );
+          }
+        }
+      }
+      return cookie;
+    }).toList();
+  }
+
   // WHY: Inject saved cookies into the WebView before the page loads.
   // This ensures the user is authenticated when the page first renders.
   Future<void> injectSavedCookies(String url) async {
     try {
       final domain = CookieStorage.extractDomain(url);
-      final cookies = await CookieStorage.loadCookies(domain);
+      var cookies = await CookieStorage.loadCookies(domain);
+
+      // WHY: Also try loading cookies for base Google domain if this is a Google subdomain
+      // This handles cases where cookies were saved with domain .google.com
+      if (domain.contains('google.com') && cookies.isEmpty) {
+        final baseDomain = '.google.com';
+        final baseCookies = await CookieStorage.loadCookies(baseDomain);
+        if (baseCookies.isNotEmpty) {
+          debugPrint(
+            '[WebViewCookieHandler] Found ${baseCookies.length} cookies for base domain $baseDomain',
+          );
+          cookies = baseCookies;
+        }
+      }
+
+      // WHY: Transform Google subdomain cookies to base domain for cross-subdomain auth
+      if (domain.contains('google.com') && cookies.isNotEmpty) {
+        cookies = _transformGoogleCookieDomains(cookies);
+      }
 
       if (cookies.isEmpty) {
         // WHY: No cookies saved for this domain - this is normal for first-time use
@@ -120,7 +171,8 @@ class WebViewCookieHandler {
                   );
 
                   // WHY: For __Secure- cookies, ensure Secure flag is set
-                  final isSecureCookie = cookie.name.startsWith('__Secure-') ||
+                  final isSecureCookie =
+                      cookie.name.startsWith('__Secure-') ||
                       (cookie.isSecure ?? false);
 
                   await cookieManager.setCookie(
@@ -232,9 +284,9 @@ class WebViewCookieHandler {
             cookieString.write('; path=${cookie.path}');
           }
 
-            // WHY: __Secure- cookies MUST be secure. Also set secure if cookie.isSecure is true
-            final mustBeSecure = cookie.name.startsWith('__Secure-') ||
-                (cookie.isSecure ?? false);
+          // WHY: __Secure- cookies MUST be secure. Also set secure if cookie.isSecure is true
+          final mustBeSecure =
+              cookie.name.startsWith('__Secure-') || (cookie.isSecure ?? false);
           if (mustBeSecure) {
             cookieString.write('; secure');
           }
