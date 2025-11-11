@@ -27,6 +27,22 @@ class MainRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
+/// [PresetsManagementScreen]
+class PresetsManagementRoute extends PageRouteInfo<void> {
+  const PresetsManagementRoute({List<PageRouteInfo>? children})
+    : super(PresetsManagementRoute.name, initialChildren: children);
+
+  static const String name = 'PresetsManagementRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const PresetsManagementScreen();
+    },
+  );
+}
+
+/// generated route for
 /// [SettingsScreen]
 class SettingsRoute extends PageRouteInfo<void> {
   const SettingsRoute({List<PageRouteInfo>? children})

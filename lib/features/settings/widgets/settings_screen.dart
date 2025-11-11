@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/widgets/user_agent_selector.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,7 +18,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _historyInstructionController;
-  late final TextEditingController _customUserAgentController;
   late final FocusNode _focusNode;
 
   @override
@@ -25,20 +26,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Initialize the controller with the current setting value.
     // WHY: Use maybeWhen to safely access AsyncValue in non-reactive context.
     // This prevents exceptions if the state is AsyncLoading or AsyncError.
-    final initialInstruction = ref.read(generalSettingsProvider).maybeWhen(
-      data: (settings) => settings.historyContextInstruction,
-      orElse: () => '',
-    );
+    final initialInstruction = ref
+        .read(generalSettingsProvider)
+        .maybeWhen(
+          data: (settings) => settings.historyContextInstruction,
+          orElse: () => '',
+        );
     _historyInstructionController = TextEditingController(
       text: initialInstruction,
-    );
-
-    final initialUserAgent = ref.read(generalSettingsProvider).maybeWhen(
-      data: (settings) => settings.customUserAgent,
-      orElse: () => '',
-    );
-    _customUserAgentController = TextEditingController(
-      text: initialUserAgent,
     );
 
     // Initialize the FocusNode and add a listener to save on unfocus.
@@ -63,7 +58,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     // Clean up the controllers and the focus node listener.
     _historyInstructionController.dispose();
-    _customUserAgentController.dispose();
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     super.dispose();
@@ -83,14 +77,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       if (_historyInstructionController.text != newInstruction) {
         _historyInstructionController.text = newInstruction;
-      }
-
-      final newUserAgent = next.maybeWhen(
-        data: (settings) => settings.customUserAgent,
-        orElse: () => '',
-      );
-      if (_customUserAgentController.text != newUserAgent) {
-        _customUserAgentController.text = newUserAgent;
       }
     });
 
@@ -113,18 +99,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Provider Management',
+                  'Presets',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
-              SwitchListTile(
-                title: const Text('Google AI Studio'),
-                value: settings.enabledProviders.contains('ai_studio'),
-                onChanged: (bool value) {
-                  unawaited(settingsNotifier.toggleProvider('ai_studio'));
+              ListTile(
+                leading: const Icon(Icons.settings_applications),
+                title: const Text('Manage Presets'),
+                subtitle: const Text('Create, edit, and organize AI presets'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  unawaited(
+                    context.router.push(const PresetsManagementRoute()),
+                  );
                 },
               ),
-              // Add more providers here in the future
               const Divider(),
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -200,7 +189,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 value: settings.persistSessionOnRestart,
                 onChanged: (bool value) {
-                  unawaited(settingsNotifier.togglePersistSession(value: value));
+                  unawaited(
+                    settingsNotifier.togglePersistSession(value: value),
+                  );
                 },
               ),
               Padding(
@@ -295,26 +286,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: TextField(
-                  controller: _customUserAgentController,
-                  decoration: const InputDecoration(
-                    labelText: 'Custom User Agent (Optional)',
-                    border: OutlineInputBorder(),
-                    helperText:
-                        "Leave empty to use the WebView's default User Agent.",
-                  ),
-                  onSubmitted: (value) {
-                    unawaited(
-                      settingsNotifier.updateCustomUserAgent(value.trim()),
-                    );
-                  },
-                ),
-              ),
+              const UserAgentSelector(),
             ],
           );
         },

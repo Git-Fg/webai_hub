@@ -8,8 +8,8 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 
-// Export ConversationData from generated drift file for use in Riverpod providers
-export 'database.drift.dart' show ConversationData;
+// Export ConversationData and PresetData from generated drift file for use in Riverpod providers
+export 'database.drift.dart' show ConversationData, PresetData;
 
 part 'database.g.dart';
 
@@ -55,6 +55,15 @@ class Messages extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('PresetData')
+class Presets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 50)();
+  TextColumn get providerId => text()();
+  IntColumn get displayOrder => integer()();
+  TextColumn get settingsJson => text()();
+}
+
 // WHY: LazyDatabase ensures the database connection is only opened when needed.
 // This is important for platform-specific path resolution.
 // Uses sqflite's getDatabasesPath() for mobile platforms, which provides the
@@ -63,11 +72,18 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getDatabasesPath();
     final file = File(p.join(dbFolder, 'db.sqlite'));
+
+    // TODO: Remove this block for production. This is for development only
+    // to wipe the database on every app start, avoiding migration complexity.
+    if (await file.exists()) {
+      await file.delete();
+    }
+
     return NativeDatabase.createInBackground(file);
   });
 }
 
-@DriftDatabase(tables: [Conversations, Messages])
+@DriftDatabase(tables: [Conversations, Messages, Presets])
 class AppDatabase extends _$AppDatabase {
   // WHY: This constructor uses sqflite's getDatabasesPath() for mobile platforms,
   // which provides the standard database directory on Android/iOS. The database
@@ -78,7 +94,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.test() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   // WHY: A migration strategy is essential for any production application.
   // It ensures that when you change your database schema in future versions (e.g., add a new column),
@@ -89,69 +105,32 @@ class AppDatabase extends _$AppDatabase {
       onCreate: (Migrator m) async {
         await m.createAll();
       },
-      onUpgrade: (Migrator m, int from, int to) async {
-        final db = m.database as AppDatabase;
-        // WHY: Migration from schema version 1 to 2 adds Conversations table and conversationId column.
-        // Existing messages are assigned to a default "Legacy" conversation to preserve user data.
-        if (from < 2) {
-          // Step 1: Create Conversations table
-          await m.createTable(conversations);
-
-          // Step 2: Create default "Legacy" conversation for existing messages
-          final legacyId = await db
-              .into(db.conversations)
-              .insert(
-                ConversationsCompanion.insert(
-                  title: 'Legacy',
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
-                ),
-              );
-
-          // Step 3: Recreate Messages table with conversationId column
-          // WHY: SQLite doesn't support adding NOT NULL columns to existing tables.
-          // We must recreate the table: rename old, create new, copy data, drop old.
-          // Handle case where messages_old might already exist from a failed migration
-          try {
-            await db.customStatement('DROP TABLE IF EXISTS messages_old');
-          } on Object {
-            // Ignore if table doesn't exist or other errors
-          }
-          await db.customStatement(
-            'ALTER TABLE messages RENAME TO messages_old',
-          );
-          await m.createTable(messages);
-
-          // Step 4: Migrate existing messages to new table with legacy conversationId
-          await db.customStatement(
-            'INSERT INTO messages (id, conversationId, content, isFromUser, status) '
-            'SELECT id, $legacyId, content, isFromUser, status FROM messages_old',
-          );
-
-          // Step 5: Drop old table
-          await db.customStatement('DROP TABLE messages_old');
-        }
-        // WHY: Migration from schema version 2 to 3 adds createdAt column to Messages table.
-        // This ensures reliable ordering of messages independent of ID generation.
-        if (from < 3) {
-          // Add createdAt column (nullable first to allow existing rows)
-          await db.customStatement(
-            'ALTER TABLE messages ADD COLUMN createdAt INTEGER',
-          );
-          // Update all existing rows with current timestamp in milliseconds
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          await db.customStatement(
-            'UPDATE messages SET createdAt = $nowMs WHERE createdAt IS NULL',
-          );
-          // Make the column NOT NULL (SQLite doesn't support this directly, but
-          // since we've updated all rows, this is safe for future inserts)
-          // Note: The default value is handled by Drift's withDefault() in the schema
-        }
-      },
+      // TODO: Implement a robust onUpgrade strategy for production release.
+      // The current development setup wipes the DB on each start, so onUpgrade is never called.
       // WHY: Foreign keys must be explicitly enabled in SQLite for referential integrity.
       // This ensures cascade deletes work correctly and prevents orphaned records.
       beforeOpen: (OpeningDetails details) async {
         await customStatement('PRAGMA foreign_keys = ON');
+
+        // WHY: Defensive check to ensure all presets have providerId values.
+        // This handles edge cases where data might exist with null providerId.
+        if (!details.wasCreated) {
+          // Only check if database already existed (not a fresh install)
+          try {
+            final nullCount = await customSelect(
+              'SELECT COUNT(*) as count FROM presets WHERE providerId IS NULL OR providerId = ""',
+            ).getSingle();
+            final count = nullCount.data['count'] as int;
+            if (count > 0) {
+              // Fix any presets with null or empty providerId
+              await customStatement(
+                "UPDATE presets SET providerId = 'ai_studio' WHERE providerId IS NULL OR providerId = ''",
+              );
+            }
+          } on Object {
+            // Ignore errors - table might not exist yet or other issues
+          }
+        }
       },
     );
   }
@@ -253,4 +232,19 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> clearAllMessages() => managers.messages.delete();
+
+  // --- Preset Data Access Methods ---
+
+  Stream<List<PresetData>> watchAllPresets() => (select(
+    presets,
+  )..orderBy([(t) => OrderingTerm.asc(t.displayOrder)])).watch();
+
+  Future<int> createPreset(PresetsCompanion entry) =>
+      into(presets).insert(entry);
+
+  Future<void> updatePreset(PresetsCompanion entry) =>
+      update(presets).replace(entry);
+
+  Future<void> deletePreset(int id) =>
+      (delete(presets)..where((t) => t.id.equals(id))).go();
 }

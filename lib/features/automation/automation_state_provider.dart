@@ -15,6 +15,7 @@ sealed class AutomationStateData with _$AutomationStateData {
   // AI is responding, user is observing
   const factory AutomationStateData.observing() = _Observing;
   const factory AutomationStateData.refining({
+    required int activePresetId,
     required int messageCount,
     @Default(false) bool isExtracting,
   }) = _Refining;
@@ -30,7 +31,8 @@ sealed class AutomationStateData with _$AutomationStateData {
     idle: () => '',
     sending: (prompt) => 'Phase 1: Sending prompt...',
     observing: () => 'Phase 2: Assistant is responding...',
-    refining: (messageCount, isExtracting) => 'Phase 3: Ready for refinement.',
+    refining: (activePresetId, messageCount, isExtracting) =>
+        'Phase 3: Ready for refinement.',
     failed: () => 'Automation Failed.',
     needsLogin: (onResume) =>
         'Please sign in to your provider Account to continue.',
@@ -40,7 +42,7 @@ sealed class AutomationStateData with _$AutomationStateData {
     idle: () => Icons.info,
     sending: (prompt) => Icons.send,
     observing: () => Icons.visibility,
-    refining: (messageCount, isExtracting) => Icons.edit,
+    refining: (activePresetId, messageCount, isExtracting) => Icons.edit,
     failed: () => Icons.error,
     needsLogin: (onResume) => Icons.login,
   );
@@ -49,7 +51,7 @@ sealed class AutomationStateData with _$AutomationStateData {
     idle: () => Colors.grey,
     sending: (prompt) => Colors.blue,
     observing: () => Colors.orange,
-    refining: (messageCount, isExtracting) => Colors.green,
+    refining: (activePresetId, messageCount, isExtracting) => Colors.green,
     failed: () => Colors.red,
     needsLogin: (onResume) => Colors.amber,
   );
@@ -77,10 +79,13 @@ class AutomationState extends _$AutomationState {
     state = const AutomationStateData.observing();
   }
 
-  void moveToRefining({required int messageCount}) =>
-      state = AutomationStateData.refining(
-        messageCount: messageCount,
-      );
+  void moveToRefining({
+    required int activePresetId,
+    required int messageCount,
+  }) => state = AutomationStateData.refining(
+    activePresetId: activePresetId,
+    messageCount: messageCount,
+  );
 
   void setExtracting({required bool extracting}) {
     state.mapOrNull(

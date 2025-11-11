@@ -1,10 +1,6 @@
 import 'package:ai_hybrid_hub/core/database/database.dart';
-import 'package:ai_hybrid_hub/core/models/provider_config.dart';
-import 'package:ai_hybrid_hub/core/providers/provider_config_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/models/conversation_settings.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,19 +57,15 @@ class PromptBuilder {
       // impacting tests and first-frame behavior.
       orElse: () => const GeneralSettingsData(),
     );
-    final conversationSettings = ref.read(conversationSettingsProvider);
 
     if (generalSettings.useAdvancedPrompting) {
       ref
           .read(talkerProvider)
           .info('Follow-up message. Using Advanced (XML) prompt.');
-      final providerConfig = ref.read(currentProviderConfigurationProvider);
       return _buildXmlPrompt(
         newPrompt,
         history: history,
         generalSettings: generalSettings,
-        conversationSettings: conversationSettings,
-        providerConfig: providerConfig,
       );
     } else {
       ref
@@ -82,7 +74,6 @@ class PromptBuilder {
       return _buildSimplePrompt(
         newPrompt,
         history: history,
-        systemPrompt: conversationSettings.systemPrompt,
       );
     }
   }
@@ -91,14 +82,8 @@ class PromptBuilder {
   String _buildSimplePrompt(
     String newPrompt, {
     required List<Message> history,
-    required String systemPrompt,
   }) {
     final contextBuffer = StringBuffer();
-
-    if (systemPrompt.isNotEmpty) {
-      contextBuffer.writeln(systemPrompt);
-      contextBuffer.writeln();
-    }
 
     for (final message in history) {
       final prefix = message.isFromUser ? 'User:' : 'Assistant:';
@@ -126,22 +111,13 @@ User: $newPrompt
     String newPrompt, {
     required List<Message> history,
     required GeneralSettingsData generalSettings,
-    required ConversationSettings conversationSettings,
-    required ProviderConfig providerConfig,
   }) {
     try {
-      final systemPrompt = conversationSettings.systemPrompt;
-      final shouldInjectSystemPrompt =
-          systemPrompt.isNotEmpty && !providerConfig.supportsNativeSystemPrompt;
-
       // WHY: Use StringBuffer for efficient string concatenation to build the template.
       final promptBuffer = StringBuffer();
 
       // --- Part 1: Initial Instruction ---
       promptBuffer.writeln(_buildUserInputXml(newPrompt));
-      if (shouldInjectSystemPrompt) {
-        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
-      }
 
       // --- Part 2: Context ---
       promptBuffer.writeln('\n${generalSettings.historyContextInstruction}');
@@ -158,12 +134,9 @@ User: $newPrompt
       );
 
       // --- Part 3: Repeated Instruction for Focus ---
-      // WHY: Duplicate the user prompt and system prompt at the end to ensure the AI model
+      // WHY: Duplicate the user prompt at the end to ensure the AI model
       // focuses on the most recent user input rather than getting lost in the context.
       promptBuffer.writeln(_buildUserInputXml(newPrompt));
-      if (shouldInjectSystemPrompt) {
-        promptBuffer.writeln(_buildSystemPromptXml(systemPrompt));
-      }
 
       final finalPrompt = promptBuffer.toString().trim();
       final talker = ref.read(talkerProvider);
@@ -180,22 +153,8 @@ User: $newPrompt
       return _buildSimplePrompt(
         newPrompt,
         history: history,
-        systemPrompt: conversationSettings.systemPrompt,
       );
     }
-  }
-
-  /// Helper to build the system XML node as a string fragment.
-  String _buildSystemPromptXml(String systemPrompt) {
-    final builder = XmlBuilder();
-    builder.element(
-      'system',
-      nest: () {
-        // Use .text() for automatic XML entity escaping.
-        builder.text(systemPrompt);
-      },
-    );
-    return builder.buildDocument().toXmlString(pretty: true);
   }
 
   /// Helper to build the history as a flat, human-readable string.

@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets(
-      'Dragging overlay drag handle updates provider position (clamped)',
-      (tester) async {
+  testWidgets('Dragging overlay drag handle updates provider position (clamped)', (
+    tester,
+  ) async {
     final spy = ValueNotifier<Offset>(Offset.zero);
 
     final overlayKey = GlobalKey();
@@ -20,7 +20,10 @@ void main() {
       ProviderScope(
         overrides: [
           automationStateProvider.overrideWithValue(
-            const AutomationStateData.refining(messageCount: 1),
+            const AutomationStateData.refining(
+              activePresetId: 1,
+              messageCount: 1,
+            ),
           ),
           currentTabIndexProvider.overrideWithValue(1),
         ],

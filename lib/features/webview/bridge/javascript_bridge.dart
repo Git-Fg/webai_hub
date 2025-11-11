@@ -21,13 +21,13 @@ const Duration _heartbeatTimeout = Duration(seconds: 2);
 @Riverpod(keepAlive: true)
 class WebViewController extends _$WebViewController {
   @override
-  InAppWebViewController? build() {
+  InAppWebViewController? build(int presetId) {
     // WORKAROUND: Clean up global functions to prevent JS memory leaks
     ref.onDispose(() {
       final controller = state;
       if (controller != null) {
         final talker = ref.read(talkerProvider);
-        talker.debug('[WebViewController] Disposing controller.');
+        talker.debug('[WebViewController] Disposing controller for preset: $presetId');
         // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
         unawaited(
           controller
@@ -43,7 +43,7 @@ class WebViewController extends _$WebViewController {
                 // WHY: Controller may already be destroyed, errors are non-critical here
                 final talker = ref.read(talkerProvider);
                 talker.warning(
-                  '[WebViewController] Error during disposal: $error',
+                  '[WebViewController] Error during disposal for preset $presetId: $error',
                 );
               }),
         );
@@ -82,23 +82,29 @@ class CurrentWebViewUrl extends _$CurrentWebViewUrl {
 }
 
 class JavaScriptBridge implements JavaScriptBridgeInterface {
-  JavaScriptBridge(this.ref);
+  JavaScriptBridge(this.ref, this.presetId);
   final Ref ref;
+  final int presetId;
 
+  /// WHY: Get the controller for the preset. The preset ID is used to get the correct WebView instance.
   InAppWebViewController get _controller {
-    final controller = ref.read(webViewControllerProvider);
+    final controller = ref.read(webViewControllerProvider(presetId));
     if (controller == null) {
-      throw StateError('WebView controller not initialized');
+      throw StateError(
+        'WebView controller not initialized for preset: $presetId',
+      );
     }
     return controller;
   }
 
+
   Map<String, dynamic> _getBridgeDiagnostics() {
     final isReady = ref.read(bridgeReadyProvider);
-    final controller = ref.read(webViewControllerProvider);
+    final controller = ref.read(webViewControllerProvider(presetId));
     return {
       'bridgeReady': isReady,
       'webViewControllerExists': controller != null,
+      'presetId': presetId,
       'timestamp': DateTime.now().toIso8601String(),
     };
   }
@@ -146,7 +152,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
-      final controller = ref.read(webViewControllerProvider);
+      final controller = ref.read(webViewControllerProvider(presetId));
       if (controller != null) {
         return;
       }
@@ -159,7 +165,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       errorCode: AutomationErrorCode.webViewNotReady,
       location: '_waitForWebViewToBeCreated',
       message:
-          'WebView controller not created within timeout. This usually means the WebView widget is not visible in the widget tree yet.',
+          'WebView controller not created within timeout for preset: $presetId. This usually means the WebView widget is not visible in the widget tree yet.',
       diagnostics: _getBridgeDiagnostics(),
     );
   }
@@ -653,6 +659,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
 }
 
 @Riverpod(keepAlive: true)
-JavaScriptBridgeInterface javaScriptBridge(Ref ref) {
-  return JavaScriptBridge(ref);
+JavaScriptBridgeInterface javaScriptBridge(Ref ref, int presetId) {
+  return JavaScriptBridge(ref, presetId);
 }

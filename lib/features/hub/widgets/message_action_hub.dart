@@ -5,11 +5,13 @@ class MessageActionHub extends StatelessWidget {
   const MessageActionHub({
     required this.onCopy,
     required this.onEdit,
+    this.onResend,
     super.key,
   });
 
   final VoidCallback onCopy;
   final VoidCallback onEdit;
+  final VoidCallback? onResend;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +40,21 @@ class MessageActionHub extends StatelessWidget {
                 onTap: onEdit,
               ),
             ),
+            if (onResend != null) ...[
+              const Divider(height: 1),
+              SizedBox(
+                height:
+                    48, // WHY: Enforce 48px minimum height for accessibility.
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.send_and_archive,
+                    size: kDefaultIconSize,
+                  ),
+                  title: const Text('Resend'),
+                  onTap: onResend,
+                ),
+              ),
+            ],
           ],
         ),
       ),

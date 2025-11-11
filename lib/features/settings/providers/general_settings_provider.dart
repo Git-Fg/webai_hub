@@ -40,20 +40,6 @@ class GeneralSettings extends _$GeneralSettings {
     });
   }
 
-  Future<void> toggleProvider(String providerId) async {
-    await _updateSettings((currentSettings) {
-      final currentProviders = List<String>.from(
-        currentSettings.enabledProviders,
-      );
-      if (currentProviders.contains(providerId)) {
-        currentProviders.remove(providerId);
-      } else {
-        currentProviders.add(providerId);
-      }
-      return currentSettings.copyWith(enabledProviders: currentProviders);
-    });
-  }
-
   Future<void> toggleAdvancedPrompting() async {
     await _updateSettings((currentSettings) {
       return currentSettings.copyWith(
@@ -115,10 +101,26 @@ class GeneralSettings extends _$GeneralSettings {
     });
   }
 
-  // WHY: Allows users to set a custom User Agent for the WebView.
-  Future<void> updateCustomUserAgent(String userAgent) async {
+  Future<void> updateSelectedUserAgent(String selection) async {
     await _updateSettings((currentSettings) {
-      return currentSettings.copyWith(customUserAgent: userAgent);
+      return currentSettings.copyWith(selectedUserAgent: selection);
+    });
+  }
+
+  // WHY: Allows users to set a custom User Agent for the WebView with validation.
+  // Basic validation prevents malformed or excessively long user agents.
+  Future<void> updateCustomUserAgent(String userAgent) async {
+    final trimmedAgent = userAgent.trim();
+    // WHY: Basic validation to prevent malformed or excessively long user agents.
+    if (trimmedAgent.isNotEmpty && !trimmedAgent.startsWith('Mozilla/')) {
+      throw ArgumentError('Invalid User Agent: Must start with "Mozilla/".');
+    }
+    if (trimmedAgent.length > 500) {
+      throw ArgumentError('User Agent is too long (max 500 characters).');
+    }
+
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(customUserAgent: trimmedAgent);
     });
   }
 

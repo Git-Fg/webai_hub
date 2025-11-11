@@ -15,7 +15,8 @@ void main() {
 
   tearDown(() async {
     // WHY: Always close the database connection after each test to prevent leaks.
-    await database.close();
+    // AppDatabase extends GeneratedDatabase which has close() method
+    await (database as dynamic).close();
   });
 
   test('Database can insert and read a message', () async {

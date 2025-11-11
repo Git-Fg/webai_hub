@@ -6,7 +6,10 @@ import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart'
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/conversation_history_drawer.dart';
-import 'package:ai_hybrid_hub/features/hub/widgets/conversation_settings_sheet.dart';
+import 'package:ai_hybrid_hub/features/hub/widgets/curation_panel.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/widgets/preset_selector.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -49,17 +52,157 @@ class _HubScreenState extends ConsumerState<HubScreen> {
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     if (_textController.text.trim().isEmpty) return;
 
     final message = _textController.text.trim();
+    // Get selected preset IDs directly from the provider
+    final selectedPresetIdsAsync = ref.read(selectedPresetIdsProvider);
+    final selectedPresetIds = selectedPresetIdsAsync.maybeWhen(
+      data: (ids) => ids,
+      orElse: () => <int>[],
+    );
+    if (selectedPresetIds.isEmpty) {
+      // No preset selected, can't send
+      return;
+    }
+
     unawaited(
       ref
           .read(conversationActionsProvider.notifier)
-          .sendPromptToAutomation(message),
+          .sendPromptToAutomation(
+            message,
+            selectedPresetIds: selectedPresetIds,
+          ),
     );
     _textController.clear();
     _scrollToBottom();
+  }
+
+  Widget _buildInputSection() {
+    final selectedIdsAsync = ref.watch(selectedPresetIdsProvider);
+    final presetsAsync = ref.watch(presetsProvider);
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.enter): () {
+          if (!HardwareKeyboard.instance.isShiftPressed) {
+            unawaited(_sendMessage());
+          }
+        },
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: kDefaultBlurRadius,
+              offset: kTopShadowOffset,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Part A: The clean input bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                kDefaultPadding,
+                kDefaultPadding,
+                kDefaultPadding,
+                kDefaultPadding,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.only(left: kDefaultPadding),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(kInputBorderRadius),
+                      ),
+                      child: TextField(
+                        key: const Key('hub_message_input'),
+                        focusNode: _focusNode,
+                        controller: _textController,
+                        decoration: InputDecoration(
+                          hintText: 'Type your message...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              kInputBorderRadius,
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: kDefaultPadding + kTinyPadding,
+                            vertical: kMediumVerticalPadding,
+                          ),
+                        ),
+                        maxLines: null,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                  ),
+                  const Gap(kDefaultSpacing),
+                  FloatingActionButton(
+                    key: const Key('hub_send_button'),
+                    tooltip: 'Send message',
+                    onPressed: _sendMessage,
+                    backgroundColor: Colors.blue.shade600,
+                    mini: true,
+                    elevation: 2,
+                    child: const Icon(
+                      Icons.send,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Part B: The Accordion (ExpansionTile)
+            presetsAsync.when(
+              data: (presets) {
+                if (presets.isEmpty) return const SizedBox.shrink();
+
+                final selectedIds = selectedIdsAsync.maybeWhen(
+                  data: (ids) => ids,
+                  orElse: () => <int>[],
+                );
+                final selectedPresets = presets
+                    .where((p) => selectedIds.contains(p.id))
+                    .toList();
+
+                var title = 'No preset selected';
+                if (selectedPresets.isNotEmpty) {
+                  title =
+                      '${selectedPresets.length} selected: ${selectedPresets.first.name}';
+                  if (selectedPresets.length > 1) {
+                    title += '...';
+                  }
+                }
+
+                return ExpansionTile(
+                  title: Text(
+                    title,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                  childrenPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  children: const [
+                    PresetSelector(),
+                  ],
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -109,22 +252,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             tooltip: 'Open application settings',
             onPressed: () {
               unawaited(context.router.push(const SettingsRoute()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            color: Colors.white,
-            tooltip: 'Open conversation settings',
-            onPressed: () {
-              unawaited(
-                showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (BuildContext context) {
-                    return const ConversationSettingsSheet();
-                  },
-                ),
-              );
             },
           ),
           IconButton(
@@ -184,9 +311,11 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               ),
               data: (conversation) {
                 if (conversation.isEmpty) {
+                  // WHY: Expanded already provides unbounded constraints, so Center can fill the space
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.chat_bubble_outline,
@@ -227,70 +356,8 @@ class _HubScreenState extends ConsumerState<HubScreen> {
               },
             ),
           ),
-          CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.enter): () {
-                if (!HardwareKeyboard.instance.isShiftPressed) {
-                  _sendMessage();
-                }
-              },
-            },
-            child: Container(
-              padding: const EdgeInsets.all(kDefaultPadding),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: kDefaultBlurRadius,
-                    offset: kTopShadowOffset,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: const Key('hub_message_input'),
-                      focusNode: _focusNode,
-                      controller: _textController,
-                      decoration: InputDecoration(
-                        hintText: 'Type your message...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            kInputBorderRadius,
-                          ),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: kDefaultPadding + kTinyPadding,
-                          vertical: kMediumVerticalPadding,
-                        ),
-                      ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const Gap(kDefaultSpacing),
-                  FloatingActionButton(
-                    key: const Key('hub_send_button'),
-                    tooltip: 'Send message',
-                    onPressed: _sendMessage,
-                    backgroundColor: Colors.blue.shade600,
-                    mini: true,
-                    elevation: 2,
-                    child: const Icon(
-                      Icons.send,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const CurationPanel(),
+          _buildInputSection(),
         ],
       ),
     );

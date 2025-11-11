@@ -5,6 +5,7 @@ import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provid
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
@@ -48,7 +49,7 @@ class CompanionOverlay extends ConsumerWidget {
     // WHY: Parent DraggableCompanionOverlay ensures this widget is only built for refining and needsLogin states.
     // Therefore, we only need to handle those two cases here.
     final content = status.maybeWhen(
-      refining: (messageCount, isExtracting) => _buildStatusUI(
+      refining: (activePresetId, messageCount, isExtracting) => _buildStatusUI(
         context: context,
         status: status,
         actionButton: _buildRefiningButtons(context, ref, messageCount),
@@ -193,7 +194,8 @@ class CompanionOverlay extends ConsumerWidget {
     final isExtracting = ref.watch(
       automationStateProvider.select(
         (s) => s.maybeWhen(
-          refining: (messageCount, isExtracting) => isExtracting,
+          refining: (activePresetId, messageCount, isExtracting) =>
+              isExtracting,
           orElse: () => false,
         ),
       ),
@@ -220,9 +222,17 @@ class CompanionOverlay extends ConsumerWidget {
               ? null
               : () async {
                   try {
-                    await ref
-                        .read(conversationActionsProvider.notifier)
-                        .extractAndReturnToHub();
+                    // Get presetId directly from the state
+                    final refiningState = ref.read(automationStateProvider);
+                    refiningState.mapOrNull(
+                      refining: (data) {
+                        unawaited(
+                          ref
+                              .read(conversationActionsProvider.notifier)
+                              .extractAndReturnToHub(data.activePresetId),
+                        );
+                      },
+                    );
                   } on Object catch (e) {
                     // WHY: This is the clean, reactive way. The UI layer catches the
                     // error from the business logic layer and decides how to display it.
@@ -250,9 +260,8 @@ class CompanionOverlay extends ConsumerWidget {
           onPressed: isExtracting
               ? null
               : () {
-                  ref
-                      .read(conversationActionsProvider.notifier)
-                      .finalizeAutomation();
+                  ref.read(automationStateProvider.notifier).returnToIdle();
+                  ref.read(currentTabIndexProvider.notifier).changeTo(0);
                 },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blueGrey,

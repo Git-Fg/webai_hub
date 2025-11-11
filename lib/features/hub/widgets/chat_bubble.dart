@@ -115,13 +115,30 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                         Navigator.of(popoverContext).pop(); // Close the popover
                         _toggleEditMode();
                       },
+                      onResend: widget.message.isFromUser
+                          ? () {
+                              Navigator.of(
+                                popoverContext,
+                              ).pop(); // Close popover
+                              unawaited(
+                                ref
+                                    .read(conversationActionsProvider.notifier)
+                                    .editAndResendPrompt(
+                                      widget.message.id,
+                                      _textController.text,
+                                    ),
+                              );
+                            }
+                          : null,
                     ),
                     direction: PopoverDirection.top,
                     arrowHeight: 10,
                     arrowWidth: 20,
                     radius: kDefaultBorderRadius,
                     width: 150,
-                    height: 97, // Corrected height for accessibility
+                    height: widget.message.isFromUser
+                        ? 146
+                        : 97, // Adjust height for resend option
                   ),
                 );
               }
@@ -175,11 +192,11 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
       decoration: BoxDecoration(
         color: _isEditing
             ? (widget.message.isFromUser
-                ? Colors.blue.shade700
-                : Colors.grey.shade300)
+                  ? Colors.blue.shade700
+                  : Colors.grey.shade300)
             : (widget.message.isFromUser
-                ? Colors.blue.shade500
-                : Colors.grey.shade200),
+                  ? Colors.blue.shade500
+                  : Colors.grey.shade200),
         borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
           bottomLeft: Radius.circular(
             widget.message.isFromUser

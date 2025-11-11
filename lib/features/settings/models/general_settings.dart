@@ -10,7 +10,6 @@ part 'general_settings.g.dart';
 @freezed
 sealed class GeneralSettingsData with _$GeneralSettingsData {
   const factory GeneralSettingsData({
-    @Default(['ai_studio']) List<String> enabledProviders,
     // WHY: Add a flag for the new prompt engineering mode. Default to true to
     // encourage the more robust XML-based method while retaining a fallback.
     @Default(true) bool useAdvancedPrompting,
@@ -31,8 +30,10 @@ sealed class GeneralSettingsData with _$GeneralSettingsData {
     // WHY: Limits the number of conversations kept in history to prevent database bloat.
     // Defaults to 10 conversations, which balances usability with storage efficiency.
     @Default(10) int maxConversationHistory,
-    // WHY: Allows advanced users to override the WebView's default User Agent.
-    // If empty, the platform-specific default UA from flutter_inappwebview is used.
+    // WHY: 'default' signifies using the device's native UA. Other values will be names
+    // from the BrowserUserAgent enum or the string 'custom'.
+    @Default('default') String selectedUserAgent,
+    // WHY: Allows advanced users to provide a custom User Agent string.
     @Default('') String customUserAgent,
     // WHY: Controls whether the WebView supports zoom gestures (pinch-to-zoom).
     // Defaults to false to prevent accidental zooming during automation.
