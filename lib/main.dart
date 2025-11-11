@@ -7,7 +7,6 @@ import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -100,10 +99,8 @@ Future<void> _runStartupLogic(ProviderContainer container) async {
     // 3. Load last session if enabled
     if (settings.persistSessionOnRestart) {
       try {
-        final allConversations = await db.watchAllConversations().first;
-        allConversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        if (allConversations.isNotEmpty) {
-          final lastConversation = allConversations.first;
+        final lastConversation = await db.getMostRecentConversation();
+        if (lastConversation != null) {
           container
               .read(activeConversationIdProvider.notifier)
               .set(lastConversation.id);
@@ -150,23 +147,26 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen>
     with TickerProviderStateMixin {
-  late final PageController _pageController;
   TabController? _tabController;
   final GlobalKey _overlayKey = GlobalKey();
 
   @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(
-      initialPage: ref.read(currentTabIndexProvider),
-    );
-  }
-
-  @override
   void dispose() {
-    _pageController.dispose();
     _tabController?.dispose();
     super.dispose();
+  }
+
+  // WHY: Helper method to create/update the TabController with proper lifecycle management.
+  // This ensures the controller is always synchronized with the preset count.
+  void _updateTabController(int length) {
+    if (_tabController?.length == length) return; // No change needed
+
+    _tabController?.dispose(); // Dispose the old one if it exists
+    _tabController = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: ref.read(currentTabIndexProvider).clamp(0, length - 1),
+    );
   }
 
   @override
@@ -179,31 +179,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
       next.whenData((presets) {
         final totalTabs = 1 + presets.length;
         if (_tabController?.length != totalTabs) {
-          // Recreate TabController only when needed
           setState(() {
-            _tabController?.dispose();
-            _tabController = TabController(
-              length: totalTabs,
-              vsync: this,
-              initialIndex: ref
-                  .read(currentTabIndexProvider)
-                  .clamp(0, totalTabs - 1),
-            );
+            _updateTabController(totalTabs);
           });
         }
       });
     });
 
     ref.listen(currentTabIndexProvider, (_, next) {
-      if (_pageController.hasClients && _pageController.page?.round() != next) {
-        unawaited(
-          _pageController.animateToPage(
-            next,
-            duration: kShortAnimationDuration,
-            curve: Curves.easeInOut,
-          ),
-        );
-      }
       if (_tabController?.index != next) {
         _tabController?.animateTo(next);
       }
@@ -241,14 +224,12 @@ class _MainScreenState extends ConsumerState<MainScreen>
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, st) => Center(child: Text('Error: $err')),
               data: (presets) {
-                return PageView(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    ref.read(currentTabIndexProvider.notifier).changeTo(index);
-                  },
+                return IndexedStack(
+                  index: ref.watch(currentTabIndexProvider),
                   children: [
                     const HubScreen(),
-                    ...presets.map((preset) {
+                    // WHY: Filter out groups (presets with null providerId) as they don't need WebView screens
+                    ...presets.where((preset) => preset.providerId != null).map((preset) {
                       return AiWebviewScreen(
                         key: ValueKey(preset.id), // CRITICAL
                         preset: preset,
@@ -263,24 +244,23 @@ class _MainScreenState extends ConsumerState<MainScreen>
         ),
         bottomNavigationBar: presetsAsync.when(
           data: (presets) {
-            if (_tabController == null) {
-              // Initial creation of TabController
-              final totalTabs = 1 + presets.length;
-              _tabController = TabController(
-                length: totalTabs,
-                vsync: this,
-                initialIndex: ref
-                    .read(currentTabIndexProvider)
-                    .clamp(0, totalTabs - 1),
-              );
+            // WHY: Filter out groups from tabs as they don't have WebView screens
+            final presetsWithProviders = presets.where((p) => p.providerId != null).toList();
+            final totalTabs = 1 + presetsWithProviders.length;
+            _updateTabController(totalTabs); // Update controller here
+
+            // Controller is guaranteed to be non-null after _updateTabController
+            final controller = _tabController;
+            if (controller == null) {
+              return const SizedBox.shrink();
             }
 
             final tabs = [
               const Tab(icon: Icon(Icons.chat), text: 'Hub'),
-              ...presets.map((p) => Tab(text: p.name)),
+              ...presetsWithProviders.map((p) => Tab(text: p.name)),
             ];
             return TabBar(
-              controller: _tabController,
+              controller: controller,
               isScrollable: tabs.length > 4,
               tabs: tabs,
               onTap: (index) {
@@ -307,18 +287,12 @@ class DraggableCompanionOverlay extends ConsumerWidget {
 
   final GlobalKey overlayKey;
 
-  // WHY: This widget acts as a "controller" for the CompanionOverlay.
-  // It centralizes the complex logic for visibility, positioning, and interactivity
-  // based on the global AutomationState and current tab.
-  // - Visibility is tied to interactive states (`refining`, `needsLogin`) on the WebView tab.
-  // - Positioning logic switches between user-controlled (draggable) for `refining`
-  //   and fixed (centered) for `needsLogin`.
-  // This keeps the CompanionOverlay widget itself focused solely on its internal layout.
+  // WHY: This widget controls visibility of the CompanionOverlay based on automation state.
+  // All positioning and dragging logic is now handled within CompanionOverlay itself.
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final currentTabIndex = ref.watch(currentTabIndexProvider);
-    final overlayState = ref.watch(overlayManagerProvider);
 
     final shouldShow =
         status.maybeWhen(
@@ -326,40 +300,14 @@ class DraggableCompanionOverlay extends ConsumerWidget {
           needsLogin: (onResume) => true,
           orElse: () => false,
         ) &&
-        (currentTabIndex > 0); // Show on any WebView tab (not Hub)
-    final isDraggable = status.maybeWhen(
-      refining: (activePresetId, messageCount, isExtracting) => true,
-      orElse: () => false,
-    );
-    final isCentered = status.maybeWhen(
-      needsLogin: (onResume) => true,
-      orElse: () => false,
-    );
+        (currentTabIndex > 0);
 
-    return Align(
-      alignment: isCentered ? Alignment.center : Alignment.topCenter,
-      child: AnimatedOpacity(
-        opacity: shouldShow ? 1.0 : 0.0,
-        duration: kShortAnimationDuration,
-        child: IgnorePointer(
-          ignoring: !shouldShow,
-          child: Transform.translate(
-            offset: isDraggable ? overlayState.position : Offset.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(kDefaultPadding),
-              child: isDraggable
-                  ? GestureDetector(
-                      onPanUpdate: (details) {
-                        ref
-                            .read(overlayManagerProvider.notifier)
-                            .updatePosition(details.delta);
-                      },
-                      child: CompanionOverlay(overlayKey: overlayKey),
-                    )
-                  : CompanionOverlay(overlayKey: overlayKey),
-            ),
-          ),
-        ),
+    return AnimatedOpacity(
+      opacity: shouldShow ? 1.0 : 0.0,
+      duration: kShortAnimationDuration,
+      child: IgnorePointer(
+        ignoring: !shouldShow,
+        child: CompanionOverlay(overlayKey: overlayKey),
       ),
     );
   }
