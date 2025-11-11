@@ -4,8 +4,6 @@ import 'dart:convert';
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/core/services/cookie_storage.dart';
-import 'package:ai_hybrid_hub/core/services/webview_cookie_handler.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
@@ -43,12 +41,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   InAppWebViewController? webViewController;
   double _progress = 0;
   String? _currentBridgeScript;
-  final WebViewCookieHandler _cookieHandler = WebViewCookieHandler();
   BridgeEventHandler? _eventHandler;
   // WHY: Flag to prevent showing the notification multiple times for the same error.
   bool _isUserAgentNoticeShown = false;
-  // WHY: Track if initial navigation has occurred to ensure cookies are injected first.
-  bool _hasNavigatedInitially = false;
+  // WHY: Flag to prevent infinite redirect loops when handling CookieMismatch
+  bool _isHandlingCookieMismatch = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -135,25 +132,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     if (state == AppLifecycleState.resumed) {
       // WHY: Fire-and-forget: recovery happens asynchronously, no need to await
       unawaited(_checkBridgeHealthOnResume());
-    }
-  }
-
-  /// Injects cookies via JavaScript as a workaround for CookieManager persistence issues
-  Future<void> _injectCookiesViaJavaScript(
-    InAppWebViewController controller,
-    String url,
-  ) async {
-    try {
-      final domain = CookieStorage.extractDomain(url);
-      final cookies = await CookieStorage.loadCookies(domain);
-      
-      if (cookies.isEmpty) return;
-      
-      await _cookieHandler.injectCookiesViaJavaScript(controller, cookies);
-    } on Exception catch (e) {
-      debugPrint(
-        '[AiWebviewScreen] Failed to inject cookies via JavaScript: $e',
-      );
     }
   }
 
@@ -423,6 +401,10 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         useShouldOverrideUrlLoading: true,
         // WHY: Disable database APIs if not needed to reduce attack surface
         databaseEnabled: false,
+        // WHY: Enable third-party cookies to allow Google services to work properly
+        // This prevents Google from redirecting to CookieMismatch page
+        thirdPartyCookiesEnabled:
+            true, // ignore: avoid_redundant_argument_values
       ),
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         // WHY: Wrap talker access in try-catch to handle any provider access issues
@@ -444,6 +426,36 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             // Ignore logging errors
           }
         }
+
+        // WHY: Handle Google CookieMismatch redirect by navigating directly to login page
+        // This bypasses the cookie error page that appears when third-party cookies are blocked
+        if (uri != null &&
+            uri.toString().contains('accounts.google.com/CookieMismatch') &&
+            widget.preset.providerId == 'ai_studio' &&
+            !_isHandlingCookieMismatch) {
+          _isHandlingCookieMismatch = true;
+          if (talker != null) {
+            try {
+              talker.warning(
+                '[WebView] Detected CookieMismatch redirect, navigating to Google login...',
+              );
+            } on Object catch (_) {
+              // Ignore logging errors
+            }
+          }
+          // Navigate directly to Google login page, which will then redirect to AI Studio after login
+          const loginUrl =
+              'https://accounts.google.com/signin/v2/identifier?continue=https://aistudio.google.com/prompts/new_chat&flowName=GlifWebSignIn&flowEntry=ServiceLogin';
+          unawaited(
+            controller.loadUrl(urlRequest: URLRequest(url: WebUri(loginUrl))),
+          );
+          // Reset flag after a delay to allow navigation
+          Future.delayed(const Duration(seconds: 2), () {
+            _isHandlingCookieMismatch = false;
+          });
+          return NavigationActionPolicy.CANCEL;
+        }
+
         return NavigationActionPolicy.ALLOW;
       },
       onWebViewCreated: (controller) {
@@ -464,31 +476,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           widget.preset.name,
         );
 
-        // WHY: Inject saved cookies before page loads to ensure authenticated session.
-        // This enables integration tests to use pre-captured "Golden Cookies".
-        // We await cookie injection and then navigate programmatically to ensure
-        // cookies are set before the page loads.
+        // Navigate to the provider URL when WebView is created
         final url = _getProviderUrl();
-        _cookieHandler
-            .injectSavedCookies(url)
-            .then((_) {
-              // WHY: Navigate after cookies are injected to ensure authenticated session.
-              if (mounted && !_hasNavigatedInitially) {
-                _hasNavigatedInitially = true;
-                controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
-              }
-            })
-            .catchError((Object e) {
-              // WHY: Even if cookie injection fails, still navigate so the app can function.
-              // User can manually log in if needed.
-              debugPrint(
-                '[AiWebviewScreen] Cookie injection failed, navigating anyway: $e',
-              );
-              if (mounted && !_hasNavigatedInitially) {
-                _hasNavigatedInitially = true;
-                controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
-              }
-            });
+        controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
 
         controller.addJavaScriptHandler(
           handlerName: BridgeConstants.automationHandler,
@@ -538,18 +528,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // loading, we must consider the bridge not ready until the new page explicitly
         // signals its readiness via the 'bridgeReady' handler.
         ref.read(bridgeReadyProvider.notifier).reset();
-
-        // WHY: Ensure cookies are injected before page loads, even if this is a reload.
-        // This handles edge cases where cookies might not have been injected initially.
-        if (url != null && _isSupportedDomain(url)) {
-          unawaited(_cookieHandler.injectSavedCookies(url.toString()));
-          
-          // WHY: Also try JavaScript injection as workaround for CookieManager persistence issues
-          // This is especially important for Google authentication flows
-          if (url.host.contains('google.com')) {
-            unawaited(_injectCookiesViaJavaScript(controller, url.toString()));
-          }
-        }
       },
       onLoadStop: (controller, url) async {
         setState(() {
@@ -602,12 +580,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         final bridge = ref.read(javaScriptBridgeProvider(widget.preset.id));
         if (bridge is JavaScriptBridge) {
           await bridge.captureConsoleLogs();
-        }
-
-        // WHY: Capture cookies after page loads to update stored cookies if session is renewed.
-        // This ensures cookies stay fresh during normal app usage.
-        if (url != null) {
-          unawaited(_cookieHandler.captureCookies(url.toString()));
         }
       },
       onUpdateVisitedHistory: (controller, url, androidIsReload) async {
