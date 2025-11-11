@@ -1,5 +1,6 @@
 // integration_test/auth_test.dart
 
+import 'package:ai_hybrid_hub/core/services/cookie_storage.dart';
 import 'package:ai_hybrid_hub/core/services/webview_cookie_handler.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ class _MinimalAuthTestAppState extends State<MinimalAuthTestApp> {
   InAppWebViewController? _controller;
   final WebViewCookieHandler _cookieHandler = WebViewCookieHandler();
   bool _hasNavigatedInitially = false;
+  bool _hasInjectedCookiesOnAccounts = false;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +56,32 @@ class _MinimalAuthTestAppState extends State<MinimalAuthTestApp> {
                 });
           },
           onLoadStop: (controller, url) async {
+            // WHY: Also try injecting cookies again after page load, in case they were cleared
+            if (url != null && 
+                url.toString().contains('accounts.google.com') &&
+                !_hasInjectedCookiesOnAccounts) {
+              _hasInjectedCookiesOnAccounts = true;
+              debugPrint('[AuthTest] Page loaded on accounts.google.com, re-injecting cookies...');
+              
+              // WHY: Try both CookieManager and JavaScript injection
+              await _cookieHandler.injectSavedCookies(WebViewConstants.aiStudioUrl);
+              
+              // WHY: Also try JavaScript injection as workaround
+              final domain = CookieStorage.extractDomain(WebViewConstants.aiStudioUrl);
+              final cookies = await CookieStorage.loadCookies(domain);
+              if (cookies.isNotEmpty) {
+                debugPrint('[AuthTest] Attempting JavaScript cookie injection...');
+                await _cookieHandler.injectCookiesViaJavaScript(controller, cookies);
+                
+                // WHY: Wait a moment for cookies to be processed, then navigate to AI Studio
+                await Future<void>.delayed(const Duration(seconds: 2));
+                debugPrint('[AuthTest] Navigating directly to AI Studio after cookie injection...');
+                await controller.loadUrl(
+                  urlRequest: URLRequest(url: WebUri(WebViewConstants.aiStudioUrl)),
+                );
+              }
+            }
+            
             // Advanced Debug: Dump all cookies after the page loads.
             // Check cookies for both the current URL and accounts.google.com
             final currentUrlCookies = await CookieManager.instance().getCookies(
@@ -84,6 +112,12 @@ class _MinimalAuthTestAppState extends State<MinimalAuthTestApp> {
                 );
               }
             }
+            
+            // WHY: Also check if we have any cookies with domain .google.com
+            final allCookies = await CookieManager.instance().getCookies(
+              url: WebUri('https://google.com'),
+            );
+            debugPrint('Cookies for google.com (base domain): ${allCookies.length}');
             debugPrint('---------------------------------------------');
           },
         ),
@@ -138,9 +172,10 @@ void main() {
         reason: 'WebView controller should be available.',
       );
 
-      // Poll the DOM for up to 20 seconds to find the logged-in element.
+      // Poll the DOM for up to 30 seconds to find the logged-in element.
+      // Give more time for Google's authentication flow to complete.
       const pollInterval = Duration(seconds: 1);
-      const timeout = Duration(seconds: 20);
+      const timeout = Duration(seconds: 30);
       bool isLoggedIn = false;
       final stopwatch = Stopwatch()..start();
 
@@ -150,7 +185,34 @@ void main() {
 
       while (stopwatch.elapsed < timeout) {
         try {
-          final result = await controller!.evaluateJavascript(
+          final currentUrl = await controller!.getUrl();
+          final urlString = currentUrl?.toString() ?? '';
+          
+          // WHY: Check if we've been redirected to AI Studio (success!)
+          if (urlString.contains('aistudio.google.com') &&
+              !urlString.contains('accounts.google.com')) {
+            debugPrint(
+              '[AuthTest] ✅ Redirected to AI Studio after ${stopwatch.elapsed.inSeconds}s - checking for logged-in element...',
+            );
+            
+            // Wait a bit for page to fully load
+            await tester.pump(const Duration(seconds: 2));
+            
+            final result = await controller.evaluateJavascript(
+              source: 'document.querySelector("ms-chunk-input textarea") !== null',
+            );
+
+            if (result == true) {
+              isLoggedIn = true;
+              debugPrint(
+                '[AuthTest] ✅ Found logged-in indicator after ${stopwatch.elapsed.inSeconds}s',
+              );
+              break;
+            }
+          }
+
+          // WHY: Also check for logged-in element on current page
+          final result = await controller.evaluateJavascript(
             source: 'document.querySelector("ms-chunk-input textarea") !== null',
           );
 
@@ -162,17 +224,37 @@ void main() {
             break;
           }
 
-          // WHY: Also check current URL to see if we're stuck on login page
-          final currentUrl = await controller.getUrl();
-          debugPrint(
-            '[AuthTest] Polling... (${stopwatch.elapsed.inSeconds}s) - URL: $currentUrl',
-          );
-
-          if (currentUrl != null &&
-              currentUrl.toString().contains('accounts.google.com')) {
+          // WHY: Log URL every 5 seconds to track progress
+          if (stopwatch.elapsed.inSeconds % 5 == 0) {
             debugPrint(
-              '[AuthTest] ⚠️ Still on Google login page - cookies may not be working',
+              '[AuthTest] Polling... (${stopwatch.elapsed.inSeconds}s) - URL: $urlString',
             );
+            
+            // WHY: Check cookies again periodically
+            final accountsCookies = await CookieManager.instance().getCookies(
+              url: WebUri('https://accounts.google.com'),
+            );
+            debugPrint(
+              '[AuthTest] Cookies on accounts.google.com: ${accountsCookies.length}',
+            );
+            
+            // WHY: Check page title and content for clues
+            try {
+              final title = await controller.evaluateJavascript(
+                source: 'document.title',
+              );
+              final hasEmailInput = await controller.evaluateJavascript(
+                source: 'document.querySelector("input[type=\\"email\\"]") !== null',
+              );
+              final hasPasswordInput = await controller.evaluateJavascript(
+                source: 'document.querySelector("input[type=\\"password\\"]") !== null',
+              );
+              debugPrint(
+                '[AuthTest] Page title: $title, Has email input: $hasEmailInput, Has password input: $hasPasswordInput',
+              );
+            } catch (e) {
+              debugPrint('[AuthTest] Error checking page content: $e');
+            }
           }
         } catch (e) {
           debugPrint('[AuthTest] Error polling DOM: $e');
