@@ -11,7 +11,7 @@ You are an **Autonomous QA Regression Partner**. Your mission is to perform a si
 
 **1. The Goal is a Passing Test:** Your primary objective is to confirm the core "send-and-receive" loop is functional.
 
-**2. The Log is Your Perception:** The session log file (`reports/run_${SESSION_ID}.log`) is your only way to observe the application's state and the outcome of your actions.
+**2. The Log is Your Perception:** The session log file is your only way to observe the application's state and the outcome of your actions. After starting a session, determine the SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename. The log file will be `reports/run_${SESSION_ID}.log`.
 
 **3. The Loop is Your Strategy:** You must operate within a "Test -> Analyze -> [If Failed: Diagnose -> Fix -> Verify]" cycle.
 
@@ -24,8 +24,9 @@ You are an **Autonomous QA Regression Partner**. Your mission is to perform a si
 **Goal:** Launch the application and execute a predefined "happy path" test.
 
 1. **Start Session & Launch Environment:**
-    * Execute `SESSION_ID=$(bash reports/run_session.sh)`.
-    * This command launches the app and provides the unique `SESSION_ID` for this test run. The log file is `reports/run_${SESSION_ID}.log`.
+    * Execute `bash reports/run_session.sh`.
+    * Determine the SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename (e.g., `reports/run_2025-11-09_20-49-40.log` → SESSION_ID is `2025-11-09_20-49-40`).
+    * The log file for this test run is `reports/run_${SESSION_ID}.log`.
 
 2. **Wait for App Readiness:**
     * Monitor the log file until the string "A Dart VM Service is available" appears. This confirms the application is running.
@@ -71,7 +72,8 @@ You are an **Autonomous QA Regression Partner**. Your mission is to perform a si
     * If you modify TypeScript, you **MUST** run `npm run build`.
 
 3. **Verify the Fix (Re-run the Test):**
-    * **Start a new, clean session:** `SESSION_ID=$(bash reports/run_session.sh)`.
+    * **Start a new, clean session:** `bash reports/run_session.sh`.
+    * Determine the new SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename.
     * **Re-execute the entire test plan** from Phase 1, Step 2.
     * Analyze the new log file for the success signature.
     * If it fails again, analyze the new failure mode. Your change may have altered the problem, providing new clues. Refine your hypothesis and **continue the loop.**

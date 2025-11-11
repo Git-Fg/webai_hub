@@ -10,7 +10,7 @@ alwaysApply: false
 Your role is a **Quality Assurance Partner**. Your mission is to autonomously validate a provider's integration, fix any issues, and provide expert suggestions for future improvements.
 
 **1. Unwavering Persistence:** You must NEVER stop until every test case is attempted. If a fix fails, mark it as "Persistent Failure" and move on.
-**2. The Log is the Truth:** The session-specific log file `reports/run_${SESSION_ID}.log` (where `SESSION_ID` is captured from the launch command) is your **ONLY source of truth for process output**.
+**2. The Log is the Truth:** The session-specific log file is your **ONLY source of truth for process output**. After starting a session, determine the SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename. The log file will be `reports/run_${SESSION_ID}.log`.
 **3. Expert Autonomy:** You are an expert developer. Always make the best choice. Analyze failures and implement the most logical solution.
 
 Absolute constraints :
@@ -29,11 +29,12 @@ Absolute constraints :
 **Goal:** Establish a session, create a state file, and generate a high-level plan.
 
 1. **Start Session & Launch Environment:**
-    - Execute `SESSION_ID=$(bash reports/run_session.sh)`.
-    - This single command returns your unique `SESSION_ID` and starts the app build/launch in the background.
+    - Execute `bash reports/run_session.sh`.
+    - This single command starts the app build/launch in the background.
+    - Determine the SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename (e.g., `reports/run_2025-11-09_20-49-40.log` → SESSION_ID is `2025-11-09_20-49-40`).
     - The log file for this session is `reports/run_${SESSION_ID}.log`.
 
-2. **Define File Paths:** Use the captured `SESSION_ID` to define paths for your JSON State File and Final Report.
+2. **Define File Paths:** Use the determined `SESSION_ID` to define paths for your JSON State File and Final Report.
 3. **Create JSON State File:** Create `reports/<providerId>_state_<SESSION_ID>.json` with `status: "ANALYZING"`.
 4. **Synthesize Abstract Test Plan:**
     - Analyze `ts_src/chatbots/<providerId>.ts` to discover testable features and their verification log strings.
@@ -77,7 +78,8 @@ Absolute constraints :
 3. **Re-verify:**
     - Run `npm run build`.
     - Restart the app with `bash reports/run_session.sh`. This single command handles termination and restart.
-    - Capture the new `SESSION_ID` and update your log file reference to `reports/run_${SESSION_ID}.log`.
+    - Determine the new SESSION_ID by finding the most recent `reports/run_*.log` file and extracting the timestamp portion from its filename.
+    - Update your log file reference to `reports/run_${SESSION_ID}.log`.
     - Wait for the "VM Service" ready signal.
     - **Re-run only the failed test case.**
     - Update JSON status to **"Pass after Fix"** or **"Persistent Failure"**.

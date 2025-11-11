@@ -56,6 +56,12 @@ echo "Log file: $LOG_FILE" >&2
 # Output SESSION_ID to stdout for the calling agent
 echo "$SESSION_ID"
 
+# --- Log File Cleanup ---
+# Clean up old log files, keeping only the 2 newest (so we'll have 3 total after creating the new one)
+if ls reports/run_*.log 1> /dev/null 2>&1; then
+    ls -t reports/run_*.log 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true
+fi
+
 # --- Background Process Execution ---
 (
     echo "--- Autonomous Validation Session ID: $SESSION_ID ---" > "$LOG_FILE"
@@ -85,4 +91,5 @@ echo "Waiting for app to become ready..." >&2
 timeout 60s bash -c "until [ -f \"$LOG_FILE\" ] && [ -s \"$LOG_FILE\" ]; do sleep 0.5; done; tail -f \"$LOG_FILE\" | grep -m 1 \"A Dart VM Service\""
 
 echo "App is ready. Script finished." >&2
+exit 0
 

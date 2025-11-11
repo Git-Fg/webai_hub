@@ -12,5 +12,6 @@
       "source.fixAll.markdownlint": "explicit"
     }
   },
-  "markdownlint.run": "onSave"
+  "markdownlint.run": "onSave",
+  "chat.agent.maxRequests": 100
 }

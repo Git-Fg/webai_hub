@@ -69,3 +69,6 @@ app.*.map.json
 
 # Playwright persisted auth
 .auth/
+
+# Environment variables (contains sensitive cookies)
+.env
