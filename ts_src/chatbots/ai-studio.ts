@@ -106,6 +106,8 @@ interface ChatbotHelpers {
     message: string,
     additionalContext?: string
   ): Error;
+  openSettingsPanel(): Promise<void>;
+  closeSettingsPanel(): Promise<void>;
 }
 
 class SettingsManager {
@@ -208,7 +210,13 @@ class SettingsManager {
     console.log(`[AI Studio LOG] Setting Temperature to: ${temperature}`);
     // Direct implementation instead of calling setSliderValueByLabel
     try {
-      const labelElement = await waitForElementByText('h3', 'Temperature') as HTMLElement;
+      // WHY: Wait for settings panel content to be fully loaded before accessing elements
+      // This is especially important after tab switches when the page may have just loaded
+      // We wait a bit longer here to ensure the content is rendered
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
+      await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
+      
+      const labelElement = await waitForElementByText('h3', 'Temperature', getModifiedTimeout(DEFAULT_TIMEOUT_MS)) as HTMLElement;
       if (!labelElement) {
         throw new Error(`Could not find 'Temperature' label in settings panel.`);
       }
@@ -234,7 +242,7 @@ class SettingsManager {
 
   async setTopP(topP: number): Promise<void> {
     console.log(`[AI Studio LOG] Setting Top-P to: ${topP}`);
-    const advancedToggle = await waitForElementByText('p', 'Advanced settings') as HTMLElement;
+    const advancedToggle = await waitForElementByText('p', 'Advanced settings', getModifiedTimeout(DEFAULT_TIMEOUT_MS)) as HTMLElement;
     const advancedToggleContainer = advancedToggle.closest(SELECTORS.ADVANCED_SETTINGS_TOGGLE);
     if (advancedToggleContainer && !advancedToggleContainer.classList.contains('expanded')) {
       (advancedToggleContainer as HTMLElement).click();
@@ -244,7 +252,7 @@ class SettingsManager {
     }
     // Direct implementation instead of calling setSliderValueByLabel
     try {
-      const labelElement = await waitForElementByText('h3', 'Top P') as HTMLElement;
+      const labelElement = await waitForElementByText('h3', 'Top P', getModifiedTimeout(DEFAULT_TIMEOUT_MS)) as HTMLElement;
       if (!labelElement) {
         throw new Error(`Could not find 'Top P' label in settings panel.`);
       }
@@ -348,10 +356,96 @@ class SettingsManager {
       }
     }
   }
+
+  async setSystemPrompt(systemPrompt: string): Promise<void> {
+    if (!systemPrompt) return;
+    console.log('[AI Studio LOG] Setting system prompt.');
+    await this.chatbot.openSettingsPanel();
+    try {
+      const systemPromptButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.SYSTEM_PROMPT_CARD]);
+      const systemPromptButton = assertIsElement(systemPromptButtonEl, HTMLButtonElement, 'System prompt card');
+      systemPromptButton.click();
+      // WHY: Wait for dialog open animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
+      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+
+      const textareaEl = await waitForElement<HTMLTextAreaElement>([SELECTORS.SYSTEM_PROMPT_TEXTAREA]);
+      const textarea = assertIsElement(textareaEl, HTMLTextAreaElement, 'System prompt textarea');
+      textarea.value = systemPrompt;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      console.log('[AI Studio LOG] Success: System prompt entered.');
+
+      const closeButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON]);
+      const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
+      closeButton.click();
+      // WHY: Wait for dialog close animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
+      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+    } finally {
+      await this.chatbot.closeSettingsPanel();
+    }
+  }
+
+  async applyAllSettings(options: AutomationOptions): Promise<void> {
+    const anySetting = (
+      options.model || options.temperature !== undefined || options.topP !== undefined ||
+      options.thinkingBudget !== undefined || options.useWebSearch !== undefined ||
+      options.disableThinking !== undefined || options.urlContext !== undefined
+    );
+    if (!anySetting) {
+      console.log('[AI Studio LOG] No settings to apply. Skipping panel.');
+      return;
+    }
+    await this.chatbot.openSettingsPanel();
+    
+    // WHY: Wait for settings panel content to be fully loaded, especially after tab switches
+    // This ensures all settings elements are available before attempting to modify them
+    // We wait a bit longer here since the panel content might take time to render after page load
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
+    await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS * 2));
+    
+    // WHY: Verify that settings panel content is actually loaded by checking for a common element
+    // This provides an additional safety check before attempting to modify settings
+    try {
+      const settingsContentCheck = document.querySelector('.settings-item-column, input[type="number"]');
+      if (!settingsContentCheck) {
+        console.warn('[AI Studio LOG] Settings panel content not yet loaded, waiting additional time...');
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
+      }
+    } catch {
+      // Ignore errors in content check, proceed with settings application
+    }
+    
+    try {
+      if (options.model) {
+        await this.setModel(options.model);
+      }
+      if (options.temperature !== undefined) {
+        await this.setTemperature(options.temperature);
+      }
+      if (options.topP !== undefined) {
+        await this.setTopP(options.topP);
+      }
+      if (options.thinkingBudget !== undefined) {
+        await this.setThinkingBudget(options.thinkingBudget);
+      }
+      const advancedOptions = {
+        useWebSearch: options.useWebSearch,
+        disableThinking: options.disableThinking,
+        urlContext: options.urlContext,
+      };
+      if (Object.values(advancedOptions).some(v => v !== undefined)) {
+        await this.setAdvancedOptions(advancedOptions, options.model);
+      }
+    } finally {
+      await this.chatbot.closeSettingsPanel();
+    }
+  }
 }
 
 export class AiStudioChatbot implements Chatbot {
-  private settingsManager: SettingsManager;
+  public settingsManager: SettingsManager;
 
   constructor() {
     this.settingsManager = new SettingsManager(this);
@@ -363,7 +457,8 @@ export class AiStudioChatbot implements Chatbot {
     return `URL=${window.location.href}, ReadyState=${document.readyState}, VisibleElements=${visibleElements}`;
   }
 
-  // WHY: Public methods needed by SettingsManager for proper type safety
+  // WHY: Public method needed by SettingsManager for proper type safety
+  // This is effectively part of the internal API between AiStudioChatbot and SettingsManager
   createErrorWithContext(operation: string, message: string, additionalContext?: string): Error {
     const context = this.getPageStateContext();
     const fullContext = additionalContext ? `${context}, ${additionalContext}` : context;
@@ -371,6 +466,7 @@ export class AiStudioChatbot implements Chatbot {
   }
 
   // WHY: Public method needed by SettingsManager for proper type safety
+  // This is effectively part of the internal API between AiStudioChatbot and SettingsManager
   async retryOperation<T>(
     operation: () => Promise<T>,
     operationName: string,
@@ -467,74 +563,13 @@ export class AiStudioChatbot implements Chatbot {
       'Prompt Input Area'
     );
     console.log('[AI Studio] UI is fully actionable and ready (prompt input is available).');
-  }
-  
-  // WHY: setSystemPrompt remains a separate public method because it opens a different modal
-  async setSystemPrompt(systemPrompt: string): Promise<void> {
-    if (!systemPrompt) return;
-    console.log('[AI Studio LOG] Setting system prompt.');
-    await this.openSettingsPanel();
-    try {
-      const systemPromptButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.SYSTEM_PROMPT_CARD]);
-      const systemPromptButton = assertIsElement(systemPromptButtonEl, HTMLButtonElement, 'System prompt card');
-      systemPromptButton.click();
-      // WHY: Wait for dialog open animation to complete
-      // eslint-disable-next-line custom/disallow-timeout-for-waits
-      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-
-      const textareaEl = await waitForElement<HTMLTextAreaElement>([SELECTORS.SYSTEM_PROMPT_TEXTAREA]);
-      const textarea = assertIsElement(textareaEl, HTMLTextAreaElement, 'System prompt textarea');
-      textarea.value = systemPrompt;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('[AI Studio LOG] Success: System prompt entered.');
-
-      const closeButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON]);
-      const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
-      closeButton.click();
-      // WHY: Wait for dialog close animation to complete
-      // eslint-disable-next-line custom/disallow-timeout-for-waits
-      await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-    } finally {
-      await this.closeSettingsPanel();
-    }
-  }
-
-  // NEW unified method
-  async applyAllSettings(options: AutomationOptions): Promise<void> {
-    const anySetting = (
-      options.model || options.temperature !== undefined || options.topP !== undefined ||
-      options.thinkingBudget !== undefined || options.useWebSearch !== undefined ||
-      options.disableThinking !== undefined || options.urlContext !== undefined
-    );
-    if (!anySetting) {
-      console.log('[AI Studio LOG] No settings to apply. Skipping panel.');
-      return;
-    }
-    await this.openSettingsPanel();
-    try {
-      if (options.model) {
-        await this.settingsManager.setModel(options.model);
-      }
-      if (options.temperature !== undefined) {
-        await this.settingsManager.setTemperature(options.temperature);
-      }
-      if (options.topP !== undefined) {
-        await this.settingsManager.setTopP(options.topP);
-      }
-      if (options.thinkingBudget !== undefined) {
-        await this.settingsManager.setThinkingBudget(options.thinkingBudget);
-      }
-      const advancedOptions = {
-        useWebSearch: options.useWebSearch,
-        disableThinking: options.disableThinking,
-        urlContext: options.urlContext,
-      };
-      if (Object.values(advancedOptions).some(v => v !== undefined)) {
-        await this.settingsManager.setAdvancedOptions(advancedOptions, options.model);
-      }
-    } finally {
-      await this.closeSettingsPanel();
-    }
+    
+    // WHY: After tab switches, the page may have just loaded and settings panel content
+    // might not be rendered yet. Wait a bit longer to ensure all UI components are ready.
+    // This is especially important for multi-provider workflows where tab switching
+    // can trigger page navigation.
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
+    await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
   }
 
   private async _waitForResponseFinalization(): Promise<void> {
@@ -795,10 +830,14 @@ export class AiStudioChatbot implements Chatbot {
     return false;
   }
 
-  private async openSettingsPanel(): Promise<void> {
+  async openSettingsPanel(): Promise<void> {
     if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
       if (document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
         console.log('[AI Studio LOG] Settings panel is already open.');
+        // WHY: Even if panel appears open, wait for content to be fully loaded
+        // This is especially important after tab switches when the page may have just loaded
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
         return;
       }
 
@@ -823,6 +862,13 @@ export class AiStudioChatbot implements Chatbot {
           // eslint-disable-next-line custom/disallow-timeout-for-waits
           await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
         }
+        
+        // WHY: Wait for settings panel content to be fully loaded after opening
+        // This is critical after tab switches when the page may have just loaded
+        // The panel might be open but content (like Temperature input) not yet rendered
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
+        
         console.log('[AI Studio LOG] Settings panel opened successfully.');
       } catch (error) {
         throw this.createErrorWithContext('openSettingsPanel', `Failed to open settings panel: ${error instanceof Error ? error.message : String(error)}`);
@@ -830,7 +876,7 @@ export class AiStudioChatbot implements Chatbot {
     }
   }
 
-  private async closeSettingsPanel(): Promise<void> {
+  async closeSettingsPanel(): Promise<void> {
     if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
       if (!document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
         console.log('[AI Studio LOG] Settings panel appears to be already closed.');
