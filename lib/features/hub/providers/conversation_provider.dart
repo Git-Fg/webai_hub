@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
@@ -12,6 +11,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.da
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
@@ -90,12 +90,11 @@ class ConversationActions extends _$ConversationActions {
   }
 
   Future<void> clearConversation() async {
-    final db = ref.read(appDatabaseProvider);
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
     // Delete the conversation (cascade deletes messages)
-    await db.deleteConversation(activeId);
+    await ref.read(conversationServiceProvider.notifier).deleteConversation(activeId);
     ref.read(activeConversationIdProvider.notifier).set(null);
     ref.read(automationStateProvider.notifier).returnToIdle();
   }
@@ -106,8 +105,8 @@ class ConversationActions extends _$ConversationActions {
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
     await ref
-        .read(appDatabaseProvider)
-        .updateConversationSystemPrompt(
+        .read(conversationServiceProvider.notifier)
+        .updateSystemPrompt(
           activeId,
           newPrompt.isEmpty ? null : newPrompt,
         );
@@ -174,12 +173,7 @@ class ConversationActions extends _$ConversationActions {
     // Create conversation if it doesn't exist
     if (activeId == null) {
       final title = prompt.length > 30 ? prompt.substring(0, 30) : prompt;
-      final newConversation = ConversationsCompanion.insert(
-        title: title,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      activeId = await db.createConversation(newConversation);
+      activeId = await ref.read(conversationServiceProvider.notifier).createConversation(title);
       if (!ref.mounted) return;
       ref.read(activeConversationIdProvider.notifier).set(activeId);
     }
@@ -196,7 +190,7 @@ class ConversationActions extends _$ConversationActions {
         isFromUser: true,
       );
       await db.insertMessage(message, activeId);
-      await db.updateConversationTimestamp(activeId, DateTime.now());
+      await ref.read(conversationServiceProvider.notifier).updateTimestamp(activeId);
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
     }
 
@@ -410,7 +404,7 @@ $responsesText
       await ref
           .read(messageServiceProvider.notifier)
           .updateMessage(updatedMessage);
-      await db.updateConversationTimestamp(conversationId, DateTime.now());
+      await ref.read(conversationServiceProvider.notifier).updateTimestamp(conversationId);
     }
   }
 }

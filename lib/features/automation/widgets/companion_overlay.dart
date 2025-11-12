@@ -22,20 +22,6 @@ class CompanionOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(automationStateProvider);
-    final currentTabIndex = ref.watch(currentTabIndexProvider);
-
-    // WHY: Determine visibility based on automation state and current tab
-    // The overlay should only be visible when automation is active (refining or needsLogin)
-    // and we're on a WebView tab (not the Hub)
-    final shouldShow =
-        status.maybeWhen(
-          refining: (activePresetId, messageCount, isExtracting) => true,
-          needsLogin: (onResume) => true,
-          orElse: () => false,
-        ) &&
-        (currentTabIndex > 0);
-
     final overlayState = ref.watch(overlayManagerProvider);
     final overlayNotifier = ref.read(overlayManagerProvider.notifier);
 
@@ -49,28 +35,19 @@ class CompanionOverlay extends ConsumerWidget {
     final screenSize = MediaQuery.of(context).size;
     final widgetSize = overlayKey.currentContext?.size ?? Size.zero;
 
-    // WHY: Wrap in AnimatedOpacity and IgnorePointer to handle visibility
-    // This ensures the overlay doesn't block interactions when hidden
-    return AnimatedOpacity(
-      opacity: shouldShow ? 1.0 : 0.0,
-      duration: kShortAnimationDuration,
-      child: IgnorePointer(
-        ignoring: !shouldShow,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Transform.translate(
-            offset: overlayState.position,
-            child: Padding(
-              padding: const EdgeInsets.all(kDefaultPadding),
-              child: GestureDetector(
-                onPanUpdate: (details) => overlayNotifier.updatePosition(
-                  details.delta,
-                  screenSize,
-                  widgetSize,
-                ),
-                child: content,
-              ),
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Transform.translate(
+        offset: overlayState.position,
+        child: Padding(
+          padding: const EdgeInsets.all(kDefaultPadding),
+          child: GestureDetector(
+            onPanUpdate: (details) => overlayNotifier.updatePosition(
+              details.delta,
+              screenSize,
+              widgetSize,
             ),
+            child: content,
           ),
         ),
       ),

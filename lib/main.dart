@@ -4,6 +4,7 @@ import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -213,7 +214,25 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 );
               },
             ),
-            CompanionOverlay(overlayKey: _overlayKey),
+            Consumer(
+              builder: (context, ref, _) {
+                final status = ref.watch(automationStateProvider);
+                final currentTabIndex = ref.watch(currentTabIndexProvider);
+
+                // Visibility logic is now here, outside the overlay itself
+                final isVisible = status.maybeWhen(
+                      refining: (activePresetId, messageCount, isExtracting) => true,
+                      needsLogin: (onResume) => true,
+                      orElse: () => false,
+                    ) &&
+                    currentTabIndex > 0;
+
+                return Visibility(
+                  visible: isVisible,
+                  child: CompanionOverlay(overlayKey: _overlayKey),
+                );
+              },
+            ),
           ],
         ),
         bottomNavigationBar: presetsAsync.when(

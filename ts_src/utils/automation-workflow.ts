@@ -1,6 +1,7 @@
 // ts_src/utils/automation-workflow.ts
 
 import { Chatbot, AutomationOptions } from '../types/chatbot';
+import { AiStudioChatbot } from '../chatbots/ai-studio';
 import { notifyDart } from './notify-dart';
 import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE } from './bridge-constants';
 
@@ -42,14 +43,14 @@ export async function runChatbotWorkflow(
     // Phase 3: Apply all configurations (Model, Temperature, System Prompt, etc.).
     currentPhase = 'Phase 3: Applying configurations';
     console.log(`[Engine LOG] ${currentPhase}...`);
-    // WHY: System prompt often involves a separate dialog; handle it first
-    if (options.systemPrompt && chatbot.setSystemPrompt) {
-      console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
-      await chatbot.setSystemPrompt(options.systemPrompt);
-    }
-    // Apply all other settings atomically via unified method
-    if (chatbot.applyAllSettings) {
-      await chatbot.applyAllSettings(options);
+    // Check if the chatbot is an instance of AiStudioChatbot
+    if (chatbot instanceof AiStudioChatbot) {
+      if (options.systemPrompt) {
+        console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
+        // Directly call the method on the settings manager
+        await chatbot.settingsManager.setSystemPrompt(options.systemPrompt);
+      }
+      await chatbot.settingsManager.applyAllSettings(options);
     }
 
     // Phase 4 & 5 combined: Enter prompt and wait for finalization.
