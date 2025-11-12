@@ -23,6 +23,7 @@ This stack is prescriptive and optimized for static type-safety and performance.
 | **State Management** | `flutter_riverpod` + `riverpod_generator` | `^3.0.1`       | Reactive, type-safe, decoupled state management.      |
 | **Modeling**     | `freezed`                         | `^3.0.0`       | Immutability for models and states, Union Types.      |
 | **Database**     | **`drift`**                       | `^2.18.0`      | **Type-safe SQLite persistence** for conversations.     |
+| **Local State**  | `hive_flutter`                    | `^1.1.0`       | **Fast key-value persistence** for user settings and selections. |
 | **WebView**    | `flutter_inappwebview`            | `^6.0.0`       | Critical component for automation and session handling. |
 | **Code Quality** | **`very_good_analysis`**          | `^10.0.0`      | **Strict linting rules** for production quality.        |
 | **Web Tooling**  | TypeScript + Vite/esbuild         | `vite ^7.1.12` | Robustness and maintainability of the JS bridge.      |
@@ -57,7 +58,22 @@ ts_src/
     2. Qwen
     3. Z-ai
     4. Kimi
-- **Navigation:** An `IndexedStack` manages 5 persistent views: 1 native Hub + 4 dedicated `WebView`s.
+- **Navigation:** An `IndexedStack` manages persistent views: 1 native Hub + N dedicated `WebView`s (one per preset).
+
+**Implementation:** The `MainScreen` widget in `main.dart` uses an `IndexedStack` to maintain all views in memory, allowing seamless switching between the Hub and provider WebViews:
+
+```dart
+// ... inside the build method ...
+return IndexedStack(
+  index: ref.watch(currentTabIndexProvider),
+  children: [
+    const HubScreen(),
+    ...presets.map((preset) => AiWebviewScreen(key: ValueKey(preset.id), preset: preset)),
+  ],
+);
+```
+
+This architecture ensures that each WebView maintains its own state and session. The `SequentialOrchestrator` manages automation workflows across multiple providers sequentially, switching between WebViews as needed.
 
 ### 3.2. The "Orchestrate, Compare, Synthesize" Meta-Workflow
 
@@ -67,7 +83,7 @@ The core user experience evolves from a single conversation into an orchestratio
 
 Inspired by proven systems like CodeWebChat, the application's core logic is built around "Presets" and "Groups". This provides a powerful and flexible way for users to manage and compare AI interactions.
 
-**A. Presets**
+#### A. Presets
 
 A Preset is a named, persistent configuration that defines a complete context for an AI interaction. It includes:
 
@@ -77,7 +93,7 @@ A Preset is a named, persistent configuration that defines a complete context fo
 - **Affixes:** An optional `prompt_prefix` and `prompt_suffix` to frame the user's input.
 - **UI State:** Flags like `is_pinned` for prioritizing in the UI.
 
-**B. Groups**
+#### B. Groups
 
 A Group is structurally a Preset **without a `provider` or `model` defined**. Its purpose is twofold:
 
@@ -86,13 +102,13 @@ A Group is structurally a Preset **without a `provider` or `model` defined**. It
 
 #### 3.2.2. The Three Phases of the Workflow
 
-**A. Phase 1: Orchestration (Multi-Dispatch)**
+#### A. Phase 1: Orchestration (Multi-Dispatch)
 
 1. **Preset Selection:** In the Hub UI, the user is presented with their list of Presets and Groups. They can select one or multiple Presets via checkboxes.
 
 2. **Prompt Dispatch:** The user writes a single prompt and clicks "Send".
 
-3. **Parallel Automation:** The orchestration logic iterates through each selected Preset. For each one, it:
+3. **Sequential Automation:** The `SequentialOrchestrator` processes each selected Preset sequentially. For each one, it:
 
    a. Finds its parent Group (by looking upwards in the list order).
 
@@ -100,13 +116,13 @@ A Group is structurally a Preset **without a `provider` or `model` defined**. It
 
    c. Initiates a dedicated automation cycle for the corresponding WebView, passing the final prompt and all other parameters from the Preset.
 
-**B. Phase 2: Comparison**
+#### B. Phase 2: Comparison
 
 1. **Response Aggregation:** As each WebView's automation completes, the extracted response is sent back to the Hub, tagged with the name of the Preset that generated it.
 
 2. **Comparison View:** The Hub UI displays the responses side-by-side (or in a tabbed view on smaller screens) under the original user prompt, allowing for immediate comparison of different models' or settings' outputs.
 
-**C. Phase 3: Synthesis & Curation**
+#### C. Phase 3: Synthesis & Curation
 
 1. **Manual Curation:** The user selects the best response, which is then committed to the permanent conversation history as the definitive assistant message for that turn.
 
@@ -146,7 +162,7 @@ Users can customize the instruction text that introduces the conversation histor
 
 This modular architecture supports the README's Multi-Provider Support goal: new providers can be added by implementing the `Chatbot` interface in a new file within `ts_src/chatbots/`, following the established patterns for selector management and fallback strategies.
 
-**For comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies, see §4.10.**
+#### For comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies, see §4.10
 
 ### 4.2. JavaScript Bridge (RPC API)
 
@@ -154,7 +170,23 @@ This modular architecture supports the README's Multi-Provider Support goal: new
 - **API Contract:** The TypeScript API (`automation_engine.ts`) exposes typed functions (e.g., `startAutomation`). The Dart API (`javascript_bridge.dart`) registers corresponding handlers.
 - **State Communication:** For status updates and errors, the TS engine uses a **unidirectional event stream** to a single Dart handler (`automationBridge`), sending structured `AutomationEvent` objects.
 
-#### 4.2.1. Resilient Bridge Architecture (Four-Layer Defense)
+#### 4.2.1. Hybrid Handlers for Native Capabilities
+
+For operations that are restricted or unreliable in JavaScript (like clipboard access), the bridge uses a **hybrid handler pattern**.
+
+- **Workflow (Kimi Clipboard Extraction):**
+
+  1. Dart calls the generic `extractFinalResponse()` in TypeScript.
+
+  2. The `kimi.ts` module clicks the "Copy" button.
+
+  3. Instead of trying to read the clipboard from JS, it calls a new Dart handler: `window.flutter_inappwebview.callHandler('readClipboard')`.
+
+  4. The `AiWebviewScreen` in Dart receives this call, uses Flutter's native `Clipboard` service to read the text, and returns it to the JavaScript `Promise`.
+
+- **Rationale:** This pattern keeps the primary bridge contract simple while allowing provider-specific modules to leverage native device capabilities when necessary. It encapsulates complexity and avoids polluting the generic Dart logic with provider-specific workarounds.
+
+#### 4.2.2. Resilient Bridge Architecture (Four-Layer Defense)
 
 The JavaScript bridge implements a multi-layered defense system to handle the ephemeral nature of WebView JavaScript contexts and recover from crashes, context loss, and silent failures.
 
@@ -199,7 +231,7 @@ The JavaScript bridge implements a multi-layered defense system to handle the ep
   - `WebStorageManager` (for application state)
 - **Rehydration:** The JavaScript bridge can "rehydrate" itself from native storage upon initialization if needed.
 
-**Benefits:**
+#### Benefits
 
 - **Self-Healing:** The bridge automatically detects and recovers from context loss without user intervention
 - **Prevents Hangs:** Heartbeat pattern prevents infinite waits on dead contexts
@@ -217,35 +249,36 @@ The JavaScript bridge implements a multi-layered defense system to handle the ep
   - **Login:** Displays a message indicating reconnection is needed.
   - **Selector:** Informs the user of temporary unavailability and logs the error for maintenance.
 
-### 4.4. Workflow Orchestration: TypeScript-Centric Task Delegation
+### 4.4. Workflow Orchestration: Sequential Dart-Driven Orchestration
 
-To achieve maximum performance and responsiveness, the application has evolved from a Dart-driven orchestration model to a **TypeScript-centric task delegation model**. The guiding principle is to minimize the latency of the Dart-JavaScript bridge by reducing communication to a single, comprehensive command.
+The application uses a **sequential, Dart-driven orchestration model** that centralizes control and simplifies the TypeScript automation engine. This architecture prioritizes robustness, maintainability, and code clarity over raw parallel execution speed.
 
-- **Previous Model (Anti-Pattern):** The Dart layer acted as a "micro-manager," sending a sequence of individual commands to the WebView (`loadUrl`, `waitForReady`, `startAutomation`, `startResponseObserver`), with each step introducing bridge latency.
+- **Architecture Overview:**
 
-- **Current Model (High-Performance):**
+  1. **Dart Orchestrator:** A `SequentialOrchestrator` provider in Dart manages the entire multi-provider workflow sequentially. It processes each preset in a queue, one at a time.
 
-  1. **Single Point of Entry:** The Dart `ConversationProvider` is now only responsible for gathering all user settings and context into a single `AutomationOptions` object.
+  2. **Simplified TypeScript Contract:** The TypeScript `sendPrompt` method is now a long-running async task that resolves only when the AI response is fully generated and ready for extraction. This eliminates the need for separate response observers.
 
-  2. **Total Delegation:** It makes a **single call** to a master `startAutomation(options)` function in the JavaScript bridge.
+  3. **Sequential Execution Flow:**
+      - The orchestrator switches to the correct WebView tab for each preset
+      - Builds the prompt with context using `PromptBuilder`
+      - Calls `bridge.startAutomation()` which awaits the full TypeScript automation cycle
+      - Extracts the response via `bridge.extractFinalResponse()`
+      - Updates the staging area with the result
+      - Moves to the next preset in the queue
 
-  3. **Autonomous TypeScript Orchestrator:** The `automation_engine.ts` script takes full control of the end-to-end workflow within the WebView:
+  4. **TypeScript Automation Cycle:** The `automation_engine.ts` script handles the complete workflow within a single WebView:
+      - Resets the UI to a clean state (e.g., by clicking "New Chat")
+      - Applies all settings (model, temperature, etc.)
+      - Enters the prompt and validates UI readiness (e.g., token count)
+      - Submits the prompt and **waits for response finalization** (this is the key change)
+      - Notifies Dart that the response is ready for extraction
 
-      - It autonomously resets the UI to a clean state (e.g., by clicking "New Chat").
+  5. **Bridge Communication:** The Dart bridge uses `callAsyncJavaScript` to properly await the TypeScript promise, with a 5-minute timeout to cover the entire AI generation time.
 
-      - It applies all settings (model, temperature, etc.).
+This architecture provides centralized control, dramatically simplifies the TypeScript engine, and makes the entire process easier to debug and maintain. While the total execution time for multiple providers will increase (sequential vs parallel), the gains in robustness and code clarity are significant.
 
-      - It enters the prompt and validates UI readiness (e.g., token count).
-
-      - It submits the prompt.
-
-      - It begins observing for the response.
-
-  4. **Final Notification:** The script only communicates back to Dart upon final success (`NEW_RESPONSE_DETECTED`) or failure (`AUTOMATION_FAILED`, `LOGIN_REQUIRED`), eliminating all intermediate chatter.
-
-This architecture dramatically reduces the perceived latency for the user, as the entire complex automation sequence runs natively within the high-performance JavaScript environment of the WebView, free from the overhead of multiple asynchronous bridge crossings. The Dart layer's role is simplified to that of a delegator, not an orchestrator.
-
-**Implementation Details:**
+#### Implementation Details
 
 - **Context Management:** A dedicated `PromptBuilder` service (`lib/features/hub/services/prompt_builder.dart`) is responsible for generating the prompt string. Its `buildPromptWithContext` method composes `<system>`, `<history>`, and `<user_input>` from the current state. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
 
@@ -288,19 +321,19 @@ Exception – Providers with native system prompt fields:
 
 The XML prompt structure intentionally duplicates the user prompt and system prompt at both the beginning and end of the prompt. This is not an oversight but a deliberate design choice with important implications for AI model performance.
 
-**Structure:**
+#### Structure
 
 1. **Initial Instruction:** User prompt + system prompt (if applicable)
 2. **Context:** History, files, and other contextual information
 3. **Repeated Instruction:** User prompt + system prompt (if applicable)
 
-**Why Duplication is Necessary:**
+#### Why Duplication is Necessary
 
 - **Recency Bias:** Large language models exhibit strong recency bias, giving disproportionate weight to information appearing at the end of prompts
 - **Focus Maintenance:** When extensive context (history, files) is included, models may lose focus on the actual user request
 - **Mitigation Strategy:** Placing the user's current input at both beginning and end ensures the model maintains focus on the current task while still benefiting from context
 
-**Implementation Details:**
+#### Implementation Details
 
 - The duplication occurs in `_buildPromptWithContext` method in `conversation_provider.dart`
 - System prompt is only included if `shouldInjectSystemPrompt` is true (based on provider capabilities)
@@ -413,11 +446,11 @@ trySignalReady();
 
 3. **Forced WebView Recreation:** A User Agent can only be set when an `InAppWebView` is first created. To apply a changed setting, the existing WebView must be destroyed and a new one created. This is achieved reliably by:
 
-   * A `ref.listen` in `AiWebviewScreen` monitors `generalSettingsProvider` for changes to the User Agent fields.
+   - A `ref.listen` in `AiWebviewScreen` monitors `generalSettingsProvider` for changes to the User Agent fields.
 
-   * Upon detecting a change, it calls `ref.read(webViewKeyProvider.notifier).incrementKey()`.
+   - Upon detecting a change, it calls `ref.read(webViewKeyProvider.notifier).incrementKey()`.
 
-   * Incrementing this key forces Flutter to rebuild the `InAppWebView` widget, which then uses the new User Agent from its `initialSettings`.
+   - Incrementing this key forces Flutter to rebuild the `InAppWebView` widget, which then uses the new User Agent from its `initialSettings`.
 
 ### 4.10. Resilient Selector Strategy & Modern Waiting Patterns
 
@@ -453,7 +486,7 @@ Selectors must be a "contract," not an implementation detail. The most resilient
 
 Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor array" of modern browser APIs to synchronize with the application's state:
 
-**Decision Matrix:**
+#### Decision Matrix
 
 | Use Case                                        | API                | Rationale                                                                                                                                                                         |
 | ----------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -461,7 +494,7 @@ Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor ar
 | **Element Visibility** (scrolling, lazy-loading) | `IntersectionObserver` | Most performant for visibility checks. Essential for virtualized lists and lazy-loaded content. |
 | **Layout-Dependent Properties** (animations, layout stabilization) | `requestAnimationFrame` polling | Synchronizes with browser's render loop. Correct tool for waiting on animations to complete. |
 
-**Implementation:**
+#### Implementation
 
 - **`waitForElement`** (`ts_src/utils/wait-for-element.ts`): Uses `MutationObserver` as primary strategy, with polling fallback for edge cases
 - **`waitForVisibleElement`** (`ts_src/utils/wait-for-visible-element.ts`): Uses `IntersectionObserver` for viewport visibility detection
@@ -511,7 +544,7 @@ An element is not ready for interaction just because it exists. The `waitForActi
 
 Intermittent failures should be diagnosed systematically, not by attempting local reproduction.
 
-**Failure Classification:**
+#### Failure Classification
 
 1. **Locator Failure**: Selector no longer matches (site changed, selector outdated)
    - **Diagnosis:** Analyze DOM snapshots from CI runs
@@ -525,7 +558,7 @@ Intermittent failures should be diagnosed systematically, not by attempting loca
    - **Diagnosis:** Analyze error messages and page state from logs
    - **Fix:** Implement graceful degradation (see §4.3)
 
-**Process:**
+#### Process
 
 1. **Analyze Artifacts:** Use traces, videos, screenshots from CI runs (not local reproduction)
 2. **Classify Failure:** Determine if it's Locator, Wait, or State issue
@@ -590,7 +623,7 @@ A new, dedicated UI will be created for managing presets, likely accessible from
 
 - **Technology:** **Drift** is used to create a local SQLite database.
 - **Schema:** The database stores `Conversations` and `Messages`.
-- **Interaction:** A Riverpod `ConversationProvider` interacts with Drift-generated DAOs to read and write to the database, using reactive queries (`.watch()`) to update the UI automatically.
+- **Interaction:** A Riverpod `ConversationActions` provider orchestrates high-level user actions. It delegates all direct database modifications for messages to a dedicated `MessageService` provider, which interacts with Drift-generated DAOs. The UI layer uses reactive queries (`.watch()`) to update automatically.
 
 ### 5.2. Web Session Persistence
 

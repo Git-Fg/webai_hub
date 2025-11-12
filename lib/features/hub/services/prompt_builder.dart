@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +23,7 @@ class PromptBuilder {
   Future<String> buildPromptWithContext(
     String newPrompt, {
     required int conversationId,
+    required int presetId,
     String? excludeMessageId,
   }) async {
     // 1. Fetch all necessary data and settings ONCE.
@@ -40,16 +45,37 @@ class PromptBuilder {
         )
         .toList();
 
-    // 2. DECISION POINT: Is this the first message of the conversation?
+    // 2. Fetch conversation details for system prompt
+    final convDetails = await (db.select(
+      db.conversations,
+    )..where((c) => c.id.equals(conversationId))).getSingleOrNull();
+    final systemPrompt = convDetails?.systemPrompt;
+
+    // 3. Fetch presets and combine affixes
+    final allPresets = await ref.read(presetsProvider.future);
+    final (presetSettings, groupSettings) = _findPresetAndGroupSettings(
+      allPresets,
+      presetId,
+    );
+
+    // 4. Combine affixes: groupPrefix + presetPrefix + userInput + presetSuffix + groupSuffix
+    final groupPrefix = groupSettings?.promptPrefix ?? '';
+    final presetPrefix = presetSettings.promptPrefix ?? '';
+    final presetSuffix = presetSettings.promptSuffix ?? '';
+    final groupSuffix = groupSettings?.promptSuffix ?? '';
+    final finalUserInput =
+        '$groupPrefix$presetPrefix$newPrompt$presetSuffix$groupSuffix';
+
+    // 5. DECISION POINT: Is this the first message of the conversation?
     if (history.isEmpty) {
       ref
           .read(talkerProvider)
           .info('First message in conversation. Using simple prompt.');
       // For the first message, always use the plain text prompt, regardless of settings.
-      return newPrompt;
+      return finalUserInput;
     }
 
-    // 3. This is a follow-up message, use the configured strategy.
+    // 6. This is a follow-up message, use the configured strategy.
     final settingsAsync = ref.read(generalSettingsProvider);
     final generalSettings = settingsAsync.maybeWhen(
       data: (value) => value,
@@ -63,16 +89,17 @@ class PromptBuilder {
           .read(talkerProvider)
           .info('Follow-up message. Using Advanced (XML) prompt.');
       return _buildXmlPrompt(
-        newPrompt,
+        finalUserInput,
         history: history,
         generalSettings: generalSettings,
+        systemPrompt: systemPrompt,
       );
     } else {
       ref
           .read(talkerProvider)
           .info('Follow-up message. Using Simple (text) prompt.');
       return _buildSimplePrompt(
-        newPrompt,
+        finalUserInput,
         history: history,
       );
     }
@@ -107,19 +134,64 @@ User: $newPrompt
     return fullPrompt.trim();
   }
 
+  /// Finds the preset and its parent group settings by iterating backwards from preset index.
+  (PresetSettings, PresetSettings?) _findPresetAndGroupSettings(
+    List<PresetData> allPresets,
+    int targetPresetId,
+  ) {
+    final presetIndex = allPresets.indexWhere((p) => p.id == targetPresetId);
+    if (presetIndex == -1) {
+      throw StateError('Preset with ID $targetPresetId not found.');
+    }
+
+    final presetData = allPresets[presetIndex];
+    final presetSettings = PresetSettings.fromJson(
+      jsonDecode(presetData.settingsJson) as Map<String, dynamic>,
+    );
+
+    // Find parent group by iterating backwards
+    PresetSettings? groupSettings;
+    for (var i = presetIndex - 1; i >= 0; i--) {
+      if (allPresets[i].providerId == null) {
+        // It's a group
+        groupSettings = PresetSettings.fromJson(
+          jsonDecode(allPresets[i].settingsJson) as Map<String, dynamic>,
+        );
+        break;
+      }
+    }
+    return (presetSettings, groupSettings);
+  }
+
   String _buildXmlPrompt(
     String newPrompt, {
     required List<Message> history,
     required GeneralSettingsData generalSettings,
+    String? systemPrompt,
   }) {
     try {
       // WHY: Use StringBuffer for efficient string concatenation to build the template.
       final promptBuffer = StringBuffer();
 
-      // --- Part 1: Initial Instruction ---
+      // --- Part 1: System Prompt (if provided) ---
+      if (systemPrompt != null && systemPrompt.isNotEmpty) {
+        final systemBuilder = XmlBuilder();
+        systemBuilder.element(
+          'system',
+          nest: () {
+            systemBuilder.text(systemPrompt);
+          },
+        );
+        promptBuffer.writeln(
+          systemBuilder.buildDocument().toXmlString(pretty: true),
+        );
+        promptBuffer.writeln();
+      }
+
+      // --- Part 2: Initial Instruction ---
       promptBuffer.writeln(_buildUserInputXml(newPrompt));
 
-      // --- Part 2: Context ---
+      // --- Part 3: Context ---
       promptBuffer.writeln('\n${generalSettings.historyContextInstruction}');
       final historyText = _buildHistoryText(history);
       final historyBuilder = XmlBuilder();
@@ -133,7 +205,7 @@ User: $newPrompt
         historyBuilder.buildDocument().toXmlString(pretty: true),
       );
 
-      // --- Part 3: Repeated Instruction for Focus ---
+      // --- Part 4: Repeated Instruction for Focus ---
       // WHY: Duplicate the user prompt at the end to ensure the AI model
       // focuses on the most recent user input rather than getting lost in the context.
       promptBuffer.writeln(_buildUserInputXml(newPrompt));

@@ -1,6 +1,8 @@
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
+
 abstract class JavaScriptBridgeInterface {
   Future<void> waitForBridgeReady();
-  Future<void> startAutomation(Map<String, dynamic> options);
+  Future<void> startAutomation(AutomationOptions options);
   Future<String> extractFinalResponse();
   // WHY: Heartbeat check to detect dead contexts (only implemented in JavaScriptBridge)
   // Checks JS context responsiveness, not bridge initialization state

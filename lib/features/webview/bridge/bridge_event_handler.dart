@@ -2,14 +2,11 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
-import 'package:ai_hybrid_hub/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -72,78 +69,14 @@ class BridgeEventHandler {
     ConversationActions notifier,
     AutomationState automationNotifier,
   ) {
-    // Check if we're in multi-provider mode by checking staged responses
+    // WHY: With sequential orchestration, the orchestrator handles all extraction.
+    // This event is now just a notification that sendPrompt completed.
+    // For single-provider workflows, we still need to handle state transitions.
     final stagedResponses = ref.read(stagedResponsesProvider);
     final isMultiProvider = stagedResponses.isNotEmpty;
 
-    if (isMultiProvider) {
-      // Multi-provider workflow: update staging area
-      final yoloModeEnabled =
-          ref.read(generalSettingsProvider).value?.yoloModeEnabled ?? true;
-
-      if (yoloModeEnabled) {
-        unawaited(
-          Future(() async {
-            try {
-              final bridge = ref.read(
-                javaScriptBridgeProvider(presetId),
-              );
-              final responseText = await bridge.extractFinalResponse();
-
-              // WHY: Handler is only called when widget is alive, so we can safely update state
-              ref
-                  .read(stagedResponsesProvider.notifier)
-                  .addOrUpdate(
-                    StagedResponse(
-                      presetId: presetId,
-                      presetName: presetName,
-                      text: responseText,
-                    ),
-                  );
-
-              // After updating, check if all automations are complete.
-              // We do this by checking if there are no more "isLoading" responses.
-              final currentStagedResponses = ref.read(stagedResponsesProvider);
-              final allDone = currentStagedResponses.values.every(
-                (response) => !response.isLoading,
-              );
-
-              if (allDone) {
-                // If all are done, switch back to the Hub tab.
-                ref.read(currentTabIndexProvider.notifier).changeTo(0);
-              }
-            } on Object catch (e) {
-              // Handle extraction error
-              ref
-                  .read(stagedResponsesProvider.notifier)
-                  .addOrUpdate(
-                    StagedResponse(
-                      presetId: presetId,
-                      presetName: presetName,
-                      text: 'Error: $e',
-                    ),
-                  );
-
-              // After updating with error, check if all automations are complete.
-              // This ensures the UI switches back to Hub even if the last response fails.
-              final currentStagedResponses = ref.read(stagedResponsesProvider);
-              final allDone = currentStagedResponses.values.every(
-                (response) => !response.isLoading,
-              );
-
-              if (allDone) {
-                // If all are done, switch back to the Hub tab.
-                ref.read(currentTabIndexProvider.notifier).changeTo(0);
-              }
-            }
-          }),
-        );
-      }
-    } else {
-      // Single-provider workflow: use existing logic
-      // WHY: First, ALWAYS transition to the 'refining' state.
-      // This ensures the application is in a stable, consistent state
-      // that matches the manual workflow before any further action is taken.
+    if (!isMultiProvider) {
+      // Single-provider workflow: transition to refining state
       final conversationAsync = ref.read(conversationProvider);
       final messageCount = conversationAsync.maybeWhen(
         data: (conversation) => conversation.length,
@@ -154,19 +87,18 @@ class BridgeEventHandler {
         messageCount: messageCount,
       );
 
-      // Now, check if YOLO mode should proceed automatically.
+      // Check if YOLO mode should proceed automatically.
       final yoloModeEnabled =
           ref.read(generalSettingsProvider).value?.yoloModeEnabled ?? true;
 
       if (yoloModeEnabled) {
-        // The state is now correctly 'refining', so we can safely
-        // trigger the automatic extraction.
+        // Trigger automatic extraction for single-provider workflow
         unawaited(
           notifier.extractAndReturnToHub(presetId),
         );
       }
-      // If YOLO is off, the app simply remains in the 'refining' state, waiting for the user.
     }
+    // Multi-provider workflows are handled entirely by the orchestrator
   }
 
   void _handleLoginRequired(

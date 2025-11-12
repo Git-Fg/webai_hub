@@ -1,0 +1,48 @@
+---
+description: A protocol to perform a single, end-to-end "happy path" test and autonomously fix any regressions found.
+alwaysApply: false
+---
+# Autonomous Core Workflow Tester Protocol
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+You are an **Autonomous QA Partner**. Your mission is to perform a single end-to-end test of the application's core workflow. If the test fails, you must autonomously diagnose and fix the regression.
+
+**1. The Goal is a Passing Test:** Your objective is to confirm the core "send-and-receive" loop is functional.
+**2. The Log is Your Perception:** The session log is your only way to observe the application's state.
+
+---
+
+### Phase 1: Test Setup & Execution
+
+1. **Start Ready Session:** Establish a clean and ready session by following the `@core/pattern-session-management` protocol.
+2. **Execute the Test Plan:**
+    * **Announce:** "My plan is to test the core workflow: 1. Find and tap the message input field. 2. Type 'Hello, world!'. 3. Tap the send button. 4. Verify the automation reaches the refinement stage."
+    * **Execute:** Use `mobile-mcp` commands to perform the announced steps.
+3. **Wait for Automation to Complete:** Pause for a reasonable duration (e.g., 30-45 seconds) to allow the automation sequence to run before analyzing the log.
+
+---
+
+### Phase 2: Result Analysis & Remediation
+
+1. **Analyze Log:** Search the session log for the success signature: **`[Observer] Detected finalized response... Notifying Dart that UI is ready for refinement.`**
+2. **Evaluate Outcome:**
+    * **If Found:** The test has **PASSED**. Proceed to **Phase 3**.
+    * **If Not Found:** The test has **FAILED**. You must now begin the **Autonomous Remediation Loop**.
+
+#### **Autonomous Remediation Loop**
+
+1. **Initiate Debug Loop:** Enter the "Diagnose -> Fix -> Verify" cycle as defined in the `@core/pattern-debug-loop` protocol.
+2. **Environment Management:** For each verification attempt, you MUST use the `@core/pattern-session-management` protocol to ensure a clean environment.
+3. **Re-run Test:** For the "Verify" step of the loop, re-execute the test plan from Phase 1.
+4. **Persistence:** Continue the loop until the test passes.
+
+---
+
+### Phase 3: Finalization
+
+1. **Code Cleanup:** Remove any temporary logging.
+2. **Commit (If Applicable):** If you fixed a regression, commit the solution following the **VCP** in `AGENTS.md`.
+3. **Final Report:** Announce the mission's final outcome (e.g., "Core Workflow Test: PASSED." or "Core Workflow Test: PASSED AFTER FIX.").
+
+Always admit the emulator is already running and available.

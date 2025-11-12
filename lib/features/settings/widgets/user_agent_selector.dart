@@ -67,33 +67,43 @@ class _UserAgentSelectorState extends ConsumerState<UserAgentSelector> {
           _customUserAgentController.text = settings.customUserAgent;
         }
 
+        // WHY: Build the list of valid dropdown items first.
+        final dropdownItems = [
+          const DropdownMenuItem(
+            value: 'default',
+            child: Text('Device Default (Blocks Google Login)'),
+          ),
+          ...BrowserUserAgent.values.map((ua) {
+            return DropdownMenuItem(
+              value: ua.name,
+              child: Text(ua.name),
+            );
+          }),
+          const DropdownMenuItem(
+            value: 'custom',
+            child: Text('Custom...'),
+          ),
+        ];
+
+        // WHY: Validate that the saved user agent value exists in the dropdown items.
+        // This prevents assertion errors if migration hasn't run yet or if an invalid value exists.
+        final validValues = dropdownItems.map((item) => item.value).toSet();
+        final initialValue = validValues.contains(settings.selectedUserAgent)
+            ? settings.selectedUserAgent
+            : 'default';
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Column(
             children: [
               DropdownButtonFormField<String>(
-                initialValue: settings.selectedUserAgent,
+                initialValue: initialValue,
                 decoration: const InputDecoration(
                   labelText: 'User Agent for OAuth',
                   border: OutlineInputBorder(),
                   helperText: 'Select a browser identity for login pages.',
                 ),
-                items: [
-                  const DropdownMenuItem(
-                    value: 'default',
-                    child: Text('Device Default (Blocks Google Login)'),
-                  ),
-                  ...BrowserUserAgent.values.map((ua) {
-                    return DropdownMenuItem(
-                      value: ua.name,
-                      child: Text(ua.name),
-                    );
-                  }),
-                  const DropdownMenuItem(
-                    value: 'custom',
-                    child: Text('Custom...'),
-                  ),
-                ],
+                items: dropdownItems,
                 onChanged: (value) {
                   if (value != null) {
                     unawaited(settingsNotifier.updateSelectedUserAgent(value));

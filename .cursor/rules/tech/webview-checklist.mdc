@@ -1,0 +1,29 @@
+---
+description: A diagnostic checklist for debugging issues related to the WebView and the Dart-JS bridge.
+globs: lib/features/webview/**/*.dart, ts_src/**/*.ts
+alwaysApply: false
+---
+# WebView Debugging Checklist
+
+When debugging a WebView-related issue, perform these verification steps in order:
+
+## 1. Verify Build State
+
+- **Condition:** You have modified files in `ts_src/**`.
+- **Action:** You **MUST** run `npm run build`. The app loads the compiled `assets/js/bridge.js`, not your source file. An outdated bundle is a common cause of failure.
+
+## 2. Check for JavaScript Runtime Errors
+
+- **Action:** Analyze the WebView console logs in your IDE (`onConsoleMessage` output). Look for exceptions like "function not found" or "cannot read properties of null" that originate from `bridge.js`.
+
+## 3. Validate CSS Selectors
+
+- **Condition:** The automation fails to find or interact with an element.
+- **Action:** Manually validate your selectors using the appropriate script (e.g., `validation/AISTUDIO/aistudio_selector_validator.js`) in a desktop browser console to confirm they are still valid.
+
+## 4. Investigate Timing Issues
+
+- **Condition:** The automation fails intermittently or seems to run "too fast" for the UI.
+- **Action:**
+  - **DO NOT** add arbitrary delays (`Future.delayed`, `setTimeout`). This is an anti-pattern that creates flaky tests.
+  - **DO** improve your wait logic in TypeScript. Use robust utilities like `waitForActionableElement` to ensure an element is fully visible, stable, and interactive before proceeding.

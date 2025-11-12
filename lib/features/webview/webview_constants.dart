@@ -9,4 +9,13 @@ class WebViewConstants {
   static const String kimiDomain = 'kimi.com';
   // WHY: Kimi redirects to www.kimi.com, so we need to support both domains
   static const String kimiDomainAlt = 'www.kimi.com';
+
+  // WHY: Central list of supported domains for security validation.
+  // This prevents script injection into untrusted domains and makes it easier
+  // to manage as more providers are added.
+  static const List<String> supportedDomains = [
+    aiStudioDomain,
+    kimiDomain,
+    kimiDomainAlt,
+  ];
 }

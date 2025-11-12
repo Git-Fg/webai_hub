@@ -23,5 +23,3 @@ class SelectedStagedResponses extends _$SelectedStagedResponses {
     state = {};
   }
 }
-
-

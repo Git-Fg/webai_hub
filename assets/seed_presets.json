@@ -1,0 +1,29 @@
+[
+  {
+    "name": "Gemini 2.5 Flash",
+    "providerId": "ai_studio",
+    "displayOrder": 1,
+    "settings": {
+      "model": "Gemini 2.5 Flash",
+      "temperature": 0.8,
+      "topP": 0.95
+    }
+  },
+  {
+    "name": "Gemini 2.5 Pro",
+    "providerId": "ai_studio",
+    "displayOrder": 2,
+    "settings": {
+      "model": "Gemini 2.5 Pro",
+      "temperature": 0.8,
+      "topP": 0.95
+    }
+  },
+  {
+    "name": "Kimi",
+    "providerId": "kimi",
+    "displayOrder": 3,
+    "settings": {}
+  }
+]
+

@@ -43,21 +43,62 @@ class _PresetsManagementScreenState
             );
           }
 
-          return ListView.builder(
+          return ReorderableListView.builder(
             itemCount: presets.length,
             itemBuilder: (context, index) {
               final preset = presets[index];
-              // Get provider metadata for display
-              final providerId = preset.providerId;
-              final providerType = ProviderType.values.firstWhere(
-                (pt) => providerDetails[pt]!.id == providerId,
-                orElse: () => ProviderType.aiStudio,
-              );
-              final providerName = providerDetails[providerType]!.name;
+              final isGroup = preset.providerId == null;
+
+              // Visual differentiation for Groups
+              if (isGroup) {
+                return ListTile(
+                  key: ValueKey('group_${preset.id}'),
+                  leading: const Icon(Icons.folder_open),
+                  title: Text(
+                    preset.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  tileColor: Colors.grey.shade200,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _editPreset(context, preset),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => _deletePreset(context, preset.id),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // Standard Preset item
+              final providerName = providerDetails.values
+                  .firstWhere(
+                    (p) => p.id == preset.providerId,
+                    orElse: () => const ProviderMetadata(
+                      id: 'unknown',
+                      name: 'Unknown',
+                      url: '',
+                      configurableSettings: [],
+                    ),
+                  )
+                  .name;
 
               return ListTile(
+                key: ValueKey('preset_${preset.id}'),
+                leading: const Icon(
+                  Icons.settings_input_component,
+                  color: Colors.blue,
+                ),
                 title: Text(preset.name),
                 subtitle: Text(providerName),
+                contentPadding: const EdgeInsets.only(
+                  left: 32,
+                ), // Indent presets
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -73,6 +114,26 @@ class _PresetsManagementScreenState
                 ),
               );
             },
+            onReorder: (int oldIndex, int newIndex) async {
+              if (oldIndex < newIndex) {
+                newIndex -= 1;
+              }
+              final reorderedPresets = List<PresetData>.from(presets);
+              final item = reorderedPresets.removeAt(oldIndex);
+              reorderedPresets.insert(newIndex, item);
+
+              // Create companions with updated displayOrder
+              final companions = reorderedPresets.asMap().entries.map((entry) {
+                return PresetsCompanion(
+                  id: Value(entry.value.id),
+                  displayOrder: Value(entry.key),
+                );
+              }).toList();
+
+              await ref
+                  .read(appDatabaseProvider)
+                  .updatePresetOrders(companions);
+            },
           );
         },
       ),
@@ -84,13 +145,45 @@ class _PresetsManagementScreenState
   }
 
   Future<void> _addPreset(BuildContext context) async {
-    final result = await _showPresetDialog(context);
+    // Ask user if they want to create a Group or Preset
+    final itemType = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Item'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Group'),
+              subtitle: const Text('Organize presets with shared affixes'),
+              onTap: () => Navigator.of(context).pop('group'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_input_component),
+              title: const Text('Preset'),
+              subtitle: const Text('Configure a specific provider and model'),
+              onTap: () => Navigator.of(context).pop('preset'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+
+    if (itemType == null) return;
+
+    final isGroup = itemType == 'group';
+    final result = await _showPresetDialog(
+      context,
+      isGroup: isGroup,
+    );
+    if (!context.mounted) return;
     if (result == null) return;
 
     final db = ref.read(appDatabaseProvider);
     final name = result['name'] as String;
-    final providerType = result['providerType'] as ProviderType;
-    final providerId = providerDetails[providerType]!.id;
     final settingsJson = jsonEncode(result['settings'] as Map<String, dynamic>);
 
     if (name.isEmpty) {
@@ -102,7 +195,7 @@ class _PresetsManagementScreenState
       return;
     }
 
-    // Create new preset
+    // Create new preset or group
     final allPresets = await db.watchAllPresets().first;
     final maxOrder = allPresets.isNotEmpty
         ? allPresets
@@ -116,7 +209,9 @@ class _PresetsManagementScreenState
     await db.createPreset(
       PresetsCompanion.insert(
         name: name,
-        providerId: providerId,
+        providerId: isGroup
+            ? const Value.absent()
+            : Value(result['providerId'] as String),
         displayOrder: newOrder,
         settingsJson: settingsJson,
       ),
@@ -124,22 +219,27 @@ class _PresetsManagementScreenState
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preset added')),
+        SnackBar(content: Text(isGroup ? 'Group added' : 'Preset added')),
       );
     }
   }
 
   Future<void> _editPreset(BuildContext context, PresetData preset) async {
     final settings = jsonDecode(preset.settingsJson) as Map<String, dynamic>;
-    // Convert providerId back to ProviderType for initial selection
-    final providerId = preset.providerId;
-    final initialProviderType = ProviderType.values.firstWhere(
-      (pt) => providerDetails[pt]!.id == providerId,
-      orElse: () => ProviderType.aiStudio,
-    );
+    final isGroup = preset.providerId == null;
+
+    ProviderType? initialProviderType;
+    if (!isGroup) {
+      final providerId = preset.providerId;
+      initialProviderType = ProviderType.values.firstWhere(
+        (pt) => providerDetails[pt]!.id == providerId,
+        orElse: () => ProviderType.aiStudio,
+      );
+    }
 
     final result = await _showPresetDialog(
       context,
+      isGroup: isGroup,
       initialName: preset.name,
       initialProviderType: initialProviderType,
       initialSettings: settings,
@@ -148,8 +248,6 @@ class _PresetsManagementScreenState
 
     final db = ref.read(appDatabaseProvider);
     final name = result['name'] as String;
-    final providerType = result['providerType'] as ProviderType;
-    final newProviderId = providerDetails[providerType]!.id;
     final settingsJson = jsonEncode(result['settings'] as Map<String, dynamic>);
 
     if (name.isEmpty) {
@@ -161,18 +259,20 @@ class _PresetsManagementScreenState
       return;
     }
 
-    await db.updatePreset(
-      PresetsCompanion(
-        id: Value(preset.id),
-        name: Value(name),
-        providerId: Value(newProviderId),
-        settingsJson: Value(settingsJson),
-      ),
+    final companion = PresetsCompanion(
+      id: Value(preset.id),
+      name: Value(name),
+      settingsJson: Value(settingsJson),
+      providerId: isGroup
+          ? const Value<String>.absent()
+          : Value(result['providerId'] as String),
     );
+
+    await db.updatePreset(companion);
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preset updated')),
+        SnackBar(content: Text(isGroup ? 'Group updated' : 'Preset updated')),
       );
     }
   }
@@ -210,6 +310,7 @@ class _PresetsManagementScreenState
 
   Future<Map<String, dynamic>?> _showPresetDialog(
     BuildContext context, {
+    bool isGroup = false,
     String? initialName,
     ProviderType? initialProviderType,
     Map<String, dynamic>? initialSettings,
@@ -229,6 +330,13 @@ class _PresetsManagementScreenState
     final topPController = TextEditingController(
       text: (initialSettings?['topP'] as num?)?.toString() ?? '0.95',
     );
+    // Controllers for affix fields
+    final prefixController = TextEditingController(
+      text: initialSettings?['promptPrefix'] as String? ?? '',
+    );
+    final suffixController = TextEditingController(
+      text: initialSettings?['promptSuffix'] as String? ?? '',
+    );
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -244,7 +352,9 @@ class _PresetsManagementScreenState
 
                 return AlertDialog(
                   title: Text(
-                    initialName == null ? 'Add Preset' : 'Edit Preset',
+                    initialName == null
+                        ? (isGroup ? 'Add Group' : 'Add Preset')
+                        : (isGroup ? 'Edit Group' : 'Edit Preset'),
                   ),
                   content: SingleChildScrollView(
                     child: Column(
@@ -252,62 +362,85 @@ class _PresetsManagementScreenState
                       children: [
                         TextField(
                           controller: nameController,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Name',
-                            hintText: 'e.g., Gemini 2.5 Flash',
+                            hintText: isGroup
+                                ? 'e.g., Creative Writing'
+                                : 'e.g., Gemini 2.5 Flash',
                           ),
+                        ),
+                        if (!isGroup) ...[
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<ProviderType>(
+                            initialValue: currentProviderType,
+                            decoration: const InputDecoration(
+                              labelText: 'Provider',
+                            ),
+                            items: ProviderType.values.map((providerType) {
+                              final metadata = providerDetails[providerType]!;
+                              return DropdownMenuItem<ProviderType>(
+                                value: providerType,
+                                child: Text(metadata.name),
+                              );
+                            }).toList(),
+                            onChanged: (ProviderType? newValue) {
+                              if (newValue != null) {
+                                selectedProviderType.value = newValue;
+                              }
+                            },
+                          ),
+                          if (configurableSettings.contains('model')) ...[
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: modelController,
+                              decoration: const InputDecoration(
+                                labelText: 'Model',
+                                hintText: 'e.g., Gemini 2.5 Flash',
+                              ),
+                            ),
+                          ],
+                          if (configurableSettings.contains('temperature')) ...[
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: temperatureController,
+                              decoration: const InputDecoration(
+                                labelText: 'Temperature',
+                                hintText: '0.0 - 1.0',
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
+                          if (configurableSettings.contains('topP')) ...[
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: topPController,
+                              decoration: const InputDecoration(
+                                labelText: 'Top P',
+                                hintText: '0.0 - 1.0',
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
+                        ],
+                        // Affix fields (shown for both Groups and Presets)
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: prefixController,
+                          decoration: const InputDecoration(
+                            labelText: 'Prompt Prefix',
+                            hintText: 'e.g., You are an expert...',
+                          ),
+                          maxLines: 3,
                         ),
                         const SizedBox(height: 16),
-                        DropdownButtonFormField<ProviderType>(
-                          initialValue: currentProviderType,
+                        TextField(
+                          controller: suffixController,
                           decoration: const InputDecoration(
-                            labelText: 'Provider',
+                            labelText: 'Prompt Suffix',
+                            hintText: 'e.g., Format your response as...',
                           ),
-                          items: ProviderType.values.map((providerType) {
-                            final metadata = providerDetails[providerType]!;
-                            return DropdownMenuItem<ProviderType>(
-                              value: providerType,
-                              child: Text(metadata.name),
-                            );
-                          }).toList(),
-                          onChanged: (ProviderType? newValue) {
-                            if (newValue != null) {
-                              selectedProviderType.value = newValue;
-                            }
-                          },
+                          maxLines: 3,
                         ),
-                        if (configurableSettings.contains('model')) ...[
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: modelController,
-                            decoration: const InputDecoration(
-                              labelText: 'Model',
-                              hintText: 'e.g., Gemini 2.5 Flash',
-                            ),
-                          ),
-                        ],
-                        if (configurableSettings.contains('temperature')) ...[
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: temperatureController,
-                            decoration: const InputDecoration(
-                              labelText: 'Temperature',
-                              hintText: '0.0 - 1.0',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                        ],
-                        if (configurableSettings.contains('topP')) ...[
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: topPController,
-                            decoration: const InputDecoration(
-                              labelText: 'Top P',
-                              hintText: '0.0 - 1.0',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -319,24 +452,38 @@ class _PresetsManagementScreenState
                     TextButton(
                       onPressed: () {
                         final settings = <String, dynamic>{};
-                        if (configurableSettings.contains('model')) {
-                          settings['model'] = modelController.text;
+                        if (!isGroup) {
+                          if (configurableSettings.contains('model')) {
+                            settings['model'] = modelController.text;
+                          }
+                          if (configurableSettings.contains('temperature')) {
+                            settings['temperature'] =
+                                double.tryParse(temperatureController.text) ??
+                                0.8;
+                          }
+                          if (configurableSettings.contains('topP')) {
+                            settings['topP'] =
+                                double.tryParse(topPController.text) ?? 0.95;
+                          }
                         }
-                        if (configurableSettings.contains('temperature')) {
-                          settings['temperature'] =
-                              double.tryParse(temperatureController.text) ??
-                              0.8;
+                        // Always include affixes
+                        if (prefixController.text.isNotEmpty) {
+                          settings['promptPrefix'] = prefixController.text;
                         }
-                        if (configurableSettings.contains('topP')) {
-                          settings['topP'] =
-                              double.tryParse(topPController.text) ?? 0.95;
+                        if (suffixController.text.isNotEmpty) {
+                          settings['promptSuffix'] = suffixController.text;
                         }
 
-                        Navigator.of(context).pop({
+                        final result = <String, dynamic>{
                           'name': nameController.text,
-                          'providerType': selectedProviderType.value,
                           'settings': settings,
-                        });
+                        };
+                        if (!isGroup) {
+                          result['providerId'] =
+                              providerDetails[selectedProviderType.value]!.id;
+                        }
+
+                        Navigator.of(context).pop(result);
                       },
                       child: const Text('Save'),
                     ),

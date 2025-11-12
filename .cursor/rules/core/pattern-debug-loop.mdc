@@ -1,0 +1,30 @@
+---
+description: The abstract, reusable pattern for iterative debugging and problem resolution.
+alwaysApply: false
+---
+# Core Pattern: The Debugging Loop
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+Your mission is to autonomously resolve a reported issue by operating within a persistent "Reproduce -> Diagnose -> Fix -> Verify" cycle. You must continue this loop until the issue is demonstrably eliminated.
+
+### The Cycle
+
+1. **Phase 1: The Experiment (Reproduce & Observe)**
+    * Establish a clean environment using the `@core/pattern-session-management` protocol.
+    * Execute your plan to reproduce the failure.
+    * Meticulously analyze the session log file to confirm the failure and gather evidence.
+
+2. **Phase 2: The Analysis (Diagnose & Hypothesize)**
+    * Based on the log evidence, refine or formulate a hypothesis about the root cause.
+    * **If evidence is insufficient, you MUST enhance your perception.** Your primary tool is adding temporary, high-visibility logs (`talker.debug()` in Dart, `console.log()` in TypeScript) at critical points. Re-run the experiment to gather more detailed logs.
+
+3. **Phase 3: The Solution (Implement a Fix)**
+    * Based on your definitive hypothesis, implement a code change.
+    * If you modify TypeScript, you **MUST** run `npm run build`.
+
+4. **Phase 4: The Confirmation (Verify the Fix)**
+    * Establish a new, clean environment using the `@core/pattern-session-management` protocol.
+    * Execute your original reproduction plan.
+    * **Success Condition:** The bug no longer occurs.
+    * **Failure Condition:** The bug persists. If it fails, analyze the new failure mode. This is valuable information. Refine your hypothesis and **return to Phase 1.**

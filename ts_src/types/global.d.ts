@@ -26,7 +26,7 @@ declare global {
 
     /** The communication bridge injected by `flutter_inappwebview`. */
     flutter_inappwebview?: {
-      callHandler(handlerName: string, ...args: unknown[]): void;
+      callHandler(handlerName: string, ...args: unknown[]): Promise<unknown>;
     };
   }
 }

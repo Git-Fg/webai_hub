@@ -9,7 +9,7 @@ import {
 } from './bridge-constants';
 
 interface FlutterInAppWebView {
-  callHandler(handlerName: string, ...args: unknown[]): void;
+  callHandler(handlerName: string, ...args: unknown[]): Promise<unknown>;
 }
 
 interface WindowWithFlutterInAppWebView extends Window {

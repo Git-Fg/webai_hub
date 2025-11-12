@@ -1,0 +1,19 @@
+---
+description: Dart build_runner/codegen guidance for Riverpod and Freezed.
+globs: lib/**/*.dart
+alwaysApply: false
+---
+## Code Generation — build_runner
+
+- After any changes to files containing `@riverpod` or `@freezed` annotations, you MUST run this command to regenerate the necessary code:
+  - `flutter pub run build_runner build --delete-conflicting-outputs`
+
+## Why
+
+- The project relies on generated files (`*.g.dart`, `*.freezed.dart`) for state management (Riverpod) and data models (Freezed).
+- Stale generated code will cause compilation errors, runtime failures, and broken tests.
+
+## Guidance
+
+- **Do NOT edit generated files manually.** Your changes will be overwritten.
+- If the analyzer complains about missing parts or unresolved symbols in generated files, it means you need to re-run the `build_runner` command.

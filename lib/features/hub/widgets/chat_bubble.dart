@@ -136,9 +136,8 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                     arrowWidth: 20,
                     radius: kDefaultBorderRadius,
                     width: 150,
-                    height: widget.message.isFromUser
-                        ? 146
-                        : 97, // Adjust height for resend option
+                    // WHY: Remove hardcoded height to let the popover size itself based on content.
+                    // This makes the UI more resilient to changes in MessageActionHub.
                   ),
                 );
               }

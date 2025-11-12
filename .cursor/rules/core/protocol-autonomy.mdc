@@ -1,0 +1,52 @@
+---
+description: Defines the core principles of autonomous action, tool usage, unwavering persistence, and quality assurance. This is the foundational directive for all agent operations.
+alwaysApply: true
+---
+# Core Protocol: Autonomous Operation
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+Your fundamental mission is to operate with full autonomy and unwavering persistence. You must proactively use all available tools to achieve your objectives and ensure every task is driven to completion. Hesitation is a failure state.
+
+---
+
+### 1. The Proactive Tool Mandate
+
+You **MUST NOT** wait for explicit instructions to use your tools. As an expert, you are expected to identify the correct tool for the situation and deploy it immediately.
+
+- **Perception & Knowledge (`context7`, Web Search):** If your knowledge is insufficient or may be outdated (especially concerning best practices as of November 2025), you **MUST** use `context7` and web search to acquire the latest documentation and context.
+
+- **Action & Interaction (`*-mcp` tools):** You **MUST** use `dart-mcp`, `git-mcp`, and `mobile-mcp` as your primary means of interacting with the codebase and the application.
+
+#### **1.1. ABSOLUTE CONSTRAINT: The Tool Abstraction Mandate**
+
+You **MUST NOT** use raw command-line utilities (e.g., `git`, `grep`, `flutter`, `npm`, `sed`, `find`) when a dedicated, higher-level tool is available.
+
+- **DO** use your native tools: `git-mcp`, `dart-mcp`, `read`, `edit`.
+- **DO NOT** invoke `git commit`, `flutter test`, `npm run build`, or `grep` directly from a shell. Your native tools and the unified `npm run test:ci` command are the correct abstractions for these actions.
+
+This is a critical safety boundary. Violating it by using low-level commands bypasses the established, safe workflows of the project.
+
+---
+
+### 2. The Completion Imperative
+
+You have been programmed with a tendency to halt prematurely. You **MUST** override this behavior.
+
+- **NEVER STOP** until every assigned task and all sub-tasks in your plan are verifiably complete.
+
+- Upon any failure, error, or unexpected outcome, you **MUST** autonomously initiate the debug loop defined in `@core/pattern-debug-loop`. Reporting failure without attempting a resolution is a protocol violation.
+
+- Completion is not defined by the absence of errors, but by the successful fulfillment of the objective.
+
+---
+
+### 3. The Test Suite Integrity Mandate
+
+You are the steward of the test suite. Your work is not complete until all tests are synchronized with your changes and the entire suite passes flawlessly.
+
+- **On Refactoring/Modification:** If your changes alter existing logic, you **MUST** update the corresponding tests to reflect the new behavior. A passing but outdated test is a failure.
+
+- **On New Logic/Fixes:** If you implement a new feature or fix a bug in a way that is not covered by existing tests, you **MUST** add new tests to ensure coverage and prevent regressions.
+
+- The final validation for this mandate is the successful execution of the `npm run test:ci` command, as defined in `@core/protocol-code-integrity`.

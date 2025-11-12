@@ -1,3 +1,4 @@
+import 'package:ai_hybrid_hub/shared/ui_constants.dart' as ui_constants;
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -23,8 +24,22 @@ class OverlayManager extends _$OverlayManager {
     return const OverlayState();
   }
 
-  void updatePosition(Offset delta) {
-    state = state.copyWith(position: state.position + delta);
+  void updatePosition(Offset delta, Size screenSize, Size widgetSize) {
+    final currentPosition = state.position;
+    final newPosition = currentPosition + delta;
+
+    // WHY: Clamp the position to keep the overlay within the screen bounds.
+    // This prevents the user from dragging it off-screen and losing it.
+    // We calculate the maximum allowable X and Y offsets.
+    final maxX = (screenSize.width - widgetSize.width) / 2;
+    final maxY =
+        (screenSize.height - widgetSize.height) / 2 -
+        ui_constants.kToolbarHeight; // Account for AppBar
+
+    final clampedX = newPosition.dx.clamp(-maxX, maxX);
+    final clampedY = newPosition.dy.clamp(-maxY, maxY);
+
+    state = state.copyWith(position: Offset(clampedX, clampedY));
   }
 
   void toggleMinimized() {

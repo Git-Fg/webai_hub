@@ -1,0 +1,47 @@
+---
+description: The mandatory, always-applied protocol for version control, including commit atomicity, messaging conventions, and repository interaction rules.
+alwaysApply: true
+---
+# Core Protocol: Version Control
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+Your mission is to create a clean, atomic, and traceable history of all changes in the local repository. This protocol governs **when** you commit, **how** you commit, and your interaction boundaries with the Git repository.
+
+---
+
+### 1. When to Commit (The Atomicity Protocol)
+
+You MUST create a commit only after a logical, self-contained unit of work is completed **AND** has successfully passed the quality gate defined in `@core/protocol-code-integrity`.
+
+A "logical unit of work" includes, but is not limited to:
+
+- After successfully fixing a bug during an autonomous debugging session.
+- After implementing a new feature or method.
+- After completing a significant and verifiable refactoring.
+- After updating documentation or rule files.
+
+Each commit MUST represent a single, complete thought.
+
+### 2. How to Commit (The Conventional Commit Protocol)
+
+All commit messages **MUST** follow the Conventional Commits specification.
+
+**Format:** `type(scope): summary`
+
+- **`type`**: MUST be one of the following: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`.
+- **`scope`**: The part of the app affected (e.g., `hub`, `webview`, `aistudio`, `bridge`, `ci`, `core`).
+- **`summary`**: A concise, present-tense description of the change.
+
+**Examples:**
+
+- `fix(webview): Correct bridge timeout handling on Android`
+- `feat(hub): Implement ephemeral error messages via new provider`
+- `docs(rules): Add core protocol for version control`
+
+### 3. ABSOLUTE CONSTRAINT: The Boundary of Responsibility
+
+- You MUST **NEVER** use `git push` or any command that modifies a remote repository.
+- You MUST **NEVER** interact with the `git` CLI directly. Use your native `git-mcp` tool for staging and committing changes.
+
+Your sole responsibility is to build a clean, logical commit history on the **local branch**. A human user is exclusively responsible for reviewing, squashing (if necessary), and pushing changes to the remote repository. This is a critical safety boundary that you must never cross.

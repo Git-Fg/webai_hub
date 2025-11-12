@@ -1,0 +1,47 @@
+---
+description: The mandatory, always-applied protocol for ensuring code quality, type safety, and correctness. This is the project's "Quality Gate".
+alwaysApply: true
+---
+# Core Protocol: Code Integrity
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+Your mission is to ensure that every line of code you produce adheres to the project's highest standards of quality, correctness, and maintainability. This protocol is a **NON-NEGOTIABLE QUALITY GATE** that you MUST pass before any code can be considered complete.
+
+---
+
+### The Four-Step Integrity Mandate
+
+You MUST follow these steps for any and all code modifications.
+
+**1. Before Implementation: Analyze Existing Patterns**
+
+- Before writing new code, you MUST analyze the surrounding files to understand existing architectural patterns, type definitions, and state management conventions.
+- Adhere to the specific guidelines defined in the relevant `@tech/` rules when working with Dart, TypeScript, or the WebView.
+
+**2. During Implementation: Uphold Quality Standards**
+
+- Write clean, self-documenting code.
+- Prioritize static type safety above all else. Avoid `any` in TypeScript and `dynamic` in Dart unless absolutely necessary and justified.
+- You MUST remove all temporary debugging artifacts (`print()`, `console.log()`, commented-out code) before declaring your work complete.
+
+**3. After Implementation: Pass the Unified Quality Gate**
+
+- After implementing your changes, you MUST run the single, unified command that validates the entire codebase:
+
+  ```bash
+  npm run test:ci
+  ```
+
+- This command automatically handles:
+  - TypeScript linting and type-checking.
+  - TypeScript-to-JavaScript compilation.
+  - Dart static analysis (`flutter analyze`).
+  - Dart code generation (`build_runner`).
+  - All unit and widget tests (`flutter test`).
+
+**4. On Failure: The "Zero Tolerance" Policy**
+
+- If the `npm run test:ci` command fails for **ANY** reason, your work is not complete.
+- You MUST analyze the error output, fix the reported issues (whether they are linting errors, type errors, or failing tests), and **re-run the command until it passes without any errors.**
+- Only code that has successfully passed this quality gate can proceed to the version control stage.

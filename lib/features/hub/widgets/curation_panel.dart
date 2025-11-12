@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ class CurationPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stagedResponses = ref.watch(stagedResponsesProvider);
+    final selectedIds = ref.watch(selectedStagedResponsesProvider);
 
     if (stagedResponses.isEmpty) {
       return const SizedBox.shrink();
@@ -32,45 +34,61 @@ class CurationPanel extends ConsumerWidget {
             ),
             const Divider(height: 16),
             ...stagedResponses.values.map((response) {
+              final isSelected = selectedIds.contains(response.presetId);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      response.presetName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    if (response.isLoading)
-                      const LinearProgressIndicator()
-                    else
-                      Text(
-                        response.text,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    const SizedBox(height: 8),
-                    if (!response.isLoading)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          ElevatedButton(
-                            onPressed: () {
-                              unawaited(
-                                ref
-                                    .read(conversationActionsProvider.notifier)
-                                    .finalizeTurnWithResponse(response.text),
-                              );
-                            },
-                            child: const Text('Use this'),
-                          ),
-                        ],
-                      ),
-                  ],
+                child: CheckboxListTile(
+                  value: isSelected,
+                  onChanged: response.isLoading
+                      ? null
+                      : (bool? value) {
+                          ref
+                              .read(selectedStagedResponsesProvider.notifier)
+                              .toggle(response.presetId);
+                        },
+                  title: Text(
+                    response.presetName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: response.isLoading
+                      ? const LinearProgressIndicator()
+                      : Text(
+                          response.text,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                  secondary: !response.isLoading
+                      ? ElevatedButton(
+                          onPressed: () {
+                            unawaited(
+                              ref
+                                  .read(conversationActionsProvider.notifier)
+                                  .finalizeTurnWithResponse(response.text),
+                            );
+                          },
+                          child: const Text('Use this'),
+                        )
+                      : null,
                 ),
               );
             }),
+            if (selectedIds.length >= 2)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      unawaited(
+                        ref
+                            .read(conversationActionsProvider.notifier)
+                            .synthesizeResponses(),
+                      );
+                    },
+                    child: const Text('Synthesize Selected Responses'),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

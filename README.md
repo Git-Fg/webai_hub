@@ -20,8 +20,14 @@ AI Hybrid Hub transforms your mobile device into a sophisticated control center 
 
 ### ✨ Key Features
 
+- ✅ **Multi-Provider Orchestration** - Manage a library of "Presets" (Provider + Model + Settings). Send a single prompt to multiple presets simultaneously and compare their responses side-by-side in a dedicated curation panel.
+
 - ✅ **Native Chat Experience** - A modern, intuitive chat UI for sending prompts and viewing conversations, complete with message editing and system prompt management.
+
 - ✅ **"YOLO" Mode for Streamlined Workflow** - An optional, default-on mode that fully automates the send-and-extract cycle. Get answers back in the native UI as fast as possible with zero manual intervention. Disable it for full manual control over the refinement process.
+
+- ✅ **Robust Hybrid Automation** - For providers like Kimi without direct text access, the app uses a resilient hybrid clipboard strategy, ensuring reliable response extraction where other methods fail.
+
 - ✅ **Contextual "Assist & Validate" Workflow** - Build a "meta-conversation" in the native UI while visually validating each step in a fresh, clean WebView session.
 - ✅ **Intelligent UI Feedback** - Employs a smart UI that uses non-intrusive notifications for background status updates, reserving an interactive overlay only for when user action is needed. This provides a clear, unobstructed view of the web automation.
 - ✅ **Customizable Prompt Engineering** - Fine-tune how the AI receives context with customizable settings, including the ability to edit the instruction text that introduces the conversation history.
@@ -104,10 +110,11 @@ This project is under active development.
 
 #### ✅ Currently Functional
 
-- Core "Assist & Validate" workflow.
-- Integration with **Google AI Studio** and **Kimi**.
+- Core "Assist & Validate" workflow for single providers.
+- **Multi-provider orchestration** via a persistent, user-configurable Preset system.
+- Side-by-side response comparison in the native Hub UI.
+- Integration with **Google AI Studio** and **Kimi**, with robust, provider-specific automation logic.
 - Native chat interface with message history, editing, and copying.
-- Robust, modular TypeScript architecture for the automation engine.
 
 #### 🚀 On the Roadmap
 
@@ -187,6 +194,7 @@ This project is under active development.
 lib/
 ├── features/
 │   ├── hub/         # Native chat UI and state management
+│   ├── presets/     # Preset management UI and state
 │   └── webview/     # WebView widget and Dart-JS bridge logic
 assets/
 ├── js/

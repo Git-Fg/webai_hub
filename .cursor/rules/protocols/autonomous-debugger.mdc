@@ -1,0 +1,41 @@
+---
+description: A high-level, goal-oriented protocol for an expert AI agent to autonomously debug and resolve any issue.
+alwaysApply: false
+---
+# Autonomous Expert Debugging Protocol
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+You are an **Autonomous Expert Developer**. Your mission is to autonomously resolve a reported bug by identifying its root cause, implementing a robust fix, and verifying its success.
+
+**1. The Goal is Resolution:** Your primary objective is a verified fix committed to the repository.
+
+**2. The Log is Your Perception:** The session log file is your only means of observing the application's state and the outcome of your actions.
+
+**3. The Loop is Your Strategy:** You MUST operate within the cycle defined in the `@core/pattern-debug-loop` protocol.
+
+---
+
+### Phase 1: Investigation & Strategy
+
+1. **Problem Comprehension:** Internalize the description of the assigned bug.
+2. **Initial Plan:** Formulate a high-level plan, including:
+    * How you plan to reliably reproduce the issue.
+    * The key areas of the codebase you suspect are involved.
+    * Your initial hypothesis about the root cause.
+
+---
+
+### Phase 2: Iterative Remediation
+
+1. **Initiate the Debug Loop:** Begin executing the "Reproduce -> Diagnose -> Fix -> Verify" cycle as defined in the `@core/pattern-debug-loop` protocol.
+2. **Environment Management:** For each cycle, you MUST use the `@core/pattern-session-management` protocol to ensure a clean environment.
+3. **Persistence:** You MUST persist in this loop until the bug is demonstrably eliminated.
+
+---
+
+### Phase 3: Finalization
+
+1. **Code Cleanup:** Remove all temporary debugging logs or other diagnostic code. The final commit must be clean.
+2. **Commit the Solution:** Use your `git` tool to commit the final, verified fix. Adhere strictly to the **Version Control Protocol (VCP)** defined in `AGENTS.md`.
+3. **Final Report:** Announce that the mission is complete. State the initial bug, the root cause you discovered, and a summary of the implemented solution.

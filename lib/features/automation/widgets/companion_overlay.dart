@@ -22,13 +22,55 @@ class CompanionOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(automationStateProvider);
     final overlayState = ref.watch(overlayManagerProvider);
-    return AnimatedSwitcher(
+    final overlayNotifier = ref.read(overlayManagerProvider.notifier);
+
+    final isDraggable = status.maybeWhen(
+      refining: (activePresetId, messageCount, isExtracting) => true,
+      orElse: () => false,
+    );
+
+    final content = AnimatedSwitcher(
       duration: kShortAnimationDuration,
       child: overlayState.isMinimized
           ? _buildMinimizedView(context, ref)
           : _buildExpandedView(context, ref),
     );
+
+    // WHY: CompanionOverlay decides its own layout and interaction model based on automation state.
+    // For refining state: draggable with user-controlled position.
+    // For needsLogin state: centered and not draggable.
+    if (isDraggable) {
+      final screenSize = MediaQuery.of(context).size;
+      final widgetSize = overlayKey.currentContext?.size ?? Size.zero;
+
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Transform.translate(
+          offset: overlayState.position,
+          child: Padding(
+            padding: const EdgeInsets.all(kDefaultPadding),
+            child: GestureDetector(
+              onPanUpdate: (details) => overlayNotifier.updatePosition(
+                details.delta,
+                screenSize,
+                widgetSize,
+              ),
+              child: content,
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Centered and not draggable (for needsLogin state)
+      return Align(
+        child: Padding(
+          padding: const EdgeInsets.all(kDefaultPadding),
+          child: content,
+        ),
+      );
+    }
   }
 
   Widget _buildMinimizedView(BuildContext context, WidgetRef ref) {

@@ -1,0 +1,28 @@
+---
+description: Instructions and best practices for writing and running tests in the project.
+globs: test/**/*.dart, test_integration/**/*.dart
+alwaysApply: false
+---
+## Flutter Testing Protocol
+
+### Philosophy
+
+- **Coverage is Mandatory:** All new business logic MUST be covered by unit tests.
+- **Speed and Isolation:** Tests must be fast and reliable. Use fakes (e.g., `FakeJavaScriptBridge`) and mock external dependencies to achieve this. Avoid real network or file system access.
+- **Resilient Mocks:** When using `mockito`, prefer `@GenerateNiceMocks` to avoid creating brittle tests that break on irrelevant method calls.
+
+### Running Tests
+
+- **Run all tests:**
+
+  ```bash
+  flutter test
+  ```
+
+- **Run tests with coverage report:**
+
+  ```bash
+  flutter test --coverage
+  ```
+
+- **Before Committing:** Always run `flutter test` to ensure you have not introduced any regressions.

@@ -4,8 +4,6 @@ import { Chatbot } from '../types/chatbot';
 import { waitForElementWithin } from '../utils/wait-for-element';
 import { waitForActionableElement } from '../utils/wait-for-actionable-element';
 import { getModifiedTimeout } from '../utils/timeout';
-import { notifyDart } from '../utils/notify-dart';
-import { EVENT_TYPE_NEW_RESPONSE } from '../utils/bridge-constants';
 
 // --- Sélecteurs validés pour Kimi ---
 const SELECTORS = {
@@ -20,9 +18,6 @@ const SELECTORS = {
 };
 
 class KimiChatbot implements Chatbot {
-  // --- Observer State ---
-  private responseObserver: MutationObserver | null = null;
-  private debounceTimer: number | null = null;
 
   async waitForReady(): Promise<void> {
     console.log('[Kimi] Starting robust multi-condition readiness check...');
@@ -99,6 +94,44 @@ class KimiChatbot implements Chatbot {
     });
   }
 
+  private async _waitForResponseFinalization(): Promise<void> {
+    console.log('[Kimi] Now waiting for AI response to finalize...');
+    
+    return new Promise((resolve, reject) => {
+      const timeout = getModifiedTimeout(60000); // 60 second timeout for Kimi
+      const pollInterval = 300; // Check every 300ms
+      
+      const checkForFinalizedResponse = () => {
+        const responseContainers = document.querySelectorAll(SELECTORS.RESPONSE_CONTAINER);
+        if (responseContainers.length === 0) return;
+
+        const lastResponseContainer = responseContainers[responseContainers.length - 1];
+        if (!lastResponseContainer) return;
+
+        // Condition: The generating spinner is GONE, and the copy button is PRESENT.
+        const isGenerating = !!document.querySelector(SELECTORS.GENERATING_INDICATOR);
+        const copyButton = lastResponseContainer.querySelector(SELECTORS.COPY_BUTTON);
+
+        if (!isGenerating && copyButton) {
+          console.log('[Kimi] Response finalized. Ready for extraction.');
+          clearInterval(checkInterval);
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      };
+
+      const checkInterval = setInterval(checkForFinalizedResponse, pollInterval);
+      
+      const timeoutId = setTimeout(() => {
+        clearInterval(checkInterval);
+        reject(new Error(`Timed out after ${timeout}ms waiting for response to finalize.`));
+      }, timeout);
+
+      // Perform an initial check
+      checkForFinalizedResponse();
+    });
+  }
+
   async sendPrompt(prompt: string): Promise<void> {
     console.log('[Kimi] Starting sendPrompt workflow...');
     
@@ -150,57 +183,11 @@ class KimiChatbot implements Chatbot {
     console.log('[Kimi] Clicking send button...');
     sendButton.click();
     console.log('[Kimi] Send button clicked successfully.');
+
+    // *** NEW LOGIC: Await finalization directly ***
+    await this._waitForResponseFinalization();
   }
 
-  // --- Response Observer Implementation ---
-
-  private stopResponseObserver(): void {
-    if (this.responseObserver) {
-      this.responseObserver.disconnect();
-      this.responseObserver = null;
-    }
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    console.log('[Kimi Observer] Stopped observing.');
-  }
-
-  private checkForFinalizedResponse(): void {
-    const responseContainers = document.querySelectorAll(SELECTORS.RESPONSE_CONTAINER);
-    if (responseContainers.length === 0) return;
-
-    const lastResponseContainer = responseContainers[responseContainers.length - 1];
-    if (!lastResponseContainer) return;
-
-    // Condition: The generating spinner is GONE, and the copy button is PRESENT.
-    const isGenerating = !!document.querySelector(SELECTORS.GENERATING_INDICATOR);
-    const copyButton = lastResponseContainer.querySelector(SELECTORS.COPY_BUTTON);
-
-    if (!isGenerating && copyButton) {
-      console.log('[Kimi Observer] Detected finalized response. Notifying Dart.');
-      notifyDart({ type: EVENT_TYPE_NEW_RESPONSE });
-      this.stopResponseObserver();
-    }
-  }
-
-  async startResponseObserver(): Promise<void> {
-    this.stopResponseObserver(); // Ensure no old observers are running
-
-    const targetNode = document.body;
-
-    this.responseObserver = new MutationObserver(() => {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      this.debounceTimer = window.setTimeout(() => this.checkForFinalizedResponse(), 300);
-    });
-
-    this.responseObserver.observe(targetNode, {
-      childList: true,
-      subtree: true,
-    });
-
-    console.log('[Kimi Observer] Started observing DOM for new responses.');
-  }
 
   async extractResponse(): Promise<string> {
     console.log('[Kimi] Starting response extraction workflow...');

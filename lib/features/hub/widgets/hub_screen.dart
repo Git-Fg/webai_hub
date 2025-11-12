@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_details_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/chat_bubble.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/conversation_history_drawer.dart';
 import 'package:ai_hybrid_hub/features/hub/widgets/curation_panel.dart';
-import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
-import 'package:ai_hybrid_hub/features/presets/widgets/preset_selector.dart';
+import 'package:ai_hybrid_hub/features/presets/widgets/preset_accordion.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -80,9 +81,6 @@ class _HubScreenState extends ConsumerState<HubScreen> {
   }
 
   Widget _buildInputSection() {
-    final selectedIdsAsync = ref.watch(selectedPresetIdsProvider);
-    final presetsAsync = ref.watch(presetsProvider);
-
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         const SingleActivator(LogicalKeyboardKey.enter): () {
@@ -162,43 +160,8 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                 ],
               ),
             ),
-            // Part B: The Accordion (ExpansionTile)
-            presetsAsync.when(
-              data: (presets) {
-                if (presets.isEmpty) return const SizedBox.shrink();
-
-                final selectedIds = selectedIdsAsync.maybeWhen(
-                  data: (ids) => ids,
-                  orElse: () => <int>[],
-                );
-                final selectedPresets = presets
-                    .where((p) => selectedIds.contains(p.id))
-                    .toList();
-
-                var title = 'No preset selected';
-                if (selectedPresets.isNotEmpty) {
-                  title =
-                      '${selectedPresets.length} selected: ${selectedPresets.first.name}';
-                  if (selectedPresets.length > 1) {
-                    title += '...';
-                  }
-                }
-
-                return ExpansionTile(
-                  title: Text(
-                    title,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                  childrenPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  children: const [
-                    PresetSelector(),
-                  ],
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, _) => const SizedBox.shrink(),
-            ),
+            // Part B: The Accordion (now simplified)
+            const PresetAccordion(),
           ],
         ),
       ),
@@ -230,6 +193,17 @@ class _HubScreenState extends ConsumerState<HubScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.notes),
+            color: Colors.white,
+            tooltip: 'Set System Prompt',
+            onPressed: () {
+              final activeId = ref.read(activeConversationIdProvider);
+              if (activeId != null) {
+                unawaited(_showSystemPromptDialog(context, ref, activeId));
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.monitor_heart),
             color: Colors.white,
@@ -359,6 +333,65 @@ class _HubScreenState extends ConsumerState<HubScreen> {
           const CurationPanel(),
           _buildInputSection(),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showSystemPromptDialog(
+    BuildContext context,
+    WidgetRef ref,
+    int conversationId,
+  ) async {
+    final controller = TextEditingController();
+
+    // Load initial text from provider
+    final conversationDetailsAsync = ref.read(
+      activeConversationDetailsProvider,
+    );
+    conversationDetailsAsync.whenData((conv) {
+      controller.text = conv?.systemPrompt ?? '';
+    });
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final convAsync = ref.watch(activeConversationDetailsProvider);
+          convAsync.whenData((conv) {
+            if (controller.text.isEmpty) {
+              controller.text = conv?.systemPrompt ?? '';
+            }
+          });
+
+          return AlertDialog(
+            title: const Text('System Prompt'),
+            content: TextField(
+              controller: controller,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                hintText: 'e.g., You are an expert Flutter developer...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  unawaited(
+                    ref
+                        .read(conversationActionsProvider.notifier)
+                        .updateSystemPrompt(controller.text),
+                  );
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

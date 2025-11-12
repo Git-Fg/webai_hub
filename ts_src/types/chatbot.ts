@@ -74,12 +74,16 @@ export interface Chatbot {
   setSystemPrompt?: (systemPrompt: string) => Promise<void>;
 
   /**
-   * Finds the input area, inserts the prompt, and clicks the submit button.
+   * Finds the input area, inserts the prompt, clicks submit, AND
+   * WAITS until the AI response is fully generated and ready for extraction.
+   * This is a long-running method that resolves only upon completion.
    * 
    * **Implementation Notes:**
    * - Use `waitForActionableElement` for both input field and submit button
    * - Wait for token count or similar indicator that input was processed
    * - Handle login page detection and notify Dart appropriately
+   * - After clicking send, must wait for response finalization (e.g., presence of "Edit" button)
+   * - This method should NOT return until the response is ready for extraction
    * 
    * @param prompt The message to send.
    */
@@ -87,10 +91,11 @@ export interface Chatbot {
 
   /**
    * Extracts the cleaned text of the latest model response.
+   * This is called AFTER `sendPrompt` has successfully resolved.
    * 
    * **Implementation Notes:**
    * - Use "reliable-to-uncertain" strategy: find stable button (e.g., "Edit"), traverse up to container
-   * - Wait for response to be finalized (e.g., presence of "Edit" button)
+   * - The response should already be finalized when this is called (sendPrompt handles waiting)
    * - Use `waitForElementWithin` to scope searches to specific containers
    * - Handle extraction errors gracefully (return partial results if possible)
    * 

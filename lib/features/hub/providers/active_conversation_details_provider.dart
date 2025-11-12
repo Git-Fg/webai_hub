@@ -18,8 +18,7 @@ Stream<ConversationData?> activeConversationDetails(Ref ref) {
     return Stream.value(null);
   }
 
-  return (db.select(db.conversations)..where((c) => c.id.equals(activeId)))
-      .watchSingleOrNull();
+  return (db.select(
+    db.conversations,
+  )..where((c) => c.id.equals(activeId))).watchSingleOrNull();
 }
-
-

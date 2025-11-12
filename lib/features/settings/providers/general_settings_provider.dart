@@ -1,3 +1,4 @@
+import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/services/settings_service.dart';
 import 'package:hive/hive.dart';
@@ -20,7 +21,58 @@ class GeneralSettings extends _$GeneralSettings {
   Future<GeneralSettingsData> build() async {
     // WHY: The loading logic is now simpler and synchronous.
     final service = _getService();
-    return service.loadSettings();
+    final loadedSettings = service.loadSettings();
+
+    // WHY: Migrate old user agent names to new ones to prevent dropdown errors.
+    // This handles cases where users have saved values that no longer match enum names.
+    final migratedSettings = _migrateUserAgentIfNeeded(loadedSettings);
+
+    // WHY: If migration occurred, save the updated settings back to storage.
+    if (migratedSettings != loadedSettings) {
+      await service.saveSettings(migratedSettings);
+    }
+
+    return migratedSettings;
+  }
+
+  // WHY: Maps old user agent names to new ones to preserve user intent after enum changes.
+  // Returns the same settings if no migration is needed, or updated settings if migration occurred.
+  GeneralSettingsData _migrateUserAgentIfNeeded(GeneralSettingsData settings) {
+    final selectedUA = settings.selectedUserAgent;
+
+    // WHY: If it's 'default' or 'custom', no migration needed.
+    if (selectedUA == 'default' || selectedUA == 'custom') {
+      return settings;
+    }
+
+    // WHY: Check if the saved value matches any current enum name.
+    final isValidUA = BrowserUserAgent.values.any(
+      (ua) => ua.name == selectedUA,
+    );
+    if (isValidUA) {
+      return settings;
+    }
+
+    // WHY: Migration map for old user agent names to new ones.
+    // Maps old names (that users might have saved) to their closest new equivalent.
+    const migrationMap = <String, String>{
+      // Old desktop user agents → map to mobile equivalents
+      'Chrome 131 (Windows)': 'Chrome/Android (Generic)',
+      'Chrome 131 (macOS)': 'Chrome/iPhone',
+      'Safari 18 (macOS)': 'Chrome/iPhone',
+      'Firefox 141 (Windows)': 'Firefox/Android',
+      'Edge 131 (Windows)': 'Chrome/Android (Generic)',
+      // Old mobile user agent name (if it existed)
+      'Chrome/Android': 'Chrome/Android (Generic)',
+    };
+
+    final migratedUA = migrationMap[selectedUA];
+    if (migratedUA != null) {
+      return settings.copyWith(selectedUserAgent: migratedUA);
+    }
+
+    // WHY: If no migration mapping exists, fall back to default to prevent errors.
+    return settings.copyWith(selectedUserAgent: 'default');
   }
 
   // WHY: Centralized update logic that handles loading state and error handling

@@ -39,3 +39,6 @@ const double kDefaultElevation = 12;
 const Offset kDefaultShadowOffset = Offset(0, 2);
 const Offset kMediumShadowOffset = Offset(0, 4);
 const Offset kTopShadowOffset = Offset(0, -2);
+
+// Toolbar Height
+const double kToolbarHeight = 56; // Standard Material Design toolbar height

@@ -1,0 +1,31 @@
+---
+description: The single source of truth for managing a test/validation session environment.
+alwaysApply: false
+---
+# Core Protocol: Session Management
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+onomYour mission is to establish and manage a clean, isolated, and ready-to-use session environment for any automated task. This protocol is the **single source of truth** for interacting with the `run_session.sh` script.
+
+### 1. Starting a Ready Session
+
+1. **Execute the Command:** To begin a new session (or to terminate a prior one and start fresh), execute this single command:
+
+    ```bash
+    bash reports/run_session.sh
+    ```
+
+2. **Await Completion:** You **MUST** execute this command synchronously and wait for it to complete. **Do not run it in the background.** The script automatically handles waiting for the application to launch and become fully ready. The command's successful completion is your definitive signal to proceed.
+
+3. **Capture the Session ID:** The script will output a unique `SESSION_ID` to standard output (e.g., `2025-11-10_14-30-00`). You MUST capture this ID for all subsequent operations.
+
+4. **Identify the Log File:** The session's log file, which is your primary source of perception, is located at: `reports/run_${SESSION_ID}.log`.
+
+### 2. Terminating a Session
+
+To explicitly stop the current session without starting a new one, execute:
+
+```bash
+bash reports/run_session.sh stop
+```

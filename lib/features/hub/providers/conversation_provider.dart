@@ -1,15 +1,20 @@
+import 'dart:async';
+
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/services/automation_orchestrator.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/sequential_orchestrator_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/services/automation_service.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -48,16 +53,15 @@ class ConversationActions extends _$ConversationActions {
     required int conversationId,
     MessageStatus? status,
   }) async {
-    final db = ref.read(appDatabaseProvider);
     final message = Message(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       text: text,
       isFromUser: isFromUser,
       status: status ?? MessageStatus.success,
     );
-    await db.insertMessage(message, conversationId);
-    // Update conversation timestamp
-    await db.updateConversationTimestamp(conversationId, DateTime.now());
+    await ref
+        .read(messageServiceProvider.notifier)
+        .addMessage(message, conversationId);
     // Signal UI to scroll to bottom after adding message
     ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
   }
@@ -81,7 +85,7 @@ class ConversationActions extends _$ConversationActions {
       isFromUser: messageData.isFromUser,
       status: messageData.status,
     );
-    await db.updateMessage(message);
+    await ref.read(messageServiceProvider.notifier).updateMessage(message);
   }
 
   Future<void> clearConversation() async {
@@ -93,6 +97,19 @@ class ConversationActions extends _$ConversationActions {
     await db.deleteConversation(activeId);
     ref.read(activeConversationIdProvider.notifier).set(null);
     ref.read(automationStateProvider.notifier).returnToIdle();
+  }
+
+  // WHY: This method allows updating the system prompt for the active conversation,
+  // enabling persistent instructions that guide AI behavior across turns.
+  Future<void> updateSystemPrompt(String newPrompt) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+    await ref
+        .read(appDatabaseProvider)
+        .updateConversationSystemPrompt(
+          activeId,
+          newPrompt.isEmpty ? null : newPrompt,
+        );
   }
 
   Future<void> editAndResendPrompt(String messageId, String newText) async {
@@ -182,27 +199,33 @@ class ConversationActions extends _$ConversationActions {
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
     }
 
-    // Delegate orchestration to dedicated service
-    final orchestrator = AutomationOrchestrator(ref);
-    await orchestrator.dispatch(
-      prompt: prompt,
-      conversationId: activeId,
-      selectedPresetIds: selectedPresetIds,
-      excludeMessageId: excludeMessageId ?? userMessageId,
-      addMessage:
-          ({
-            required String text,
-            required bool isFromUser,
-            required int conversationId,
-            MessageStatus? status,
-          }) async {
-            await addMessage(
-              text,
-              isFromUser: isFromUser,
-              conversationId: conversationId,
-              status: status,
-            );
-          },
+    // Pre-populate staged responses with "waiting" placeholders
+    ref.read(stagedResponsesProvider.notifier).clear();
+    final allPresets = await ref.read(presetsProvider.future);
+    for (final presetId in selectedPresetIds) {
+      final preset = allPresets.firstWhere((p) => p.id == presetId);
+      ref
+          .read(stagedResponsesProvider.notifier)
+          .addOrUpdate(
+            StagedResponse(
+              presetId: presetId,
+              presetName: preset.name,
+              text: 'Waiting in queue...',
+              isLoading: true,
+            ),
+          );
+    }
+
+    // Start the sequential orchestrator
+    unawaited(
+      ref
+          .read(sequentialOrchestratorProvider.notifier)
+          .start(
+            presetIds: selectedPresetIds,
+            prompt: prompt,
+            conversationId: activeId,
+            excludeMessageId: excludeMessageId ?? userMessageId,
+          ),
     );
   }
 
@@ -220,64 +243,105 @@ class ConversationActions extends _$ConversationActions {
     ref.read(automationStateProvider.notifier).returnToIdle();
   }
 
+  // WHY: This method synthesizes multiple selected responses into a single,
+  // superior answer by using an AI model to analyze and merge the best elements.
+  Future<void> synthesizeResponses() async {
+    final talker = ref.read(talkerProvider);
+    final selectedIds = ref.read(selectedStagedResponsesProvider);
+    if (selectedIds.length < 2) {
+      talker.warning('Synthesis requires at least 2 selected responses.');
+      return;
+    }
+
+    final allStaged = ref.read(stagedResponsesProvider);
+    final selectedResponses = allStaged.values
+        .where((r) => selectedIds.contains(r.presetId))
+        .toList();
+
+    // Get the original prompt from the last user message
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) {
+      talker.error('Cannot synthesize: no active conversation.');
+      return;
+    }
+
+    final db = ref.read(appDatabaseProvider);
+    final messages =
+        await (db.select(db.messages)
+              ..where((t) => t.conversationId.equals(activeId))
+              ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+            .get();
+
+    final lastUserMessage = messages.firstWhere(
+      (m) => m.isFromUser,
+      orElse: () => throw StateError('No user message found'),
+    );
+    final originalPrompt = lastUserMessage.content;
+
+    // Get first available preset as synthesizer
+    final allPresets = await ref.read(presetsProvider.future);
+    final presetPresets = allPresets
+        .where((p) => p.providerId != null)
+        .toList();
+    if (presetPresets.isEmpty) {
+      talker.error('Cannot synthesize: no presets available.');
+      return;
+    }
+    final synthesisPresetId = presetPresets.first.id;
+
+    // Construct the meta-prompt
+    final responsesText = selectedResponses
+        .map((r) => '<response from="${r.presetName}">\n${r.text}\n</response>')
+        .join('\n\n');
+    final metaPrompt =
+        '''
+Based on the original prompt: "$originalPrompt"
+
+Analyze the following AI-generated responses. Identify the strengths and weaknesses of each, and then synthesize them into a single, superior response that incorporates the best elements of all provided answers.
+
+$responsesText
+''';
+
+    // Mark the new response as "Synthesizing..."
+    ref
+        .read(stagedResponsesProvider.notifier)
+        .addOrUpdate(
+          const StagedResponse(
+            presetId: -1, // Special ID for synthesized response
+            presetName: 'Synthesized',
+            text: 'Synthesizing...',
+            isLoading: true,
+          ),
+        );
+
+    // Dispatch the new automation request
+    await sendPromptToAutomation(
+      metaPrompt,
+      selectedPresetIds: [synthesisPresetId],
+      isResend: true, // Prevents creating a new user message
+    );
+
+    // Clear selections
+    ref.read(selectedStagedResponsesProvider.notifier).clear();
+  }
+
   // Extract and return to Hub without finalizing automation (for single-provider workflow)
   Future<void> extractAndReturnToHub(int presetId) async {
-    final talker = ref.read(talkerProvider);
-    talker.info(
-      '[ConversationProvider] extractAndReturnToHub called for preset: $presetId',
-    );
-    final bridge = ref.read(javaScriptBridgeProvider(presetId));
-    final automationNotifier = ref.read(automationStateProvider.notifier);
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    automationNotifier.setExtracting(extracting: true);
+    final responseText = await ref
+        .read(automationServiceProvider.notifier)
+        .extractResponse(presetId);
 
-    try {
-      talker.info(
-        '[ConversationProvider] Calling bridge.extractFinalResponse()...',
+    if (ref.mounted) {
+      await _updateLastMessage(
+        responseText,
+        MessageStatus.success,
+        conversationId: activeId,
       );
-      final responseText = await bridge.extractFinalResponse();
-
-      talker.info(
-        '[ConversationProvider] Extraction successful, received ${responseText.length} chars',
-      );
-
-      // WHY: If we reach here, extraction succeeded even if non-critical errors were logged on JS side.
-      // The important thing is that the Promise returned a value.
-      if (ref.mounted) {
-        await _updateLastMessage(
-          responseText,
-          MessageStatus.success,
-          conversationId: activeId,
-        );
-        ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
-      }
-      // WHY: Reset extracting state after successful extraction
-      if (ref.mounted) {
-        ref
-            .read(automationStateProvider.notifier)
-            .setExtracting(extracting: false);
-      }
-    } on Object catch (e, st) {
-      if (ref.mounted) {
-        ref
-            .read(automationStateProvider.notifier)
-            .setExtracting(extracting: false);
-      }
-      final talker = ref.read(talkerProvider);
-      talker.handle(e, st, 'Response extraction failed.');
-      // WHY: The provider's responsibility is to manage state, not trigger UI.
-      // By re-throwing the error, we let the UI layer decide how to present it.
-      if (e is AutomationError) {
-        rethrow; // Re-throw the specific error.
-      }
-      // Wrap other exceptions in a generic AutomationError.
-      throw AutomationError(
-        errorCode: AutomationErrorCode.responseExtractionFailed,
-        location: 'extractAndReturnToHub',
-        message: 'An unexpected error occurred: $e',
-      );
+      ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
+      ref.read(currentTabIndexProvider.notifier).changeTo(0);
     }
   }
 
@@ -316,34 +380,25 @@ class ConversationActions extends _$ConversationActions {
 
     final db = ref.read(appDatabaseProvider);
 
-    // WHY: This query is more efficient as it fetches only the single last
-    // message from the database instead of loading the entire list.
-    // WHY: Order by createdAt timestamp instead of ID to ensure reliable ordering,
-    // independent of ID generation timing or potential clock adjustments.
-    final lastMessageQuery = db.select(db.messages)
+    final query = db.select(db.messages)
       ..where((t) => t.conversationId.equals(conversationId))
+      ..where((t) => t.status.equals(MessageStatus.sending.name))
       ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
       ..limit(1);
 
-    final lastMessageData = await lastMessageQuery.getSingleOrNull();
+    final messageToUpdate = await query.getSingleOrNull();
 
-    // WHY: Explicitly check that a message exists and it is an assistant's "sending" message.
-    // This prevents errors if the state is cleared while an async operation is in flight.
-    if (lastMessageData != null) {
-      final lastMessage = Message(
-        id: lastMessageData.id,
-        text: lastMessageData.content,
-        isFromUser: lastMessageData.isFromUser,
-        status: lastMessageData.status,
+    if (messageToUpdate != null) {
+      final updatedMessage = Message(
+        id: messageToUpdate.id,
+        text: text,
+        isFromUser: false,
+        status: status,
       );
-
-      if (!lastMessage.isFromUser &&
-          lastMessage.status == MessageStatus.sending) {
-        final updatedMessage = lastMessage.copyWith(text: text, status: status);
-        await db.updateMessage(updatedMessage);
-        // Update conversation timestamp
-        await db.updateConversationTimestamp(conversationId, DateTime.now());
-      }
+      await ref
+          .read(messageServiceProvider.notifier)
+          .updateMessage(updatedMessage);
+      await db.updateConversationTimestamp(conversationId, DateTime.now());
     }
   }
 }

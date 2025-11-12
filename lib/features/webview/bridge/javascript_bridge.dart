@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -12,9 +13,6 @@ part 'javascript_bridge.g.dart';
 
 const int _webViewCreationMaxAttempts = 400;
 const Duration _webViewCreationCheckDelay = Duration(milliseconds: 100);
-const int _bridgeReadyMaxAttempts = 200;
-const Duration _bridgeReadyCheckDelay = Duration(milliseconds: 100);
-const int _bridgeReadyTimeoutSeconds = 20;
 const Duration _callAsyncJavaScriptTimeout = Duration(seconds: 30);
 const Duration _heartbeatTimeout = Duration(seconds: 2);
 
@@ -27,7 +25,9 @@ class WebViewController extends _$WebViewController {
       final controller = state;
       if (controller != null) {
         final talker = ref.read(talkerProvider);
-        talker.debug('[WebViewController] Disposing controller for preset: $presetId');
+        talker.debug(
+          '[WebViewController] Disposing controller for preset: $presetId',
+        );
         // WHY: Global functions must be deleted to prevent memory leaks when WebView is disposed
         unawaited(
           controller
@@ -71,6 +71,26 @@ class BridgeReady extends _$BridgeReady {
   }
 }
 
+@Riverpod(keepAlive: true)
+Future<void> bridgeReadyFuture(Ref ref, int presetId) {
+  if (ref.read(bridgeReadyProvider)) {
+    return Future.value();
+  }
+
+  final completer = Completer<void>();
+  final subscription = ref.listen<bool>(
+    bridgeReadyProvider,
+    (bool? previous, bool isReady) {
+      if (isReady && !completer.isCompleted) {
+        completer.complete();
+      }
+    },
+  );
+
+  ref.onDispose(subscription.close);
+  return completer.future;
+}
+
 @riverpod
 class CurrentWebViewUrl extends _$CurrentWebViewUrl {
   @override
@@ -97,7 +117,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     return controller;
   }
 
-
   Map<String, dynamic> _getBridgeDiagnostics() {
     final isReady = ref.read(bridgeReadyProvider);
     final controller = ref.read(webViewControllerProvider(presetId));
@@ -113,7 +132,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
   /// A simple evaluateJavascript call will hang indefinitely on a crashed ("zombie") context.
   /// A TimeoutException is the canonical signal of a dead context, not an error condition.
   /// This method returns true if the JS context is responsive, false if dead (timeout).
-  /// It does NOT check for bridge initialization - use _isBridgeInjected() for that.
+  /// It does NOT check for bridge initialization.
   @override
   Future<bool> isBridgeAlive() async {
     try {
@@ -170,164 +189,40 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     );
   }
 
-  /// WHY: Specifically checks if the bridge script has been injected and initialized.
-  /// This is separate from isBridgeAlive() which only checks JS context responsiveness.
-  Future<bool> _isBridgeInjected() async {
-    try {
-      final result = await _controller
-          .evaluateJavascript(
-            source: 'window.__AI_HYBRID_HUB_INITIALIZED__ === true',
-          )
-          .timeout(_heartbeatTimeout);
-      return result == true;
-    } on Object catch (_) {
-      return false;
-    }
-  }
-
   @override
   Future<void> waitForBridgeReady() async {
-    final startTime = DateTime.now();
+    final talker = ref.read(talkerProvider);
+    talker.debug('[Bridge] Waiting for WebView controller...');
 
     // Stage 1: Wait for the native controller to exist.
     await _waitForWebViewToBeCreated();
 
-    // Stage 2: Wait for the web page to finish loading.
-    // WHY: This is the CRITICAL missing step that fixes the race condition.
-    // We cannot expect JavaScript to be ready before the page itself has finished loading.
-    var attempts = 0;
-    while (attempts < _bridgeReadyMaxAttempts) {
-      if (!ref.mounted) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeNotInitialized,
-          location: 'waitForBridgeReady',
-          message: 'Provider disposed while waiting for bridge',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      final elapsed = DateTime.now().difference(startTime);
-      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
-        ref
-            .read(bridgeDiagnosticsStateProvider.notifier)
-            .recordError(
-              AutomationErrorCode.pageNotLoaded.name,
-              'waitForBridgeReady',
-            );
-        throw AutomationError(
-          errorCode: AutomationErrorCode.pageNotLoaded,
-          location: 'waitForBridgeReady',
-          message: 'Page did not load within timeout.',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      try {
-        final readyState = await _controller.evaluateJavascript(
-          source: 'document.readyState',
-        );
-        // WHY: Verify we're not on an error page (chrome-error://) before considering
-        // the page loaded. This prevents automation from starting on error pages.
-        final currentUrl = await _controller.getUrl();
-        final urlString = currentUrl?.toString() ?? '';
-        if (readyState == 'complete' &&
-            !urlString.startsWith('chrome-error://') &&
-            !urlString.startsWith('about:')) {
-          break;
-        }
-      } on Object catch (_) {
-        // Ignore errors during page load check, continue polling
-      }
-
-      await Future<void>.delayed(_bridgeReadyCheckDelay);
-      attempts++;
-    }
-
-    // Stage 3: Wait for our script to be injected and initialized.
-    attempts = 0;
-    while (attempts < _bridgeReadyMaxAttempts) {
-      if (!ref.mounted) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeNotInitialized,
-          location: 'waitForBridgeReady',
-          message: 'Provider disposed while waiting for bridge',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      final elapsed = DateTime.now().difference(startTime);
-      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
-        ref
-            .read(bridgeDiagnosticsStateProvider.notifier)
-            .recordError(
-              AutomationErrorCode.scriptNotInjected.name,
-              'waitForBridgeReady',
-            );
-        throw AutomationError(
-          errorCode: AutomationErrorCode.scriptNotInjected,
-          location: 'waitForBridgeReady',
-          message: 'Bridge script not injected within timeout.',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      if (await _isBridgeInjected()) break;
-
-      await Future<void>.delayed(_bridgeReadyCheckDelay);
-      attempts++;
-    }
-
-    // Stage 4: Wait for the final 'ready' signal from the JS side.
-    attempts = 0;
-    while (attempts < _bridgeReadyMaxAttempts) {
-      if (!ref.mounted) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeNotInitialized,
-          location: 'waitForBridgeReady',
-          message: 'Provider disposed while waiting for bridge',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      final elapsed = DateTime.now().difference(startTime);
-      if (elapsed.inSeconds >= _bridgeReadyTimeoutSeconds) {
-        ref
-            .read(bridgeDiagnosticsStateProvider.notifier)
-            .recordError(
-              AutomationErrorCode.bridgeTimeout.name,
-              'waitForBridgeReady',
-            );
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeTimeout,
-          location: 'waitForBridgeReady',
-          message: 'Bridge did not signal ready within timeout.',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
-      final isReady = ref.read(bridgeReadyProvider);
-      if (isReady) return; // Success
-
-      await Future<void>.delayed(_bridgeReadyCheckDelay);
-      attempts++;
-    }
-
-    ref
-        .read(bridgeDiagnosticsStateProvider.notifier)
-        .recordError(
-          AutomationErrorCode.bridgeTimeout.name,
-          'waitForBridgeReady',
-        );
-    throw AutomationError(
-      errorCode: AutomationErrorCode.bridgeTimeout,
-      location: 'waitForBridgeReady',
-      message: 'Bridge did not signal ready within timeout.',
-      diagnostics: _getBridgeDiagnostics(),
+    talker.debug(
+      '[Bridge] WebView controller found. Waiting for ready signal...',
     );
+
+    try {
+      final readySignal = ref.read(bridgeReadyFutureProvider(presetId).future);
+      await readySignal.timeout(_callAsyncJavaScriptTimeout);
+      talker.debug('[Bridge] Ready signal received.');
+    } on TimeoutException {
+      ref
+          .read(bridgeDiagnosticsStateProvider.notifier)
+          .recordError(
+            AutomationErrorCode.bridgeTimeout.name,
+            'waitForBridgeReady',
+          );
+      throw AutomationError(
+        errorCode: AutomationErrorCode.bridgeTimeout,
+        location: 'waitForBridgeReady',
+        message: 'Bridge did not signal ready within the timeout period.',
+        diagnostics: _getBridgeDiagnostics(),
+      );
+    }
   }
 
   @override
-  Future<void> startAutomation(Map<String, dynamic> options) async {
+  Future<void> startAutomation(AutomationOptions options) async {
     try {
       await _waitForWebViewToBeCreated();
 
@@ -351,7 +246,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
       var attempts = 0;
       const maxAttempts = 20;
       const checkDelay = Duration(milliseconds: 100);
-      
+
       while (attempts < maxAttempts) {
         if (!ref.mounted) {
           throw AutomationError(
@@ -368,7 +263,7 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
             source:
                 "document.readyState === 'interactive' || document.readyState === 'complete'",
           );
-          
+
           if (isPageLoaded == true) {
             break; // Page is ready, exit the loop
           }
@@ -460,29 +355,54 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
         );
       }
 
-      // Pass the options map directly. It will be automatically JSON encoded.
-      final encodedOptions = jsonEncode(options);
+      // WHY: Convert typed AutomationOptions to JSON for transmission to TypeScript.
+      // Filter out null values to keep the payload clean and match TypeScript interface expectations.
+      final jsonMap = options.toJson();
+      jsonMap.removeWhere((key, value) => value == null);
+      final encodedOptions = jsonEncode(jsonMap);
       try {
-        await controller.evaluateJavascript(
-          source: 'window.startAutomation($encodedOptions);',
-        );
+        // WHY: Use callAsyncJavaScript to await the promise from TypeScript.
+        // This now covers the entire AI generation time, so we use a much longer timeout.
+        await controller
+            .callAsyncJavaScript(
+              functionBody:
+                  'return await window.startAutomation($encodedOptions);',
+            )
+            .timeout(
+              const Duration(minutes: 5),
+              onTimeout: () {
+                throw AutomationError(
+                  errorCode: AutomationErrorCode.bridgeTimeout,
+                  location: 'startAutomation',
+                  message: 'Full automation cycle timed out after 5 minutes.',
+                  diagnostics: _getBridgeDiagnostics(),
+                );
+              },
+            );
       } on Object catch (e, stackTrace) {
+        // WHY: Rethrow AutomationError and TimeoutException without wrapping
+        // We check the type rather than catching Error subtypes explicitly
+        if (e is AutomationError || e is TimeoutException) {
+          rethrow;
+        }
         throw AutomationError(
           errorCode: AutomationErrorCode.automationExecutionFailed,
           location: 'startAutomation',
           message: 'Failed to execute automation script',
           diagnostics: {
             ..._getBridgeDiagnostics(),
-            'options': options,
+            'options': options.toJson(),
           },
           originalError: e,
           stackTrace: stackTrace,
         );
       }
-      // ignore: avoid_catching_errors, reason: Preserve original AutomationError semantics without wrapping
-    } on AutomationError {
-      rethrow;
     } on Object catch (e, stackTrace) {
+      // WHY: Rethrow AutomationError without wrapping to preserve original semantics
+      // We check the type rather than catching Error subtypes explicitly
+      if (e is AutomationError) {
+        rethrow;
+      }
       throw AutomationError(
         errorCode: AutomationErrorCode.automationExecutionFailed,
         location: 'startAutomation',

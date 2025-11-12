@@ -1,6 +1,5 @@
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -8,6 +7,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart'
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,7 +36,7 @@ void main() {
     testPresetId1 = await testDatabase.createPreset(
       PresetsCompanion.insert(
         name: 'Test Preset 1',
-        providerId: 'ai_studio',
+        providerId: const Value('ai_studio'),
         displayOrder: 1,
         settingsJson: '{"model": "test-model-1"}',
       ),
@@ -44,7 +44,7 @@ void main() {
     testPresetId2 = await testDatabase.createPreset(
       PresetsCompanion.insert(
         name: 'Test Preset 2',
-        providerId: 'kimi',
+        providerId: const Value('kimi'),
         displayOrder: 2,
         settingsJson: '{"model": "test-model-2"}',
       ),
@@ -68,9 +68,9 @@ void main() {
     container.read(activeConversationIdProvider.notifier).set(conversationId);
 
     // Keep critical providers alive during async operations
-    convSub = container.listen(conversationProvider, (_, __) {});
-    presetsSub = container.listen(presetsProvider, (_, __) {});
-    stagedSub = container.listen(stagedResponsesProvider, (_, __) {});
+    convSub = container.listen(conversationProvider, (_, next) {});
+    presetsSub = container.listen(presetsProvider, (_, next) {});
+    stagedSub = container.listen(stagedResponsesProvider, (_, next) {});
   });
 
   tearDown(() async {
@@ -92,14 +92,13 @@ void main() {
       );
       await container.pump();
 
-      final requests = container.read(automationRequestProvider);
-      expect(requests.length, 1);
-      expect(requests.containsKey(testPresetId1), isTrue);
+      // With sequential orchestration, requests are handled directly by the orchestrator
+      // No need to check automationRequestProvider
 
       final conversation = await container.read(conversationProvider.future);
-      expect(conversation.length, 2);
+      expect(conversation.length, 1);
       expect(conversation[0].text, 'Hello');
-      expect(conversation[1].status, MessageStatus.sending);
+      // With sequential orchestration, no "sending" message is added automatically
     },
   );
 
@@ -121,8 +120,8 @@ void main() {
       expect(staged[testPresetId1]?.isLoading, isTrue);
       expect(staged[testPresetId2]?.isLoading, isTrue);
 
-      final requests = container.read(automationRequestProvider);
-      expect(requests.length, 2);
+      // With sequential orchestration, requests are handled directly by the orchestrator
+      // No need to check automationRequestProvider
     },
   );
 

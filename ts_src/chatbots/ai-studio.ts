@@ -27,6 +27,7 @@ const TIMING = {
   PANEL_ANIMATION_MS: 250,
   POLL_INTERVAL_MS: 100,
   POLL_TIMEOUT_MS: 5000,
+  UI_STATE_DEBOUNCE_DELAY_MS: 250,
 } as const;
 
 // --- Selectors (enhanced fallbacks) ---
@@ -92,151 +93,30 @@ const CONFIG = {
   LOG_PREVIEW_LENGTH: 50,
 } as const;
 
-export class AiStudioChatbot implements Chatbot {
-  // --- Private Helper Methods ---
-
-  private getPageStateContext(): string {
-    const visibleElements = document.querySelectorAll('*').length;
-    return `URL=${window.location.href}, ReadyState=${document.readyState}, VisibleElements=${visibleElements}`;
-  }
-
-  private createErrorWithContext(operation: string, message: string, additionalContext?: string): Error {
-    const context = this.getPageStateContext();
-    const fullContext = additionalContext ? `${context}, ${additionalContext}` : context;
-    return new Error(`${operation} failed: ${message}\nContext: ${fullContext}`);
-  }
-
-  private async retryOperation<T>(
+// Helper interface for SettingsManager to access chatbot methods
+interface ChatbotHelpers {
+  retryOperation<T>(
     operation: () => Promise<T>,
     operationName: string,
-    maxRetries: number = 2,
-    delayMs: number = 300
-  ): Promise<T> {
-    let lastError: Error | null = null;
-    
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation();
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        if (attempt >= maxRetries) {
-          throw this.createErrorWithContext(
-            operationName,
-            lastError.message,
-            `Retries=${maxRetries}, Attempt=${attempt + 1}`
-          );
-        }
-        
-        const backoffDelay = delayMs * Math.pow(2, attempt);
-        console.log(`[AI Studio LOG] ${operationName} failed, retrying ${attempt + 1}/${maxRetries} after ${backoffDelay}ms. Error: ${lastError.message.split('\n')[0]}`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-      }
-    }
-    
-    throw lastError || new Error(`${operationName} failed after ${maxRetries} retries`);
-  }
+    maxRetries?: number,
+    delayMs?: number
+  ): Promise<T>;
+  createErrorWithContext(
+    operation: string,
+    message: string,
+    additionalContext?: string
+  ): Error;
+}
 
-  private isLoginPage(): boolean {
-    const url = window.location.href.toLowerCase();
-    if (url.includes('accounts.google.com') || url.includes('/signin')) {
-      return true;
-    }
-    const emailInput = document.querySelector('input[type="email"]');
-    const signInText = document.body?.innerText?.includes('Sign in');
-    if (emailInput && signInText) {
-      console.log('[AI Studio] Login page detected via DOM elements');
-      return true;
-    }
-    return false;
-  }
+class SettingsManager {
+  constructor(private chatbot: ChatbotHelpers) {}
 
-  private async openSettingsPanel(): Promise<void> {
-    if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
-      if (document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
-        console.log('[AI Studio LOG] Settings panel is already open.');
-        return;
-      }
-      try {
-        const tuneButtonEl = await waitForActionableElement<HTMLButtonElement>(
-          Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE : [SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE],
-          'Settings panel toggle button',
-          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
-          2
-        );
-        const tuneButton = assertIsElement(tuneButtonEl, HTMLButtonElement, 'Settings panel toggle button');
-        tuneButton.click();
-        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-        
-        // Verify panel is actually open
-        const panelOpen = document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON);
-        if (!panelOpen) {
-          console.warn('[AI Studio LOG] Settings panel may not have opened properly. Retrying...');
-          await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-        }
-        console.log('[AI Studio LOG] Settings panel opened successfully.');
-      } catch (error) {
-        throw this.createErrorWithContext('openSettingsPanel', `Failed to open settings panel: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
+  // Move _setModel, _setTemperature, _setTopP, etc. here
+  // Make them public within this class
 
-  private async closeSettingsPanel(): Promise<void> {
-    if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
-      if (!document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
-        console.log('[AI Studio LOG] Settings panel appears to be already closed.');
-        return;
-      }
-
-      try {
-        const closeButtonEl = await waitForActionableElement<HTMLButtonElement>(
-          [SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON],
-          'Settings panel close button',
-          getModifiedTimeout(2000),
-          0
-        );
-        const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Settings panel close button');
-        closeButton.click();
-        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
-        console.log('[AI Studio LOG] Settings panel closed successfully.');
-      } catch (error) {
-        console.warn('[AI Studio LOG] Could not close settings panel, but continuing:', error);
-      }
-    }
-  }
-
-  private async setSliderValueByLabel(labelName: string, value: number): Promise<void> {
-    try {
-      const labelElement = await waitForElementByText('h3', labelName) as HTMLElement;
-      if (!labelElement) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find '${labelName}' label in settings panel.`);
-      }
-      const container = labelElement.closest('.settings-item-column');
-      if (!container) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Could not find parent container for '${labelName}' label.`);
-      }
-      const inputElement = container.querySelector('input[type=number]') as HTMLInputElement;
-      if (!inputElement) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Found '${labelName}' label but could not find its input field.`);
-      }
-      // WHY: Verify input is actionable before setting value (visible and enabled)
-      if (inputElement.offsetParent === null || inputElement.disabled) {
-        throw this.createErrorWithContext('setSliderValueByLabel', `Input field for '${labelName}' is not actionable (visible: ${inputElement.offsetParent !== null}, disabled: ${inputElement.disabled})`);
-      }
-      inputElement.value = value.toString();
-      inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-      console.log(`[AI Studio LOG] Set ${labelName} to ${value} successfully.`);
-    } catch (error) {
-      throw this.createErrorWithContext('setSliderValueByLabel', `Failed to set ${labelName}: ${error instanceof Error ? error.message : String(error)}`, `LabelName=${labelName}, Value=${value}`);
-    }
-  }
-
-  // --- Internal helpers that assume settings panel is already open ---
-  // WHY: Consolidate settings application to avoid repeated open/close cycles
-
-  private async _setModel(modelId: string): Promise<void> {
-    console.log(`[AI Studio LOG] Setting model to: "${modelId}"`);
-    return this.retryOperation(async () => {
+  async setModel(modelId: string): Promise<void> {
+    console.log(`[AI Studio Settings] Setting model to: "${modelId}"`);
+    return this.chatbot.retryOperation(async () => {
       const modelSelectorEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_SELECTOR_CARD], 'Model selector card', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       const modelSelector = assertIsElement(modelSelectorEl, HTMLButtonElement, 'Model selector card');
       const currentModelNameEl = modelSelector.querySelector('span.title');
@@ -245,15 +125,15 @@ export class AiStudioChatbot implements Chatbot {
         return;
       }
       modelSelector.click();
-      // WHY: Dynamically wait for the model selection dialog to appear instead of using a fixed delay.
+      // WHY: Dynamically wait for model selection dialog to appear instead of using a fixed delay.
       await waitForElement([SELECTORS.MODEL_DIALOG_CONTAINER], getModifiedTimeout(3000));
 
-      // WHY: Try to find the element, and if occluded, wait a bit more and try clicking anyway
+      // WHY: Try to find element, and if occluded, wait a bit more and try clicking anyway
       let allFilterEl: HTMLButtonElement | null = null;
       try {
         allFilterEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.MODEL_CATEGORIES_ALL_BUTTON], 'Model categories all button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
       } catch (error) {
-        // If actionability check fails due to occlusion, try finding the element anyway and clicking it
+        // If actionability check fails due to occlusion, try finding element anyway and clicking it
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (errorMsg.includes('occluded')) {
           console.log('[AI Studio LOG] Element found but occluded. Waiting longer and attempting click anyway...');
@@ -287,7 +167,7 @@ export class AiStudioChatbot implements Chatbot {
         // WHY: Element already found via querySelector - verify basic visibility before clicking
         // Full actionability check not needed here since we're targeting a specific found element
         if (modelButton.offsetParent === null) {
-          throw this.createErrorWithContext('_setModel', `Model button for "${modelId}" is not visible`);
+          throw this.chatbot.createErrorWithContext('setModel', `Model button for "${modelId}" is not visible`);
         }
         modelButton.click();
         console.log(`[AI Studio LOG] Success: Clicked model button for "${modelId}".`);
@@ -298,7 +178,7 @@ export class AiStudioChatbot implements Chatbot {
           const span = opt.querySelector(SELECTORS.MODEL_TITLE_TEXT);
           return span?.textContent?.trim() || opt.textContent?.trim() || 'unknown';
         }).join(', ');
-        throw this.createErrorWithContext('_setModel', `Model button for "${modelId}" not found.`, `AvailableModels=[${availableModels}]`);
+        throw this.chatbot.createErrorWithContext('setModel', `Model button for "${modelId}" not found.`, `AvailableModels=[${availableModels}]`);
       }
 
       // WHY: Check if dialog is still open before trying to close it (some dialogs close automatically)
@@ -312,15 +192,38 @@ export class AiStudioChatbot implements Chatbot {
           console.log('[AI Studio LOG] Model dialog seems to have closed automatically.');
         }
       }
-    }, '_setModel', 2, 300);
+    }, 'setModel', 2, 300);
   }
 
-  private async _setTemperature(temperature: number): Promise<void> {
+  async setTemperature(temperature: number): Promise<void> {
     console.log(`[AI Studio LOG] Setting Temperature to: ${temperature}`);
-    await this.setSliderValueByLabel('Temperature', temperature);
+    // Direct implementation instead of calling setSliderValueByLabel
+    try {
+      const labelElement = await waitForElementByText('h3', 'Temperature') as HTMLElement;
+      if (!labelElement) {
+        throw new Error(`Could not find 'Temperature' label in settings panel.`);
+      }
+      const container = labelElement.closest('.settings-item-column');
+      if (!container) {
+        throw new Error(`Could not find parent container for 'Temperature' label.`);
+      }
+      const inputElement = container.querySelector('input[type=number]') as HTMLInputElement;
+      if (!inputElement) {
+        throw new Error(`Found 'Temperature' label but could not find its input field.`);
+      }
+      // WHY: Verify input is actionable before setting value (visible and enabled)
+      if (inputElement.offsetParent === null || inputElement.disabled) {
+        throw new Error(`Input field for 'Temperature' is not actionable (visible: ${inputElement.offsetParent !== null}, disabled: ${inputElement.disabled})`);
+      }
+      inputElement.value = temperature.toString();
+      inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log(`[AI Studio LOG] Set Temperature to ${temperature} successfully.`);
+    } catch (error) {
+      throw new Error(`Failed to set Temperature: ${error instanceof Error ? error.message : String(error)}. LabelName=Temperature, Value=${temperature}`);
+    }
   }
 
-  private async _setTopP(topP: number): Promise<void> {
+  async setTopP(topP: number): Promise<void> {
     console.log(`[AI Studio LOG] Setting Top-P to: ${topP}`);
     const advancedToggle = await waitForElementByText('p', 'Advanced settings') as HTMLElement;
     const advancedToggleContainer = advancedToggle.closest(SELECTORS.ADVANCED_SETTINGS_TOGGLE);
@@ -328,10 +231,33 @@ export class AiStudioChatbot implements Chatbot {
       (advancedToggleContainer as HTMLElement).click();
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
     }
-    await this.setSliderValueByLabel('Top P', topP);
+    // Direct implementation instead of calling setSliderValueByLabel
+    try {
+      const labelElement = await waitForElementByText('h3', 'Top P') as HTMLElement;
+      if (!labelElement) {
+        throw new Error(`Could not find 'Top P' label in settings panel.`);
+      }
+      const container = labelElement.closest('.settings-item-column');
+      if (!container) {
+        throw new Error(`Could not find parent container for 'Top P' label.`);
+      }
+      const inputElement = container.querySelector('input[type=number]') as HTMLInputElement;
+      if (!inputElement) {
+        throw new Error(`Found 'Top P' label but could not find its input field.`);
+      }
+      // WHY: Verify input is actionable before setting value (visible and enabled)
+      if (inputElement.offsetParent === null || inputElement.disabled) {
+        throw new Error(`Input field for 'Top P' is not actionable (visible: ${inputElement.offsetParent !== null}, disabled: ${inputElement.disabled})`);
+      }
+      inputElement.value = topP.toString();
+      inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log(`[AI Studio LOG] Set Top P to ${topP} successfully.`);
+    } catch (error) {
+      throw new Error(`Failed to set Top P: ${error instanceof Error ? error.message : String(error)}. LabelName=Top P, Value=${topP}`);
+    }
   }
 
-  private async _setThinkingBudget(budget?: number): Promise<void> {
+  async setThinkingBudget(budget?: number): Promise<void> {
     console.log(`[AI Studio LOG] Configuring thinking budget. Provided value: ${budget}`);
     const thinkingToggleEl = await waitForElement<HTMLButtonElement>([SELECTORS.THINKING_TOGGLE]);
     const thinkingToggle = assertIsElement(thinkingToggleEl, HTMLButtonElement, 'Thinking toggle');
@@ -363,7 +289,7 @@ export class AiStudioChatbot implements Chatbot {
     }
   }
 
-  private async _setAdvancedOptions(options: { useWebSearch?: boolean; disableThinking?: boolean; urlContext?: boolean; }, modelId?: string): Promise<void> {
+  async setAdvancedOptions(options: { useWebSearch?: boolean; disableThinking?: boolean; urlContext?: boolean; }, modelId?: string): Promise<void> {
     console.log('[AI Studio LOG] Setting advanced options:', options);
     if (options.disableThinking !== undefined) {
       const lower = modelId?.toLowerCase();
@@ -405,13 +331,66 @@ export class AiStudioChatbot implements Chatbot {
       }
     }
   }
+}
+
+export class AiStudioChatbot implements Chatbot {
+  private settingsManager: SettingsManager;
+
+  constructor() {
+    this.settingsManager = new SettingsManager(this);
+  }
+
+  // --- Private Helper Methods ---
+  private getPageStateContext(): string {
+    const visibleElements = document.querySelectorAll('*').length;
+    return `URL=${window.location.href}, ReadyState=${document.readyState}, VisibleElements=${visibleElements}`;
+  }
+
+  // WHY: Public methods needed by SettingsManager for proper type safety
+  createErrorWithContext(operation: string, message: string, additionalContext?: string): Error {
+    const context = this.getPageStateContext();
+    const fullContext = additionalContext ? `${context}, ${additionalContext}` : context;
+    return new Error(`${operation} failed: ${message}\nContext: ${fullContext}`);
+  }
+
+  // WHY: Public method needed by SettingsManager for proper type safety
+  async retryOperation<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    maxRetries: number = 2,
+    delayMs: number = 300
+  ): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        if (attempt >= maxRetries) {
+          throw this.createErrorWithContext(
+            operationName,
+            lastError.message,
+            `Retries=${maxRetries}, Attempt=${attempt + 1}`
+          );
+        }
+        
+        const backoffDelay = delayMs * Math.pow(2, attempt);
+        console.log(`[AI Studio LOG] ${operationName} failed, retrying ${attempt + 1}/${maxRetries} after ${backoffDelay}ms. Error: ${lastError.message.split('\n')[0]}`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      }
+    }
+    
+    throw lastError || new Error(`${operationName} failed after ${maxRetries} retries`);
+  }
 
   // --- Public Chatbot Interface Implementation ---
 
   async resetState(): Promise<void> {
     console.log('[AI Studio] Preparing to reset UI state...');
     try {
-      // Step 1: Get a reference to the CURRENT instance of the settings button.
+      // Step 1: Get a reference to CURRENT instance of settings button.
       const settingsToggleSelector = Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) 
         ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE[0] 
         : SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE;
@@ -509,16 +488,16 @@ export class AiStudioChatbot implements Chatbot {
     await this.openSettingsPanel();
     try {
       if (options.model) {
-        await this._setModel(options.model);
+        await this.settingsManager.setModel(options.model);
       }
       if (options.temperature !== undefined) {
-        await this._setTemperature(options.temperature);
+        await this.settingsManager.setTemperature(options.temperature);
       }
       if (options.topP !== undefined) {
-        await this._setTopP(options.topP);
+        await this.settingsManager.setTopP(options.topP);
       }
       if (options.thinkingBudget !== undefined) {
-        await this._setThinkingBudget(options.thinkingBudget);
+        await this.settingsManager.setThinkingBudget(options.thinkingBudget);
       }
       const advancedOptions = {
         useWebSearch: options.useWebSearch,
@@ -526,11 +505,57 @@ export class AiStudioChatbot implements Chatbot {
         urlContext: options.urlContext,
       };
       if (Object.values(advancedOptions).some(v => v !== undefined)) {
-        await this._setAdvancedOptions(advancedOptions, options.model);
+        await this.settingsManager.setAdvancedOptions(advancedOptions, options.model);
       }
     } finally {
       await this.closeSettingsPanel();
     }
+  }
+
+  private async _waitForResponseFinalization(): Promise<void> {
+    console.log('[AI Studio] Now waiting for AI response to finalize...');
+    
+    return new Promise((resolve, reject) => {
+      const timeout = getModifiedTimeout(TIMING.FINALIZED_TURN_TIMEOUT_MS);
+      const EDIT_BUTTON_SELECTOR = Array.isArray(SELECTORS.EDIT_BUTTON) ? SELECTORS.EDIT_BUTTON.join(',') : SELECTORS.EDIT_BUTTON;
+      const CHAT_TURN_SELECTOR = Array.isArray(SELECTORS.CHAT_TURN) ? SELECTORS.CHAT_TURN.join(',') : SELECTORS.CHAT_TURN;
+      
+      const observer = new MutationObserver(() => {
+        const allTurns = document.querySelectorAll(CHAT_TURN_SELECTOR);
+        if (allTurns.length === 0) return;
+
+        const lastTurn = allTurns[allTurns.length - 1] as HTMLElement;
+        const editButton = lastTurn.querySelector<HTMLButtonElement>(EDIT_BUTTON_SELECTOR);
+        const isEditing = lastTurn.querySelector(SELECTORS.STOP_EDITING_BUTTON);
+
+        if (editButton && !isEditing && editButton.offsetParent !== null && !editButton.disabled) {
+          console.log('[AI Studio] Response finalized. Ready for extraction.');
+          observer.disconnect();
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+      const timeoutId = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(`Timed out after ${timeout}ms waiting for response to finalize.`));
+      }, timeout);
+
+      // Perform an initial check in case the element is already present and ready.
+      const allTurns = document.querySelectorAll(CHAT_TURN_SELECTOR);
+      if (allTurns.length > 0) {
+        const lastTurn = allTurns[allTurns.length - 1] as HTMLElement;
+        const editButton = lastTurn.querySelector<HTMLButtonElement>(EDIT_BUTTON_SELECTOR);
+        const isEditing = lastTurn.querySelector(SELECTORS.STOP_EDITING_BUTTON);
+        if (editButton && !isEditing && editButton.offsetParent !== null && !editButton.disabled) {
+          observer.disconnect();
+          clearTimeout(timeoutId);
+          resolve();
+        }
+      }
+    });
   }
 
   async sendPrompt(prompt: string): Promise<void> {
@@ -593,12 +618,15 @@ export class AiStudioChatbot implements Chatbot {
       // button to prevent it from being occluded, especially on mobile views.
       await this.closeSettingsPanel();
       
-      return this.retryOperation(async () => {
+      await this.retryOperation(async () => {
         const sendButtonEl = await waitForActionableElement<HTMLElement>(SELECTORS.SEND_BUTTONS, 'Send button', getModifiedTimeout(DEFAULT_TIMEOUT_MS), 2);
         const sendButton = assertIsElement(sendButtonEl, HTMLElement, 'Send button');
         sendButton.click();
         console.log('[AI Studio LOG] Send button clicked successfully.');
       }, 'sendPrompt (click send button)', 2, 300);
+
+      // *** NEW LOGIC: Await finalization directly ***
+      await this._waitForResponseFinalization();
     } catch (error) {
       throw this.createErrorWithContext('sendPrompt', `Failed to send prompt: ${error instanceof Error ? error.message : String(error)}`, `PromptLength=${prompt.length}`);
     }
@@ -660,7 +688,7 @@ export class AiStudioChatbot implements Chatbot {
         timeoutId = window.setTimeout(() => {
           cleanup();
           const allEditButtons = document.querySelectorAll(EDIT_BUTTON_SELECTOR);
-          const errorMessage = `Extraction timed out. Final state: ${allEditButtons.length} edit buttons found. The last response may still be generating or the UI has changed.`;
+          const errorMessage = `Extraction timed out. Final state: ${allEditButtons.length} edit buttons found. The last response may still be generating or UI has changed.`;
           console.error(`[AI Studio LOG] ${errorMessage}`);
           reject(new Error(errorMessage));
         }, timeout);
@@ -715,6 +743,77 @@ export class AiStudioChatbot implements Chatbot {
     }
     
     return extractedContent;
+  }
+
+
+  // Add missing methods
+  private isLoginPage(): boolean {
+    const url = window.location.href.toLowerCase();
+    if (url.includes('accounts.google.com') || url.includes('/signin')) {
+      return true;
+    }
+    const emailInput = document.querySelector('input[type="email"]');
+    const signInText = document.body?.innerText?.includes('Sign in');
+    if (emailInput && signInText) {
+      console.log('[AI Studio] Login page detected via DOM elements');
+      return true;
+    }
+    return false;
+  }
+
+  private async openSettingsPanel(): Promise<void> {
+    if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
+      if (document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
+        console.log('[AI Studio LOG] Settings panel is already open.');
+        return;
+      }
+
+      try {
+        const tuneButtonEl = await waitForActionableElement<HTMLButtonElement>(
+          Array.isArray(SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE) ? SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE : [SELECTORS.SETTINGS_PANEL_MOBILE_TOGGLE],
+          'Settings panel toggle button',
+          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
+          2
+        );
+        const tuneButton = assertIsElement(tuneButtonEl, HTMLButtonElement, 'Settings panel toggle button');
+        tuneButton.click();
+        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+        
+        // Verify panel is actually open
+        const panelOpen = document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON);
+        if (!panelOpen) {
+          console.warn('[AI Studio LOG] Settings panel may not have opened properly. Retrying...');
+          await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+        }
+        console.log('[AI Studio LOG] Settings panel opened successfully.');
+      } catch (error) {
+        throw this.createErrorWithContext('openSettingsPanel', `Failed to open settings panel: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  private async closeSettingsPanel(): Promise<void> {
+    if (window.innerWidth <= CONFIG.SCREEN_WIDTH_BREAKPOINT_PX) {
+      if (!document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON)) {
+        console.log('[AI Studio LOG] Settings panel appears to be already closed.');
+        return;
+      }
+
+      try {
+        const closeButtonEl = await waitForActionableElement<HTMLButtonElement>(
+          [SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON],
+          'Settings panel close button',
+          getModifiedTimeout(2000),
+          0
+        );
+        const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Settings panel close button');
+        closeButton.click();
+        await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
+        console.log('[AI Studio LOG] Settings panel closed successfully.');
+      } catch (error) {
+        console.warn('[AI Studio LOG] Could not close settings panel, but continuing:', error);
+      }
+    }
   }
 }
 

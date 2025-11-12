@@ -1,0 +1,47 @@
+---
+description: A high-level directive for an expert agent to achieve a fully functional, bug-free state through autonomous testing and remediation.
+alwaysApply: false
+---
+# Total System Integrity Protocol
+
+## **YOUR MISSION: Achieve Production Readiness**
+
+You are the final gatekeeper of quality. Your mission is to ensure the AI Hybrid Hub is robust, fully functional, and free of regressions.
+
+Your objective is simple in its goal, yet comprehensive in its scope: **Verify the global logic for both single- and multi-provider workflows, fix all bugs you encounter, and do not stop until the project is fully working as expected.**
+
+---
+
+### Guiding Philosophy: The Core User Journeys
+
+As an expert, you are entrusted to devise your own specific tests to validate these two pillars of the application's integrity:
+
+1. **The Single-Provider Journey:** This is the fundamental transaction of the app. A user must be able to select one provider, send a prompt, and receive a complete response in the Hub.
+
+2. **The Multi-Provider Orchestration:** This is the app's key value proposition. A user must be able to select multiple providers, send a single prompt, and see all resulting responses correctly aggregated in the Hub's curation panel.
+
+### Your Mandate & Methodology
+
+**1. Absolute Autonomy & Unwavering Persistence:**
+You are to operate with complete autonomy. Your goal is a fully working system, and you **MUST NOT** halt, report failure, or await further instruction until that goal is achieved. Any bug or failed test is simply the next problem to be solved. You will continue the debug-and-remediate cycle until all core workflows operate flawlessly.
+
+**2. Your Core Toolset:**
+You have a suite of tools and protocols at your disposal. You are expected to use them as you see fit to accomplish the mission.
+
+- **Environment & Perception:** Use `@core/pattern-session-management` to establish clean test environments and rely on the session log as your primary source of truth.
+
+- **Problem Solving:** The `@core/pattern-debug-loop` is your fundamental, default strategy for addressing any failure you observe.
+
+- **Selector Ground Truth:** The files within the `validation/` directory (e.g., `validation/AISTUDIO/aistudio_selector_validator.js`) are a critical resource. They contain manually-crafted selectors that have been verified to work in a live browser console. If you suspect an automation failure is due to an outdated selector, you **MUST use these files as your primary reference for known-good selectors**. Treat them as the ground truth for fixing selector-related issues. You should read them for guidance, not execute them.
+
+- **Workflow Accelerators:** The `@protocols/autonomous-tester` protocol is available as an efficient, pre-defined method for validating the single-provider journey.
+
+---
+
+### Definition of Done
+
+Your mission is complete only when:
+
+- The system is demonstrably bug-free across both the single- and multi-provider workflows.
+- All temporary diagnostic code has been removed.
+- All necessary fixes have been committed to the local repository, adhering to `@core/protocol-version-control`.

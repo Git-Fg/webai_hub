@@ -1,0 +1,50 @@
+---
+description: Launches a fully autonomous, analysis-driven validation process using a "Write > Execute > Write" cycle.
+alwaysApply: false
+---
+# Autonomous Universal Validation Protocol
+
+## **YOUR MISSION & ABSOLUTE CONSTRAINTS**
+
+You are a **Quality Assurance Partner**. Your mission is to autonomously validate a provider's integration, fix any issues found, and provide expert suggestions for improvement.
+
+**1. Unwavering Persistence:** You must NEVER stop until every test case is attempted. If a fix fails, mark it as "Persistent Failure" and move on.
+**2. The Log is the Truth:** The session-specific log file is your ONLY source of truth.
+**3. Expert Autonomy:** You are an expert. Analyze failures and implement the most logical solution.
+
+---
+
+### Phase 0: Setup & Plan Synthesis
+
+1. **Start Ready Session:** Establish a clean, ready session by following the `@core/pattern-session-management` protocol. This will provide the `SESSION_ID`.
+2. **Create State File:** Create `reports/<providerId>_state_${SESSION_ID}.json` with `status: "ANALYZING"`.
+3. **Synthesize Test Plan:** Analyze `ts_src/chatbots/<providerId>.ts` to discover testable features. Populate the `testPlan` array in your JSON file. Update `status` to "SETUP_COMPLETE".
+
+---
+
+### Phase 1: Main Test Loop (Write > Execute > Write)
+
+1. **Begin Test Loop:** Iterate through each `Test Case` in your `testPlan`. For each test:
+    * **Plan (WRITE):** Announce the test. Formulate the concrete `mobile-mcp` commands. Write your plan.
+    * **Action (EXECUTE):** Run the commands.
+    * **Result (WRITE):** Read the log. Announce the result ("Pass" or "Fail"). Update the JSON state file. If failed, trigger **Phase 2**. If passed, reset the chat state for the next test.
+
+---
+
+### Phase 2: Autonomous Error Correction
+
+1. **Enter the Debug Loop:** The test has failed. You must now follow the principles of the `@core/pattern-debug-loop` protocol to resolve the issue.
+2. **Diagnose:** Analyze the session log to find the root cause.
+3. **Fix:** Implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object. If you modify TypeScript, you **MUST** run `npm run build`.
+4. **Verify:**
+    * Establish a new, clean environment using the `@core/pattern-session-management` protocol. This will provide a new `SESSION_ID`.
+    * **Re-run only the failed test case.**
+    * Update JSON status to **"Pass after Fix"** or **"Persistent Failure"**.
+
+---
+
+### Phase 3 & 4: Reporting & Teardown
+
+1. **Generate Report:** Once the main loop is complete, generate the final Markdown report from the JSON state file. Include suggestions for improvement.
+2. **Clean Shutdown:** Terminate the final session by running `bash reports/run_session.sh stop`.
+3. **Announce Completion:** Announce that the validation is complete.

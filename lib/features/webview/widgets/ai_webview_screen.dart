@@ -4,14 +4,10 @@ import 'dart:convert';
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/models/provider_type.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event_handler.dart';
@@ -82,55 +78,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     super.initState();
     // WHY: Register lifecycle observer to detect app resume and check bridge health
     WidgetsBinding.instance.addObserver(this);
-  }
-
-  Future<void> _startAutomation(AutomationRequest request) async {
-    try {
-      // Pass the preset ID to get the correct controller
-      final bridge = ref.read(javaScriptBridgeProvider(widget.preset.id));
-      await bridge.waitForBridgeReady();
-      // Parse widget.preset.settingsJson into a map
-      final settings =
-          jsonDecode(widget.preset.settingsJson) as Map<String, dynamic>;
-      final generalSettings = ref.read(generalSettingsProvider).value;
-
-      // WHY: Construct typed AutomationOptions object to ensure type safety
-      // and proper serialization when sending to TypeScript bridge.
-      final providerId = widget.preset.providerId;
-      if (providerId == null) {
-        throw StateError(
-          'Cannot start automation: preset ${widget.preset.id} has no providerId (it may be a group)',
-        );
-      }
-      final options = AutomationOptions(
-        providerId: providerId,
-        prompt: request.promptWithContext,
-        model: settings['model'] as String?,
-        systemPrompt: settings['systemPrompt'] as String?,
-        temperature: (settings['temperature'] as num?)?.toDouble(),
-        topP: (settings['topP'] as num?)?.toDouble(),
-        thinkingBudget: (settings['thinkingBudget'] as num?)?.toInt(),
-        useWebSearch: settings['useWebSearch'] as bool?,
-        disableThinking: settings['disableThinking'] as bool?,
-        urlContext: settings['urlContext'] as bool?,
-        timeoutModifier: generalSettings?.timeoutModifier,
-      );
-      await bridge.startAutomation(options);
-    } on Object catch (e, st) {
-      ref
-          .read(talkerProvider)
-          .handle(e, st, '[WebView-${widget.preset.name}] Automation failed.');
-      // Update staging provider with error
-      ref
-          .read(stagedResponsesProvider.notifier)
-          .addOrUpdate(
-            StagedResponse(
-              presetId: widget.preset.id,
-              presetName: widget.preset.name,
-              text: 'Error: $e',
-            ),
-          );
-    }
   }
 
   @override
@@ -258,41 +205,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         if (uaChanged || customUaChanged) {
           ref.read(webViewKeyProvider.notifier).incrementKey();
         }
-      }
-    });
-
-    // WHY: Listen for automation requests in build method (ref.listen can only be used here).
-    // This reacts to automation requests and starts the automation process for this preset's WebView.
-    // WHY: Check current state first to handle requests that were created before this widget was built.
-    // WHY: Wrap provider modification in post-frame callback to avoid modifying providers during build.
-    final currentRequests = ref.read(automationRequestProvider);
-    final myRequestId = widget.preset.id;
-    final currentRequest = currentRequests[myRequestId];
-    if (currentRequest != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final talker = ref.read(talkerProvider);
-        talker.info(
-          '[WebView-${widget.preset.name}] Found existing automation request on build.',
-        );
-        ref.read(automationRequestProvider.notifier).clearRequest(myRequestId);
-        unawaited(_startAutomation(currentRequest));
-      });
-    }
-
-    // Listen for future automation requests
-    ref.listen<Map<int, AutomationRequest>>(automationRequestProvider, (
-      _,
-      next,
-    ) {
-      final myRequestId = widget.preset.id;
-      final myRequest = next[myRequestId];
-      if (myRequest != null) {
-        final talker = ref.read(talkerProvider);
-        talker.info(
-          '[WebView-${widget.preset.name}] Received automation request.',
-        );
-        ref.read(automationRequestProvider.notifier).clearRequest(myRequestId);
-        unawaited(_startAutomation(myRequest));
       }
     });
 

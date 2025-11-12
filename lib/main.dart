@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_request_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -192,30 +190,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
       }
     });
 
-    // WHY: Reactively switch to the correct preset tab when a single-preset automation request is dispatched.
-    // This keeps UI logic in the UI layer, separate from business logic.
-    ref.listen<Map<int, AutomationRequest>>(automationRequestProvider, (
-      _,
-      next,
-    ) {
-      if (next.keys.length == 1) {
-        // Only switch tabs for single-preset workflow
-        final presetId = next.keys.first;
-        final presets = presetsAsync.maybeWhen(
-          data: (value) => value,
-          orElse: () => <PresetData>[],
-        );
-        final presetIndex = presets.indexWhere(
-          (PresetData p) => p.id == presetId,
-        );
-        if (presetIndex != -1) {
-          // Switch to the correct preset's tab (+1 for the Hub tab)
-          ref.read(currentTabIndexProvider.notifier).changeTo(presetIndex + 1);
-          ref.read(automationStateProvider.notifier).moveToObserving();
-        }
-      }
-    });
-
     return AutomationStateObserver(
       child: Scaffold(
         body: Stack(
@@ -229,12 +203,14 @@ class _MainScreenState extends ConsumerState<MainScreen>
                   children: [
                     const HubScreen(),
                     // WHY: Filter out groups (presets with null providerId) as they don't need WebView screens
-                    ...presets.where((preset) => preset.providerId != null).map((preset) {
-                      return AiWebviewScreen(
-                        key: ValueKey(preset.id), // CRITICAL
-                        preset: preset,
-                      );
-                    }),
+                    ...presets.where((preset) => preset.providerId != null).map(
+                      (preset) {
+                        return AiWebviewScreen(
+                          key: ValueKey(preset.id), // CRITICAL
+                          preset: preset,
+                        );
+                      },
+                    ),
                   ],
                 );
               },
@@ -245,7 +221,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
         bottomNavigationBar: presetsAsync.when(
           data: (presets) {
             // WHY: Filter out groups from tabs as they don't have WebView screens
-            final presetsWithProviders = presets.where((p) => p.providerId != null).toList();
+            final presetsWithProviders = presets
+                .where((p) => p.providerId != null)
+                .toList();
             final totalTabs = 1 + presetsWithProviders.length;
             _updateTabController(totalTabs); // Update controller here
 

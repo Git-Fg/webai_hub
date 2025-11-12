@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 
 enum ErrorType {
@@ -11,7 +12,7 @@ enum ErrorType {
 class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // For verifying that methods were called
   String? lastPromptSent;
-  Map<String, dynamic>? lastOptionsSent;
+  AutomationOptions? lastOptionsSent;
   bool wasExtractCalled = false;
 
   // To simulate errors — separated per method
@@ -57,7 +58,7 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   @override
-  Future<void> startAutomation(Map<String, dynamic> options) async {
+  Future<void> startAutomation(AutomationOptions options) async {
     // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
@@ -69,12 +70,12 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
           errorCode: AutomationErrorCode.automationExecutionFailed,
           location: 'startAutomation',
           message: 'Fake automation execution failed for testing',
-          diagnostics: {'options': options},
+          diagnostics: {'options': options.toJson()},
         );
       case ErrorType.none:
         // Record the options for verification
         lastOptionsSent = options;
-        lastPromptSent = options['prompt'] as String?;
+        lastPromptSent = options.prompt;
     }
   }
 
