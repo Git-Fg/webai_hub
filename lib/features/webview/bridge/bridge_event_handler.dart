@@ -100,7 +100,18 @@ class BridgeEventHandler {
                       text: responseText,
                     ),
                   );
-              ref.read(currentTabIndexProvider.notifier).changeTo(0);
+
+              // After updating, check if all automations are complete.
+              // We do this by checking if there are no more "isLoading" responses.
+              final currentStagedResponses = ref.read(stagedResponsesProvider);
+              final allDone = currentStagedResponses.values.every(
+                (response) => !response.isLoading,
+              );
+
+              if (allDone) {
+                // If all are done, switch back to the Hub tab.
+                ref.read(currentTabIndexProvider.notifier).changeTo(0);
+              }
             } on Object catch (e) {
               // Handle extraction error
               ref
@@ -112,6 +123,18 @@ class BridgeEventHandler {
                       text: 'Error: $e',
                     ),
                   );
+
+              // After updating with error, check if all automations are complete.
+              // This ensures the UI switches back to Hub even if the last response fails.
+              final currentStagedResponses = ref.read(stagedResponsesProvider);
+              final allDone = currentStagedResponses.values.every(
+                (response) => !response.isLoading,
+              );
+
+              if (allDone) {
+                // If all are done, switch back to the Hub tab.
+                ref.read(currentTabIndexProvider.notifier).changeTo(0);
+              }
             }
           }),
         );
