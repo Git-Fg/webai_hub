@@ -11,6 +11,7 @@ import 'package:ai_hybrid_hub/features/presets/models/provider_type.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event_handler.dart';
@@ -21,6 +22,7 @@ import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -53,11 +55,15 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   // WHY: Helper method to resolve provider URL from providerId.
   // This encapsulates the conversion from providerId string to ProviderType enum
   // and then to the actual URL from providerDetails map.
+  // WHY: Fail fast on invalid providerId to catch configuration errors early
+  // instead of silently defaulting to AI Studio.
   String _getProviderUrl() {
     final providerId = widget.preset.providerId;
     final providerType = ProviderType.values.firstWhere(
       (pt) => providerDetails[pt]!.id == providerId,
-      orElse: () => ProviderType.aiStudio,
+      orElse: () => throw StateError(
+        'Invalid or unsupported providerId: "$providerId" for preset "${widget.preset.name}". Check database seed or preset configuration.',
+      ),
     );
     return providerDetails[providerType]!.url;
   }
@@ -67,9 +73,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   bool _isSupportedDomain(Uri? url) {
     if (url == null) return false;
     // The check for 'file://' is for initial loading from assets
-    return url.host == WebViewConstants.aiStudioDomain ||
-        url.host == WebViewConstants.kimiDomain ||
-        url.host == WebViewConstants.kimiDomainAlt ||
+    return WebViewConstants.supportedDomains.contains(url.host) ||
         url.toString().startsWith('file://');
   }
 
@@ -88,11 +92,29 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       // Parse widget.preset.settingsJson into a map
       final settings =
           jsonDecode(widget.preset.settingsJson) as Map<String, dynamic>;
-      final options = {
-        'providerId': widget.preset.providerId,
-        'prompt': request.promptWithContext,
-        ...settings, // Add model, temperature etc.
-      };
+      final generalSettings = ref.read(generalSettingsProvider).value;
+
+      // WHY: Construct typed AutomationOptions object to ensure type safety
+      // and proper serialization when sending to TypeScript bridge.
+      final providerId = widget.preset.providerId;
+      if (providerId == null) {
+        throw StateError(
+          'Cannot start automation: preset ${widget.preset.id} has no providerId (it may be a group)',
+        );
+      }
+      final options = AutomationOptions(
+        providerId: providerId,
+        prompt: request.promptWithContext,
+        model: settings['model'] as String?,
+        systemPrompt: settings['systemPrompt'] as String?,
+        temperature: (settings['temperature'] as num?)?.toDouble(),
+        topP: (settings['topP'] as num?)?.toDouble(),
+        thinkingBudget: (settings['thinkingBudget'] as num?)?.toInt(),
+        useWebSearch: settings['useWebSearch'] as bool?,
+        disableThinking: settings['disableThinking'] as bool?,
+        urlContext: settings['urlContext'] as bool?,
+        timeoutModifier: generalSettings?.timeoutModifier,
+      );
       await bridge.startAutomation(options);
     } on Object catch (e, st) {
       ref
@@ -189,28 +211,23 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     ElegantNotification.error(
       title: const Text('⚠️ Google Login Blocked (Error 403)'),
       description: const Text(
-        'Google detected an incompatible browser identity. This is normal for embedded apps.\n\nSolution: Go to Settings and select a standard browser User Agent (e.g., Chrome).',
+        'Google detected an incompatible browser. Go to Settings and select a standard browser User Agent (e.g., Chrome).',
       ),
       toastDuration: const Duration(seconds: 15),
       showProgressIndicator: false,
-    ).show(context);
-
-    // Show a SnackBar with action button to navigate to settings
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Tap to open Settings'),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'Settings',
-            textColor: Colors.white,
-            onPressed: () {
-              unawaited(context.router.push(const SettingsRoute()));
-            },
+      action: InkWell(
+        onTap: () {
+          unawaited(context.router.push(const SettingsRoute()));
+        },
+        child: Text(
+          'Settings',
+          style: TextStyle(
+            decoration: TextDecoration.underline,
+            color: Colors.blue.shade800,
           ),
         ),
-      );
-    }
+      ),
+    ).show(context);
   }
 
   @override
@@ -246,6 +263,23 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
 
     // WHY: Listen for automation requests in build method (ref.listen can only be used here).
     // This reacts to automation requests and starts the automation process for this preset's WebView.
+    // WHY: Check current state first to handle requests that were created before this widget was built.
+    // WHY: Wrap provider modification in post-frame callback to avoid modifying providers during build.
+    final currentRequests = ref.read(automationRequestProvider);
+    final myRequestId = widget.preset.id;
+    final currentRequest = currentRequests[myRequestId];
+    if (currentRequest != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final talker = ref.read(talkerProvider);
+        talker.info(
+          '[WebView-${widget.preset.name}] Found existing automation request on build.',
+        );
+        ref.read(automationRequestProvider.notifier).clearRequest(myRequestId);
+        unawaited(_startAutomation(currentRequest));
+      });
+    }
+
+    // Listen for future automation requests
     ref.listen<Map<int, AutomationRequest>>(automationRequestProvider, (
       _,
       next,
@@ -386,7 +420,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           .firstWhere(
             (ua) => ua.name == settings.selectedUserAgent,
             // Fallback to a known good UA if something goes wrong.
-            orElse: () => BrowserUserAgent.chromeWindows,
+            orElse: () => BrowserUserAgent.chromeIphone,
           )
           .value;
     }
@@ -401,10 +435,10 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         useShouldOverrideUrlLoading: true,
         // WHY: Disable database APIs if not needed to reduce attack surface
         databaseEnabled: false,
-        // WHY: Enable third-party cookies to allow Google services to work properly
-        // This prevents Google from redirecting to CookieMismatch page
-        thirdPartyCookiesEnabled:
-            true, // ignore: avoid_redundant_argument_values
+        // WHY: Enable third-party cookies to allow Google services to work properly.
+        // WHY: Explicitly set to true because Android disables this flag by default; retaining the value prevents CookieMismatch redirects.
+        // ignore: avoid_redundant_argument_values
+        thirdPartyCookiesEnabled: true,
       ),
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         // WHY: Wrap talker access in try-catch to handle any provider access issues
@@ -478,7 +512,7 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
 
         // Navigate to the provider URL when WebView is created
         final url = _getProviderUrl();
-        controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+        unawaited(controller.loadUrl(urlRequest: URLRequest(url: WebUri(url))));
 
         controller.addJavaScriptHandler(
           handlerName: BridgeConstants.automationHandler,
@@ -506,6 +540,25 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
               ..read(
                 bridgeDiagnosticsStateProvider.notifier,
               ).recordBridgeReady();
+          },
+        );
+
+        controller.addJavaScriptHandler(
+          handlerName: 'readClipboard',
+          callback: (args) async {
+            // Read from the system clipboard
+            final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+            // Return the text to the JavaScript promise
+            return clipboardData?.text ?? '';
+          },
+        );
+
+        controller.addJavaScriptHandler(
+          handlerName: 'setClipboard',
+          callback: (args) async {
+            if (args.isNotEmpty && args[0] is String) {
+              await Clipboard.setData(ClipboardData(text: args[0] as String));
+            }
           },
         );
       },

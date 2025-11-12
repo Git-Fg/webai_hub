@@ -19,7 +19,13 @@ class MessageStatusConverter extends TypeConverter<MessageStatus, String> {
   const MessageStatusConverter();
 
   @override
-  MessageStatus fromSql(String fromDb) => MessageStatus.values.byName(fromDb);
+  MessageStatus fromSql(String fromDb) {
+    return MessageStatus.values.firstWhere(
+      (e) => e.name == fromDb,
+      orElse: () =>
+          MessageStatus.error, // Fallback to 'error' for unknown values
+    );
+  }
 
   @override
   String toSql(MessageStatus value) => value.name;
@@ -33,6 +39,9 @@ class Conversations extends Table {
   TextColumn get title => text()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+  // WHY: System prompt allows users to define persistent instructions that guide
+  // AI behavior across an entire conversation, ensuring consistent tone and constraints.
+  TextColumn get systemPrompt => text().nullable()();
 }
 
 // WHY: We use @DataClassName to give the generated data class a different name ('MessageData').
@@ -59,9 +68,15 @@ class Messages extends Table {
 class Presets extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 50)();
-  TextColumn get providerId => text()();
+  // WHY: Nullable providerId allows this table to represent both Presets (non-null)
+  // and Groups (null). Groups act as organizational containers without provider-specific settings.
+  TextColumn get providerId => text().nullable()();
   IntColumn get displayOrder => integer()();
   TextColumn get settingsJson => text()();
+  // WHY: UI state flags allow users to customize the preset management interface,
+  // pinning important presets and collapsing groups for better organization.
+  BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
+  BoolColumn get isCollapsed => boolean().withDefault(const Constant(false))();
 }
 
 // WHY: LazyDatabase ensures the database connection is only opened when needed.
@@ -73,8 +88,9 @@ LazyDatabase _openConnection() {
     final dbFolder = await getDatabasesPath();
     final file = File(p.join(dbFolder, 'db.sqlite'));
 
-    // TODO: Remove this block for production. This is for development only
-    // to wipe the database on every app start, avoiding migration complexity.
+    // TODO(felix): Remove this block for production; development convenience to wipe the database each launch.
+    // WHY: Dev-only database reset ensures a clean slate for each launch during development.
+    // ignore: avoid_slow_async_io
     if (await file.exists()) {
       await file.delete();
     }
@@ -94,7 +110,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.test() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 2;
 
   // WHY: A migration strategy is essential for any production application.
   // It ensures that when you change your database schema in future versions (e.g., add a new column),
@@ -105,32 +121,47 @@ class AppDatabase extends _$AppDatabase {
       onCreate: (Migrator m) async {
         await m.createAll();
       },
-      // TODO: Implement a robust onUpgrade strategy for production release.
-      // The current development setup wipes the DB on each start, so onUpgrade is never called.
+      onUpgrade: (Migrator m, int from, int to) async {
+        // WHY: Migration from version 1 to 2 adds new columns to existing tables.
+        // We use ALTER TABLE to add columns, which preserves existing data.
+        if (from < 2) {
+          // Add systemPrompt column to Conversations table
+          await customStatement(
+            'ALTER TABLE conversations ADD COLUMN system_prompt TEXT;',
+          );
+          // Add isPinned and isCollapsed columns to Presets table
+          await customStatement(
+            'ALTER TABLE presets ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;',
+          );
+          await customStatement(
+            'ALTER TABLE presets ADD COLUMN is_collapsed INTEGER NOT NULL DEFAULT 0;',
+          );
+          // Make providerId nullable in Presets table
+          // WHY: SQLite doesn't support ALTER COLUMN directly, so we recreate the table.
+          // This preserves existing data while allowing null values.
+          await customStatement('''
+            CREATE TABLE presets_new (
+              id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              provider_id TEXT,
+              display_order INTEGER NOT NULL,
+              settings_json TEXT NOT NULL,
+              is_pinned INTEGER NOT NULL DEFAULT 0,
+              is_collapsed INTEGER NOT NULL DEFAULT 0
+            );
+          ''');
+          await customStatement('''
+            INSERT INTO presets_new (id, name, provider_id, display_order, settings_json, is_pinned, is_collapsed)
+            SELECT id, name, provider_id, display_order, settings_json, 0, 0 FROM presets;
+          ''');
+          await customStatement('DROP TABLE presets;');
+          await customStatement('ALTER TABLE presets_new RENAME TO presets;');
+        }
+      },
       // WHY: Foreign keys must be explicitly enabled in SQLite for referential integrity.
       // This ensures cascade deletes work correctly and prevents orphaned records.
       beforeOpen: (OpeningDetails details) async {
         await customStatement('PRAGMA foreign_keys = ON');
-
-        // WHY: Defensive check to ensure all presets have providerId values.
-        // This handles edge cases where data might exist with null providerId.
-        if (!details.wasCreated) {
-          // Only check if database already existed (not a fresh install)
-          try {
-            final nullCount = await customSelect(
-              'SELECT COUNT(*) as count FROM presets WHERE providerId IS NULL OR providerId = ""',
-            ).getSingle();
-            final count = nullCount.data['count'] as int;
-            if (count > 0) {
-              // Fix any presets with null or empty providerId
-              await customStatement(
-                "UPDATE presets SET providerId = 'ai_studio' WHERE providerId IS NULL OR providerId = ''",
-              );
-            }
-          } on Object {
-            // Ignore errors - table might not exist yet or other issues
-          }
-        }
       },
     );
   }
@@ -159,6 +190,13 @@ class AppDatabase extends _$AppDatabase {
         ConversationsCompanion(updatedAt: Value(timestamp)),
       );
 
+  // WHY: This method allows updating the system prompt for a conversation,
+  // enabling persistent instructions that guide AI behavior across turns.
+  Future<void> updateConversationSystemPrompt(int id, String? systemPrompt) =>
+      (update(conversations)..where((t) => t.id.equals(id))).write(
+        ConversationsCompanion(systemPrompt: Value(systemPrompt)),
+      );
+
   Future<void> pruneOldConversations(int maxCount) async {
     // WHY: This query efficiently finds the IDs of the oldest conversations
     // exceeding the maxCount limit and deletes them in a single operation,
@@ -172,6 +210,15 @@ class AppDatabase extends _$AppDatabase {
     if (oldestIds.isNotEmpty) {
       await (delete(conversations)..where((t) => t.id.isIn(oldestIds))).go();
     }
+  }
+
+  // WHY: This query efficiently finds only the most recently updated conversation,
+  // avoiding loading the entire history into memory during app startup.
+  Future<ConversationData?> getMostRecentConversation() {
+    return (select(conversations)
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
   }
 
   // --- Message Data Access Methods ---
@@ -196,14 +243,12 @@ class AppDatabase extends _$AppDatabase {
   }
 
   // NOTE: This class uses both Manager API and Query Builder API intentionally:
-  // - Manager API (managers.*): Used for simple CRUD operations on Messages (insertMessage,
-  //   updateMessage, clearAllMessages). It provides a fluent, readable interface that's less
-  //   error-prone for straightforward operations.
-  // - Query Builder API (select, into, update, delete): Used for Conversations and complex
-  //   queries (watchAllConversations, watchMessagesForConversation, pruneOldConversations).
-  //   It offers more flexibility for filtering, ordering, and complex operations.
-  // This mixed approach leverages the strengths of each API: Manager for simplicity,
-  // Query Builder for flexibility and reactive streams.
+  // - Manager API (managers.*): Used for simple CRUD operations on the Messages table.
+  //   It provides a fluent, readable interface that's less error-prone for these operations.
+  // - Query Builder API (select, into, update, delete): Used for Conversations, Presets,
+  //   and complex queries (like reactive streams). It offers more flexibility for filtering,
+  //   ordering, and advanced operations.
+  // This mixed approach leverages the strengths of each API for its intended purpose.
 
   // WHY: The Manager API provides a fluent, readable, and less error-prone
   // interface for common CRUD operations compared to the standard query builder.
@@ -247,4 +292,16 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deletePreset(int id) =>
       (delete(presets)..where((t) => t.id.equals(id))).go();
+
+  // WHY: Batch update of preset display orders ensures atomic reordering operations.
+  // This is critical for maintaining UI consistency when users drag-and-drop presets.
+  Future<void> updatePresetOrders(List<PresetsCompanion> updatedPresets) async {
+    return transaction(() async {
+      for (final preset in updatedPresets) {
+        await (update(
+          presets,
+        )..where((p) => p.id.equals(preset.id.value))).write(preset);
+      }
+    });
+  }
 }

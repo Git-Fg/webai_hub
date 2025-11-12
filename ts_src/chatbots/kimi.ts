@@ -203,11 +203,45 @@ class KimiChatbot implements Chatbot {
   }
 
   async extractResponse(): Promise<string> {
-    console.log('[Kimi] Starting robust clipboard extraction workflow...');
+    console.log('[Kimi] Starting response extraction workflow...');
+
+    const responseContainers = document.querySelectorAll(SELECTORS.RESPONSE_CONTAINER);
+    if (responseContainers.length === 0) {
+      throw new Error('No response containers found.');
+    }
+    const lastResponseContainer = responseContainers[responseContainers.length - 1];
+    if (!lastResponseContainer) {
+      throw new Error('Could not find last response container.');
+    }
+
+    const sanitizeResponseText = (raw: string): string =>
+      raw
+        .replace(/\s+Copy\s*$/i, '') // Drop trailing action labels
+        .replace(/\u00a0/g, ' ') // Normalize NBSP
+        .replace(/[ \t]+\n/g, '\n') // Trim trailing spaces per line
+        .replace(/\n{3,}/g, '\n\n') // Collapse excessive blank lines
+        .trim();
+
+    const responseTextElement = lastResponseContainer.querySelector(SELECTORS.RESPONSE_TEXT) as HTMLElement | null;
+    if (responseTextElement) {
+      const domText = sanitizeResponseText(responseTextElement.innerText);
+      if (domText.length > 0) {
+        console.log(`[Kimi] Extracted response text directly from DOM (${domText.length} chars).`);
+        return domText;
+      }
+    }
+
+    const fallbackDomText = sanitizeResponseText((lastResponseContainer as HTMLElement).innerText ?? '');
+    if (fallbackDomText.length > 0) {
+      console.log(`[Kimi] Extracted response from container fallback (${fallbackDomText.length} chars).`);
+      return fallbackDomText;
+    }
 
     if (!window.flutter_inappwebview) {
       throw new Error('flutter_inappwebview bridge is not available for clipboard operations.');
     }
+
+    console.log('[Kimi] Falling back to clipboard-based extraction workflow...');
 
     // 1. Define a unique token to prime the clipboard.
     const uniqueToken = `ai-hybrid-hub-copy-check-${Date.now()}`;
@@ -222,14 +256,6 @@ class KimiChatbot implements Chatbot {
     }
 
     // 3. Find and click the "Copy" button in the web UI.
-    const responseContainers = document.querySelectorAll(SELECTORS.RESPONSE_CONTAINER);
-    if (responseContainers.length === 0) {
-      throw new Error('No response containers found.');
-    }
-    const lastResponseContainer = responseContainers[responseContainers.length - 1];
-    if (!lastResponseContainer) {
-      throw new Error('Could not find last response container.');
-    }
     
     const copyButton = await waitForElementWithin<HTMLElement>(
       lastResponseContainer,
