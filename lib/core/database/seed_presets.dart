@@ -17,16 +17,16 @@ Future<void> seedPresets(ProviderContainer container) async {
 
   // Load presets from JSON asset
   final jsonString = await rootBundle.loadString('assets/seed_presets.json');
-  final presetsList = jsonDecode(jsonString) as List<dynamic>;
+  final presetsList = (jsonDecode(jsonString) as List)
+      .cast<Map<String, dynamic>>();
 
   for (final presetData in presetsList) {
-    final data = presetData as Map<String, dynamic>;
     await db.createPreset(
       PresetsCompanion.insert(
-        name: data['name'] as String,
-        providerId: Value(data['providerId'] as String),
-        displayOrder: data['displayOrder'] as int,
-        settingsJson: jsonEncode(data['settings']),
+        name: presetData['name'] as String,
+        providerId: Value(presetData['providerId'] as String),
+        displayOrder: presetData['displayOrder'] as int,
+        settingsJson: jsonEncode(presetData['settings']),
       ),
     );
   }

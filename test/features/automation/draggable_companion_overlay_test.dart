@@ -1,5 +1,6 @@
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,8 +34,8 @@ void main() {
             height: 600,
             child: Stack(
               children: [
-                // WHY: Use DraggableCompanionOverlay to test the actual drag handling implementation
-                DraggableCompanionOverlay(overlayKey: overlayKey),
+                // WHY: Use CompanionOverlay to test the actual drag handling implementation
+                CompanionOverlay(overlayKey: overlayKey),
                 _OverlayPositionSpy(spy: spy),
               ],
             ),

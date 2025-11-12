@@ -260,7 +260,6 @@ class AppDatabase extends _$AppDatabase {
         content: message.text,
         isFromUser: message.isFromUser,
         status: message.status,
-        createdAt: Value(DateTime.now()),
       ),
     );
   }

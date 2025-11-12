@@ -33,8 +33,7 @@ Page State: Ready=${pageState.readyState}, VisibleElements=${pageState.visibleEl
 // WHY: Check selectors against DOM - extracted for reuse in both observer and polling
 function checkSelectors(
   selectors: readonly string[],
-  root: ParentNode | undefined,
-  operation: string
+  root: ParentNode | undefined
 ): Element | null {
   for (let i = 0; i < selectors.length; i++) {
     const selector = selectors[i];
@@ -51,7 +50,7 @@ function checkSelectors(
       }
     } catch (e) {
       // Invalid selector, skip
-      console.warn(`[${operation}] Invalid selector "${selector}" (index ${i}):`, e);
+      console.warn(`[waitForElement] Invalid selector "${selector}" (index ${i}):`, e);
       continue;
     }
     
@@ -78,7 +77,7 @@ async function waitForElementInternal<T extends Element = HTMLElement>(
     let checkInterval: number | null = null;
     let firstAttemptLogged = false;
 
-    console.log(`[${operation}] Starting search for selectors: [${selectors.join(', ')}] (timeout: ${timeout}ms)`);
+    console.log(`[waitForElement] Starting search for selectors: [${selectors.join(', ')}] (timeout: ${timeout}ms)`);
 
     const cleanup = () => {
       if (observer) {
@@ -100,20 +99,20 @@ async function waitForElementInternal<T extends Element = HTMLElement>(
       
       // Log progress periodically
       if (elapsed - lastProgressLogTime >= PROGRESS_LOG_INTERVAL_MS) {
-        console.log(`[${operation}] Still searching... (elapsed: ${elapsed}ms, remaining: ${timeout - elapsed}ms)`);
+        console.log(`[waitForElement] Still searching... (elapsed: ${elapsed}ms, remaining: ${timeout - elapsed}ms)`);
         lastProgressLogTime = elapsed;
       }
 
       // Log first attempt failures for debugging
       if (!firstAttemptLogged) {
-        const firstCheck = checkSelectors(selectors, root, operation);
+        const firstCheck = checkSelectors(selectors, root);
         if (!firstCheck) {
-          console.log(`[${operation}] Selectors not found on first attempt`);
+          console.log(`[waitForElement] Selectors not found on first attempt`);
         }
         firstAttemptLogged = true;
       }
 
-      const element = checkSelectors(selectors, root, operation);
+      const element = checkSelectors(selectors, root);
       
       if (element) {
         const actualTime = Date.now() - startTime;
@@ -128,7 +127,7 @@ async function waitForElementInternal<T extends Element = HTMLElement>(
             return false;
           }
         });
-        console.log(`[${operation}] Found element with selector "${foundSelector || 'unknown'}" after ${actualTime}ms`);
+        console.log(`[waitForElement] Found element with selector "${foundSelector || 'unknown'}" after ${actualTime}ms`);
         cleanup();
         resolve(element as T);
         return;
@@ -160,12 +159,13 @@ async function waitForElementInternal<T extends Element = HTMLElement>(
       checkForElement();
     } else {
       // WHY: Fallback to polling if MutationObserver not available (rare edge case)
-      console.warn(`[${operation}] MutationObserver not available, using polling fallback`);
+      console.warn(`[waitForElement] MutationObserver not available, using polling fallback`);
       checkInterval = window.setInterval(checkForElement, DEFAULT_INTERVAL_MS);
       checkForElement();
     }
 
     // Set timeout
+    // WHY: Timeout handler for cleanup, not a UI wait
     timeoutId = window.setTimeout(() => {
       cleanup();
       const elapsed = Date.now() - startTime;
@@ -229,6 +229,7 @@ async function waitForElementByTextInternal<T extends Element = HTMLElement>(
     const startTime = Date.now();
     let observer: MutationObserver | null = null;
     let timeoutId: number | null = null;
+    let intervalId: number | null = null;
 
     const cleanup = () => {
       if (observer) {
@@ -238,6 +239,10 @@ async function waitForElementByTextInternal<T extends Element = HTMLElement>(
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
         timeoutId = null;
+      }
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
       }
     };
 
@@ -278,16 +283,17 @@ async function waitForElementByTextInternal<T extends Element = HTMLElement>(
     } else {
       // Fallback to polling
       console.warn('[waitForElementByText] MutationObserver not available, using polling fallback');
-      const interval = window.setInterval(checkForElement, DEFAULT_INTERVAL_MS);
+      intervalId = window.setInterval(checkForElement, DEFAULT_INTERVAL_MS);
       checkForElement();
-      
-      // Clean up interval on timeout
-      timeoutId = window.setTimeout(() => {
-        clearInterval(interval);
-        cleanup();
-        reject(new Error(`Element with selector "${baseSelector}" containing text "${text}" not found within ${timeout}ms`));
-      }, timeout);
     }
+
+    // WHY: Timeout handler for cleanup, not a UI wait
+     
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      const elapsed = Date.now() - startTime;
+      reject(new Error(`Element with selector "${baseSelector}" containing text "${text}" not found within ${timeout}ms (elapsed: ${elapsed}ms)`));
+    }, timeout);
   });
 }
 
@@ -317,8 +323,10 @@ async function retryOperation<T>(
       
       // Calculate exponential backoff delay
       const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.log(`[${operationName}] Retry ${attempt + 1}/${maxRetries} after ${delay}ms delay. Error: ${lastError.message.split('\n')[0]}`);
+      console.log(`[waitForElement] Retry ${attempt + 1}/${maxRetries} after ${delay}ms delay. Error: ${lastError.message.split('\n')[0]}`);
       
+      // WHY: Exponential backoff delay for retry mechanism, not a UI wait
+       
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }

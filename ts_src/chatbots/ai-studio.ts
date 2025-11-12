@@ -137,6 +137,8 @@ class SettingsManager {
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (errorMsg.includes('occluded')) {
           console.log('[AI Studio LOG] Element found but occluded. Waiting longer and attempting click anyway...');
+          // WHY: Wait for UI to stabilize after occlusion detection, not a UI wait for element
+          // eslint-disable-next-line custom/disallow-timeout-for-waits
           await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
           const foundElement = document.querySelector(SELECTORS.MODEL_CATEGORIES_ALL_BUTTON) as HTMLButtonElement;
           if (foundElement && foundElement.offsetParent !== null) {
@@ -152,8 +154,12 @@ class SettingsManager {
       const allFilter = assertIsElement(allFilterEl, HTMLButtonElement, 'Model categories all button');
       // WHY: Scroll element into view before clicking to help with occlusion issues
       allFilter.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // WHY: Wait for smooth scroll animation to complete before clicking
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
       allFilter.click();
+      // WHY: Wait for UI to stabilize after click before proceeding
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
 
       const modelOptions = Array.from(document.querySelectorAll(SELECTORS.MODEL_CAROUSEL_BUTTON));
@@ -172,6 +178,7 @@ class SettingsManager {
         modelButton.click();
         console.log(`[AI Studio LOG] Success: Clicked model button for "${modelId}".`);
         // WHY: Wait for dialog to close (it may close automatically after model selection)
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
       } else {
         const availableModels = modelOptions.map(opt => {
@@ -187,6 +194,8 @@ class SettingsManager {
           const closeButtonEl = await waitForActionableElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON], 'Dialog close button', getModifiedTimeout(2000), 0);
           const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
           closeButton.click();
+          // WHY: Wait for dialog close animation to complete
+          // eslint-disable-next-line custom/disallow-timeout-for-waits
           await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
         } catch {
           console.log('[AI Studio LOG] Model dialog seems to have closed automatically.');
@@ -229,6 +238,8 @@ class SettingsManager {
     const advancedToggleContainer = advancedToggle.closest(SELECTORS.ADVANCED_SETTINGS_TOGGLE);
     if (advancedToggleContainer && !advancedToggleContainer.classList.contains('expanded')) {
       (advancedToggleContainer as HTMLElement).click();
+      // WHY: Wait for panel expansion animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
     }
     // Direct implementation instead of calling setSliderValueByLabel
@@ -265,6 +276,8 @@ class SettingsManager {
     if (budget != null && !isThinkingEnabled) {
       thinkingToggle.click();
       console.log('[AI Studio LOG] Enabled "thinking" feature.');
+      // WHY: Wait for toggle animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
     }
     const manualBudgetToggleEl = await waitForElement<HTMLButtonElement>([SELECTORS.MANUAL_BUDGET_TOGGLE]);
@@ -274,6 +287,8 @@ class SettingsManager {
       if (!isManualEnabled) {
         manualBudgetToggle.click();
         console.log('[AI Studio LOG] Enabled "manual budget".');
+        // WHY: Wait for toggle animation to complete
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
       }
       const budgetInputEl = await waitForElement<HTMLInputElement>([SELECTORS.BUDGET_INPUT]);
@@ -311,6 +326,8 @@ class SettingsManager {
       const toolsToggleContainer = toolsToggle.closest(SELECTORS.TOOLS_TOGGLE_SELECTOR);
       if (toolsToggleContainer && !toolsToggleContainer.classList.contains('expanded')) {
         (toolsToggleContainer as HTMLElement).click();
+        // WHY: Wait for panel expansion animation to complete
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
       }
       if (options.useWebSearch !== undefined) {
@@ -378,6 +395,8 @@ export class AiStudioChatbot implements Chatbot {
         
         const backoffDelay = delayMs * Math.pow(2, attempt);
         console.log(`[AI Studio LOG] ${operationName} failed, retrying ${attempt + 1}/${maxRetries} after ${backoffDelay}ms. Error: ${lastError.message.split('\n')[0]}`);
+        // WHY: Exponential backoff delay for retry mechanism, not a UI wait
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     }
@@ -420,6 +439,8 @@ export class AiStudioChatbot implements Chatbot {
               `Timeout=${timeout}ms`
             );
           }
+          // WHY: Brief delay to allow DOM mutations to propagate before next check
+          // eslint-disable-next-line custom/disallow-timeout-for-waits
           await new Promise(resolve => setTimeout(resolve, 50));
         }
         console.log('[AI Studio] Old UI elements have been removed.');
@@ -457,6 +478,8 @@ export class AiStudioChatbot implements Chatbot {
       const systemPromptButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.SYSTEM_PROMPT_CARD]);
       const systemPromptButton = assertIsElement(systemPromptButtonEl, HTMLButtonElement, 'System prompt card');
       systemPromptButton.click();
+      // WHY: Wait for dialog open animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
 
       const textareaEl = await waitForElement<HTMLTextAreaElement>([SELECTORS.SYSTEM_PROMPT_TEXTAREA]);
@@ -468,6 +491,8 @@ export class AiStudioChatbot implements Chatbot {
       const closeButtonEl = await waitForElement<HTMLButtonElement>([SELECTORS.DIALOG_CLOSE_BUTTON]);
       const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Dialog close button');
       closeButton.click();
+      // WHY: Wait for dialog close animation to complete
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
     } finally {
       await this.closeSettingsPanel();
@@ -538,6 +563,8 @@ export class AiStudioChatbot implements Chatbot {
 
       observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
+      // WHY: Timeout handler for cleanup, not a UI wait
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       const timeoutId = setTimeout(() => {
         observer.disconnect();
         reject(new Error(`Timed out after ${timeout}ms waiting for response to finalize.`));
@@ -602,6 +629,8 @@ export class AiStudioChatbot implements Chatbot {
             console.log(`[AI Studio LOG] Token count updated: ${text}`);
             resolve();
           } else {
+            // WHY: Polling interval for token count check, not a UI wait
+            // eslint-disable-next-line custom/disallow-timeout-for-waits
             setTimeout(checkTokenCount, TIMING.TOKEN_COUNT_CHECK_INTERVAL_MS);
           }
         };
@@ -610,6 +639,7 @@ export class AiStudioChatbot implements Chatbot {
 
       // WHY: Add a small delay after token count updates to allow the UI to stabilize
       // before attempting to click the send button, preventing potential race conditions.
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_AFTER_TOKEN_COUNT_MS));
       console.log('[AI Studio LOG] UI stabilized after token count, proceeding to send.');
 
@@ -685,6 +715,8 @@ export class AiStudioChatbot implements Chatbot {
           attributeFilter: ['aria-label', 'disabled']
         });
 
+        // WHY: Timeout handler for cleanup, not a UI wait
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         timeoutId = window.setTimeout(() => {
           cleanup();
           const allEditButtons = document.querySelectorAll(EDIT_BUTTON_SELECTOR);
@@ -713,6 +745,8 @@ export class AiStudioChatbot implements Chatbot {
     );
     
     console.log('[AI Studio LOG] Textarea appeared, waiting for UI to stabilize...');
+    // WHY: Wait for UI to stabilize after textarea appears before reading content
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
     await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
 
     const extractedContent = (
@@ -720,7 +754,7 @@ export class AiStudioChatbot implements Chatbot {
     ).trim();
     
     if (!extractedContent) {
-        const errorMessage = `Textarea was found but it was empty.`;
+        const errorMessage = `Extraction failed: Textarea was found but contained no content.`;
         console.error(`[AI Studio LOG] ${errorMessage}`);
         throw this.createErrorWithContext(
           'extractResponse',
@@ -777,12 +811,16 @@ export class AiStudioChatbot implements Chatbot {
         );
         const tuneButton = assertIsElement(tuneButtonEl, HTMLButtonElement, 'Settings panel toggle button');
         tuneButton.click();
+        // WHY: Wait for settings panel open animation to complete
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
         
         // Verify panel is actually open
         const panelOpen = document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON);
         if (!panelOpen) {
           console.warn('[AI Studio LOG] Settings panel may not have opened properly. Retrying...');
+          // WHY: Additional wait for panel to open if initial attempt failed
+          // eslint-disable-next-line custom/disallow-timeout-for-waits
           await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
         }
         console.log('[AI Studio LOG] Settings panel opened successfully.');
@@ -808,6 +846,8 @@ export class AiStudioChatbot implements Chatbot {
         );
         const closeButton = assertIsElement(closeButtonEl, HTMLButtonElement, 'Settings panel close button');
         closeButton.click();
+        // WHY: Wait for settings panel close animation to complete
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
         await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_MS));
         console.log('[AI Studio LOG] Settings panel closed successfully.');
       } catch (error) {

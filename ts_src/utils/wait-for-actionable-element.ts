@@ -71,6 +71,7 @@ async function isStable(element: HTMLElement, timeoutMs: number = DEFAULT_ANIMAT
     const animationPromises = animations.map(anim => anim.finished);
     await Promise.race([
       Promise.all(animationPromises),
+      // WHY: Timeout for animation completion check, not a UI wait
       new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))
     ]);
     
@@ -394,6 +395,7 @@ async function waitForActionableElementInternal<T extends HTMLElement = HTMLElem
     }
     
     // Set timeout
+    // WHY: Timeout handler for cleanup, not a UI wait
     timeoutId = window.setTimeout(() => {
       cleanup();
       checkActionabilityForSelectors();
@@ -476,8 +478,9 @@ async function retryOperation<T>(
       }
       
       const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.log(`[${operationName}] Retry ${attempt + 1}/${maxRetries} after ${delay}ms delay. Error: ${lastError.message.split('\n')[0]}`);
+      console.log(`[waitForActionableElement] Retry ${attempt + 1}/${maxRetries} after ${delay}ms delay. Error: ${lastError.message.split('\n')[0]}`);
       
+      // WHY: Exponential backoff delay for retry mechanism, not a UI wait
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }

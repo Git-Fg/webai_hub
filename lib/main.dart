@@ -4,7 +4,6 @@ import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -13,7 +12,6 @@ import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/widgets/ai_webview_screen.dart';
-import 'package:ai_hybrid_hub/shared/ui_constants.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -215,7 +213,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 );
               },
             ),
-            DraggableCompanionOverlay(overlayKey: _overlayKey),
+            CompanionOverlay(overlayKey: _overlayKey),
           ],
         ),
         bottomNavigationBar: presetsAsync.when(
@@ -252,40 +250,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
           loading: () => const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
         ),
-      ),
-    );
-  }
-}
-
-class DraggableCompanionOverlay extends ConsumerWidget {
-  const DraggableCompanionOverlay({
-    required this.overlayKey,
-    super.key,
-  });
-
-  final GlobalKey overlayKey;
-
-  // WHY: This widget controls visibility of the CompanionOverlay based on automation state.
-  // All positioning and dragging logic is now handled within CompanionOverlay itself.
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(automationStateProvider);
-    final currentTabIndex = ref.watch(currentTabIndexProvider);
-
-    final shouldShow =
-        status.maybeWhen(
-          refining: (activePresetId, messageCount, isExtracting) => true,
-          needsLogin: (onResume) => true,
-          orElse: () => false,
-        ) &&
-        (currentTabIndex > 0);
-
-    return AnimatedOpacity(
-      opacity: shouldShow ? 1.0 : 0.0,
-      duration: kShortAnimationDuration,
-      child: IgnorePointer(
-        ignoring: !shouldShow,
-        child: CompanionOverlay(overlayKey: overlayKey),
       ),
     );
   }

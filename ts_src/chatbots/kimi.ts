@@ -20,78 +20,20 @@ const SELECTORS = {
 class KimiChatbot implements Chatbot {
 
   async waitForReady(): Promise<void> {
-    console.log('[Kimi] Starting robust multi-condition readiness check...');
+    console.log('[Kimi] Starting readiness check...');
 
-    const readinessTimeout = getModifiedTimeout(20000); // 20-second timeout
+    // WHY: Check for login button first - if present, user needs to log in before automation can proceed
+    const loginButton = document.querySelector(SELECTORS.LOGIN_BUTTON);
+    if (loginButton) {
+      const error = new Error('[Kimi] Login button detected. User must log in before automation can proceed.');
+      console.error('[Kimi] Login button detected. User must log in before automation can proceed.');
+      throw error;
+    }
 
-    return new Promise((resolve, reject) => {
-      const interval = 250; // Check every 250ms
-      let elapsedTime = 0;
-      let loginButtonDetected = false;
-      let loginButtonWaitComplete = false;
-
-      const checkConditions = () => {
-        // Condition 1: Login button must NOT be visible.
-        const loginButton = document.querySelector(SELECTORS.LOGIN_BUTTON);
-        const isLoggedIn = !loginButton;
-
-        // WHY: If login button was detected, wait 1.5 seconds for page to stabilize
-        // This handles the case where the page is still initializing and the login state
-        // is being determined, which can cause script injection timing issues.
-        if (loginButton && !loginButtonDetected) {
-          loginButtonDetected = true;
-          console.log('[Kimi] Login button detected. Waiting 1.5s for page to stabilize...');
-          setTimeout(() => {
-            loginButtonWaitComplete = true;
-            console.log('[Kimi] Login button wait complete. Resuming readiness check...');
-          }, 1500);
-          return; // Skip this check cycle, wait for the delay
-        }
-
-        // If we're waiting for login button delay, don't proceed yet
-        if (loginButtonDetected && !loginButtonWaitComplete) {
-          return;
-        }
-
-        // Condition 2: Prompt input must BE visible and actionable.
-        const promptInput = document.querySelector(SELECTORS.PROMPT_INPUT) as HTMLElement;
-        const isPromptReady = promptInput && promptInput.offsetParent !== null;
-
-        // Condition 3: Send button container must BE visible.
-        const sendContainer = document.querySelector(SELECTORS.SEND_BUTTON_CONTAINER) as HTMLElement;
-        const isSendContainerReady = sendContainer && sendContainer.offsetParent !== null;
-
-        if (isLoggedIn && isPromptReady && isSendContainerReady) {
-          clearInterval(checkInterval);
-          clearTimeout(timeoutId);
-          console.log('[Kimi] All readiness conditions met. UI is ready.');
-          resolve();
-        } else {
-          elapsedTime += interval;
-          if (elapsedTime >= readinessTimeout) {
-            clearInterval(checkInterval);
-            clearTimeout(timeoutId);
-            // Provide a detailed error message for easier debugging
-            const errorDetails = [
-              `- Logged In: ${isLoggedIn}`,
-              `- Prompt Input Ready: ${isPromptReady}`,
-              `- Send Container Ready: ${isSendContainerReady}`
-            ].join('\n');
-            reject(new Error(`[Kimi] UI readiness check timed out after ${readinessTimeout}ms.\nStatus:\n${errorDetails}`));
-          }
-        }
-      };
-
-      const checkInterval = setInterval(checkConditions, interval);
-      const timeoutId = setTimeout(() => {
-        clearInterval(checkInterval);
-        // This will be caught by the polling logic, but it's a safety net.
-        reject(new Error(`[Kimi] Readiness check timed out externally after ${readinessTimeout}ms.`));
-      }, readinessTimeout);
-
-      // Perform the first check immediately
-      checkConditions();
-    });
+    // WHY: Use waitForActionableElement which leverages MutationObserver for efficient,
+    // event-driven waiting instead of polling. This checks for visibility, stability, and actionability.
+    await waitForActionableElement([SELECTORS.PROMPT_INPUT], 'Prompt Input');
+    console.log('[Kimi] UI is ready.');
   }
 
   private async _waitForResponseFinalization(): Promise<void> {
@@ -122,6 +64,8 @@ class KimiChatbot implements Chatbot {
 
       const checkInterval = setInterval(checkForFinalizedResponse, pollInterval);
       
+      // WHY: Timeout handler for cleanup, not a UI wait
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       const timeoutId = setTimeout(() => {
         clearInterval(checkInterval);
         reject(new Error(`Timed out after ${timeout}ms waiting for response to finalize.`));
@@ -257,6 +201,8 @@ class KimiChatbot implements Chatbot {
     
     // WHY: Scroll the button into view to ensure it's fully visible and clickable
     copyButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // WHY: Wait for smooth scroll animation to complete before interacting
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
     await new Promise(resolve => setTimeout(resolve, 200));
     
     // WHY: Use mouse events instead of just click() for better compatibility
@@ -278,8 +224,12 @@ class KimiChatbot implements Chatbot {
     });
     
     copyButton.dispatchEvent(mouseDownEvent);
+    // WHY: Brief delay between mouse events to ensure proper event sequence processing
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
     await new Promise(resolve => setTimeout(resolve, 50));
     copyButton.dispatchEvent(mouseUpEvent);
+    // WHY: Brief delay between mouse events to ensure proper event sequence processing
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
     await new Promise(resolve => setTimeout(resolve, 50));
     copyButton.dispatchEvent(clickEvent);
     
@@ -287,6 +237,7 @@ class KimiChatbot implements Chatbot {
 
     // WHY: Add a delay after clicking to allow the clipboard operation to complete.
     // Some systems need time for the clipboard to update after a copy action.
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
     await new Promise(resolve => setTimeout(resolve, 300));
 
     // 4. Poll the clipboard until its content is different from our token.
@@ -294,6 +245,8 @@ class KimiChatbot implements Chatbot {
     const maxAttempts = 40; // Poll for up to 6 seconds (40 * 150ms) to handle slower devices
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // WHY: Polling interval for clipboard check, not a UI wait
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
       await new Promise(resolve => setTimeout(resolve, pollInterval));
 
       try {

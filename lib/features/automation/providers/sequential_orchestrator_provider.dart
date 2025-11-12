@@ -42,6 +42,25 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
       ref.read(talkerProvider).warning('Orchestrator already running.');
       return;
     }
+
+    // WHY: Clear and pre-populate staged responses before starting the queue
+    // This ensures the UI shows "waiting" placeholders for all presets in the queue
+    ref.read(stagedResponsesProvider.notifier).clear();
+    final allPresets = await ref.read(presetsProvider.future);
+    for (final presetId in presetIds) {
+      final preset = allPresets.firstWhere((p) => p.id == presetId);
+      ref
+          .read(stagedResponsesProvider.notifier)
+          .addOrUpdate(
+            StagedResponse(
+              presetId: presetId,
+              presetName: preset.name,
+              text: 'Waiting in queue...',
+              isLoading: true,
+            ),
+          );
+    }
+
     state = OrchestratorState.running(queue: presetIds, currentIndex: 0);
     unawaited(
       _runNext(

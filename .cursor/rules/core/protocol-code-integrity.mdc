@@ -14,18 +14,18 @@ Your mission is to ensure that every line of code you produce adheres to the pro
 
 You MUST follow these steps for any and all code modifications.
 
-**1. Before Implementation: Analyze Existing Patterns**
+#### 1. Before Implementation: Analyze Existing Patterns
 
 - Before writing new code, you MUST analyze the surrounding files to understand existing architectural patterns, type definitions, and state management conventions.
 - Adhere to the specific guidelines defined in the relevant `@tech/` rules when working with Dart, TypeScript, or the WebView.
 
-**2. During Implementation: Uphold Quality Standards**
+#### 2. During Implementation: Uphold Quality Standards
 
 - Write clean, self-documenting code.
 - Prioritize static type safety above all else. Avoid `any` in TypeScript and `dynamic` in Dart unless absolutely necessary and justified.
 - You MUST remove all temporary debugging artifacts (`print()`, `console.log()`, commented-out code) before declaring your work complete.
 
-**3. After Implementation: Pass the Unified Quality Gate**
+#### 3. After Implementation: Pass the Unified Quality Gate
 
 - After implementing your changes, you MUST run the single, unified command that validates the entire codebase:
 
@@ -40,8 +40,53 @@ You MUST follow these steps for any and all code modifications.
   - Dart code generation (`build_runner`).
   - All unit and widget tests (`flutter test`).
 
-**4. On Failure: The "Zero Tolerance" Policy**
+#### 4. On Failure: The Static Analysis Remediation Protocol
 
-- If the `npm run test:ci` command fails for **ANY** reason, your work is not complete.
-- You MUST analyze the error output, fix the reported issues (whether they are linting errors, type errors, or failing tests), and **re-run the command until it passes without any errors.**
-- Only code that has successfully passed this quality gate can proceed to the version control stage.
+If the `npm run test:ci` command reports any static analysis issues (errors, warnings, or info), your work is not complete. You MUST resolve every reported issue by following this protocol:
+
+##### 4.1. Triage by Severity
+
+- **`Error`:** You MUST resolve the issue by modifying the code. Disabling an error-level rule is a protocol violation.
+
+- **`Warning` / `Info`:** Your default action is to fix the code to satisfy the rule. Suppression is the exception, not the norm.
+
+##### 4.2. The Suppression Protocol
+
+If, and only if, you determine that a `warning` or `info` rule cannot be fixed without compromising essential logic or significantly harming readability, you may suppress it by following this strict two-step process:
+
+1. **Justify:** On the line immediately preceding the suppression comment, you MUST add a `// WHY:` comment. This comment must concisely explain *why* the rule needs to be disabled for this specific line of code.
+
+2. **Suppress:** On the next line, add the appropriate suppression comment (e.g., `// eslint-disable-next-line ...` for TypeScript, or `// ignore: rule_name` for Dart).
+
+**GOOD EXAMPLE (TypeScript):**
+
+```typescript
+// WHY: This function must accept a dynamic object from a third-party API
+// whose shape is not known at compile time, making 'any' necessary here.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processUntypedData(data: any) {
+  // ...
+}
+```
+
+**GOOD EXAMPLE (Dart):**
+
+```dart
+// WHY: The database schema requires this field to be nullable for legacy data
+// compatibility, but we validate it before use in the business logic layer.
+// ignore: avoid_null_checks_in_equality_operators
+if (user.lastLoginDate != null) {
+  // ...
+}
+```
+
+**BAD EXAMPLE (VIOLATION - no justification):**
+
+```typescript
+// eslint-disable-next-line custom/enforce-structured-logging
+console.log('Forgot scope');
+```
+
+##### 4.3. Final Verification
+
+After addressing all reported issues, you MUST re-run `npm run test:ci` until it passes without any errors or unhandled warnings. Only then is your work considered complete and ready for version control.

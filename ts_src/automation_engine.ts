@@ -1,8 +1,9 @@
 // ts_src/automation_engine.ts
 import { Chatbot, AutomationOptions } from './types/chatbot';
-import { AiStudioChatbot, kimiChatbot } from './chatbots';
+import { SUPPORTED_SITES } from './chatbots';
 import { notifyDart } from './utils/notify-dart';
-import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE, READY_HANDLER } from './utils/bridge-constants';
+import { EVENT_TYPE_AUTOMATION_FAILED, READY_HANDLER } from './utils/bridge-constants';
+import { runChatbotWorkflow } from './utils/automation-workflow';
 
 const BRIDGE_READY_RETRY_ATTEMPTS = 100;
 const BRIDGE_READY_RETRY_DELAY_MS = 300;
@@ -42,6 +43,7 @@ function trySignalReady(retries = BRIDGE_READY_RETRY_ATTEMPTS, delay = BRIDGE_RE
   if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
     signalReady();
   } else {
+    // WHY: Retry mechanism for bridge initialization, not a UI wait
     setTimeout(() => trySignalReady(retries - 1, delay), delay);
   }
 }
@@ -77,17 +79,9 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
     currentChatbot: null as Chatbot | null,
   };
 
-  const SUPPORTED_SITES = {
-    'ai_studio': new AiStudioChatbot(),
-    'kimi': kimiChatbot,
-    // Future: Add other providers here
-    // 'chatgpt': chatGptChatbot,
-    // 'claude': claudeChatbot,
-  };
-
   // Finds the chatbot module corresponding to the providerId
   function getChatbot(providerId: string): Chatbot | null {
-    const chatbot = SUPPORTED_SITES[providerId as keyof typeof SUPPORTED_SITES];
+    const chatbot = SUPPORTED_SITES[providerId];
     if (chatbot) {
       console.log(`[Engine] Matched providerId: "${providerId}". Using corresponding chatbot module.`);
       return chatbot;
@@ -116,82 +110,9 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
     // WHY: Store chatbot instance in state for use in extractFinalResponse
     automationState.currentChatbot = chatbot;
 
-    const startTime = Date.now();
-    let currentPhase = 'Initialization';
-    
-    try {
-      // Phase 1: Reset the UI to a clean state (e.g., click "New Chat").
-      if (chatbot.resetState) {
-        currentPhase = 'Phase 1: Resetting UI state';
-        console.log(`[Engine LOG] ${currentPhase}...`);
-        await chatbot.resetState();
-      }
-
-      // Phase 2: Wait for the main UI to be ready and interactive.
-      currentPhase = 'Phase 2: Waiting for UI to be ready';
-      console.log(`[Engine LOG] ${currentPhase}...`);
-      await chatbot.waitForReady();
-      
-      // Phase 3: Apply all configurations (Model, Temperature, System Prompt, etc.).
-      currentPhase = 'Phase 3: Applying configurations';
-      console.log(`[Engine LOG] ${currentPhase}...`);
-      // WHY: System prompt often involves a separate dialog; handle it first
-      if (options.systemPrompt && chatbot.setSystemPrompt) {
-        console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
-        await chatbot.setSystemPrompt(options.systemPrompt);
-      }
-      // Apply all other settings atomically via unified method
-      if (chatbot.applyAllSettings) {
-        await chatbot.applyAllSettings(options);
-      }
-
-      // Phase 4 & 5 combined: Enter prompt and wait for finalization.
-      currentPhase = 'Phase 4: Sending prompt and awaiting finalization';
-      console.log(`[Engine LOG] ${currentPhase}...`);
-      await chatbot.sendPrompt(options.prompt);
-      
-      // Phase 6: Notify Dart that the response is ready for extraction.
-      currentPhase = 'Phase 5: Notifying Dart of readiness';
-      console.log(`[Engine LOG] ${currentPhase}...`);
-      notifyDart({ type: EVENT_TYPE_NEW_RESPONSE });
-      
-      const elapsedTime = Date.now() - startTime;
-      console.log(`[Engine LOG] Sequential automation cycle completed successfully in ${elapsedTime}ms.`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const elapsedTime = Date.now() - startTime;
-      const pageState = {
-        url: window.location.href,
-        readyState: document.readyState,
-        visibleElements: document.querySelectorAll('*').length,
-      };
-      
-      console.error(`[Engine LOG] Full automation cycle failed in ${currentPhase} after ${elapsedTime}ms!`, error);
-      
-      const diagnostics: Record<string, unknown> = {
-        phase: currentPhase,
-        elapsedTimeMs: elapsedTime,
-        url: pageState.url,
-        readyState: pageState.readyState,
-        visibleElements: pageState.visibleElements,
-        timestamp: new Date().toISOString(),
-      };
-      
-      // Extract selector context from error message if available
-      if (errorMessage.includes('Selector') || errorMessage.includes('selector')) {
-        diagnostics.selectorContext = 'Error message contains selector information';
-      }
-      
-      notifyDart({
-        type: EVENT_TYPE_AUTOMATION_FAILED,
-        errorCode: 'FULL_CYCLE_FAILED',
-        location: 'startAutomation',
-        payload: errorMessage,
-        diagnostics: diagnostics,
-      });
-      // WHY: Re-throw error so the Future in Dart also fails
-      throw error;
-    }
+    // WHY: Delegate the entire workflow to the reusable workflow function
+    // This makes the automation lifecycle explicit and maintainable
+    await runChatbotWorkflow(chatbot, options);
   };
 
   // Global function called by Dart to extract the response

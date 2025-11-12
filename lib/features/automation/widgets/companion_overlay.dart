@@ -23,13 +23,21 @@ class CompanionOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
+    final currentTabIndex = ref.watch(currentTabIndexProvider);
+
+    // WHY: Determine visibility based on automation state and current tab
+    // The overlay should only be visible when automation is active (refining or needsLogin)
+    // and we're on a WebView tab (not the Hub)
+    final shouldShow =
+        status.maybeWhen(
+          refining: (activePresetId, messageCount, isExtracting) => true,
+          needsLogin: (onResume) => true,
+          orElse: () => false,
+        ) &&
+        (currentTabIndex > 0);
+
     final overlayState = ref.watch(overlayManagerProvider);
     final overlayNotifier = ref.read(overlayManagerProvider.notifier);
-
-    final isDraggable = status.maybeWhen(
-      refining: (activePresetId, messageCount, isExtracting) => true,
-      orElse: () => false,
-    );
 
     final content = AnimatedSwitcher(
       duration: kShortAnimationDuration,
@@ -38,39 +46,35 @@ class CompanionOverlay extends ConsumerWidget {
           : _buildExpandedView(context, ref),
     );
 
-    // WHY: CompanionOverlay decides its own layout and interaction model based on automation state.
-    // For refining state: draggable with user-controlled position.
-    // For needsLogin state: centered and not draggable.
-    if (isDraggable) {
-      final screenSize = MediaQuery.of(context).size;
-      final widgetSize = overlayKey.currentContext?.size ?? Size.zero;
+    final screenSize = MediaQuery.of(context).size;
+    final widgetSize = overlayKey.currentContext?.size ?? Size.zero;
 
-      return Align(
-        alignment: Alignment.topCenter,
-        child: Transform.translate(
-          offset: overlayState.position,
-          child: Padding(
-            padding: const EdgeInsets.all(kDefaultPadding),
-            child: GestureDetector(
-              onPanUpdate: (details) => overlayNotifier.updatePosition(
-                details.delta,
-                screenSize,
-                widgetSize,
+    // WHY: Wrap in AnimatedOpacity and IgnorePointer to handle visibility
+    // This ensures the overlay doesn't block interactions when hidden
+    return AnimatedOpacity(
+      opacity: shouldShow ? 1.0 : 0.0,
+      duration: kShortAnimationDuration,
+      child: IgnorePointer(
+        ignoring: !shouldShow,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Transform.translate(
+            offset: overlayState.position,
+            child: Padding(
+              padding: const EdgeInsets.all(kDefaultPadding),
+              child: GestureDetector(
+                onPanUpdate: (details) => overlayNotifier.updatePosition(
+                  details.delta,
+                  screenSize,
+                  widgetSize,
+                ),
+                child: content,
               ),
-              child: content,
             ),
           ),
         ),
-      );
-    } else {
-      // Centered and not draggable (for needsLogin state)
-      return Align(
-        child: Padding(
-          padding: const EdgeInsets.all(kDefaultPadding),
-          child: content,
-        ),
-      );
-    }
+      ),
+    );
   }
 
   Widget _buildMinimizedView(BuildContext context, WidgetRef ref) {
@@ -88,7 +92,7 @@ class CompanionOverlay extends ConsumerWidget {
   Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final screenSize = MediaQuery.of(context).size;
-    // WHY: Parent DraggableCompanionOverlay ensures this widget is only built for refining and needsLogin states.
+    // WHY: Visibility logic ensures this widget is only built for refining and needsLogin states.
     // Therefore, we only need to handle those two cases here.
     final content = status.maybeWhen(
       refining: (activePresetId, messageCount, isExtracting) => _buildStatusUI(

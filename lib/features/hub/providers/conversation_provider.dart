@@ -5,7 +5,6 @@ import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/sequential_orchestrator_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/services/automation_service.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -15,6 +14,8 @@ import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_p
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -199,23 +200,6 @@ class ConversationActions extends _$ConversationActions {
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
     }
 
-    // Pre-populate staged responses with "waiting" placeholders
-    ref.read(stagedResponsesProvider.notifier).clear();
-    final allPresets = await ref.read(presetsProvider.future);
-    for (final presetId in selectedPresetIds) {
-      final preset = allPresets.firstWhere((p) => p.id == presetId);
-      ref
-          .read(stagedResponsesProvider.notifier)
-          .addOrUpdate(
-            StagedResponse(
-              presetId: presetId,
-              presetName: preset.name,
-              text: 'Waiting in queue...',
-              isLoading: true,
-            ),
-          );
-    }
-
     // Start the sequential orchestrator
     unawaited(
       ref
@@ -330,9 +314,7 @@ $responsesText
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    final responseText = await ref
-        .read(automationServiceProvider.notifier)
-        .extractResponse(presetId);
+    final responseText = await _extractResponse(presetId);
 
     if (ref.mounted) {
       await _updateLastMessage(
@@ -342,6 +324,36 @@ $responsesText
       );
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
       ref.read(currentTabIndexProvider.notifier).changeTo(0);
+    }
+  }
+
+  // NEW private helper method, moved from AutomationService
+  Future<String> _extractResponse(int presetId) async {
+    final talker = ref.read(talkerProvider);
+    talker.info(
+      '[ConversationActions] Extracting response for preset: $presetId',
+    );
+    final bridge = ref.read(javaScriptBridgeProvider(presetId));
+    final automationNotifier = ref.read(automationStateProvider.notifier);
+
+    automationNotifier.setExtracting(extracting: true);
+
+    try {
+      final responseText = await bridge.extractFinalResponse();
+      talker.info('[ConversationActions] Extraction successful.');
+      return responseText;
+    } on Object catch (e, st) {
+      talker.handle(e, st, 'Response extraction failed.');
+      if (e is AutomationError) rethrow;
+      throw AutomationError(
+        errorCode: AutomationErrorCode.responseExtractionFailed,
+        location: 'extractResponse',
+        message: 'An unexpected error occurred: $e',
+      );
+    } finally {
+      if (ref.mounted) {
+        automationNotifier.setExtracting(extracting: false);
+      }
     }
   }
 
