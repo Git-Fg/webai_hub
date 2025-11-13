@@ -10,8 +10,10 @@ import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_diagnostics_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event_handler.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/bridge_events_observer.dart';
+import 'package:ai_hybrid_hub/features/webview/providers/bridge_events_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/providers/webview_key_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
@@ -39,7 +41,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   InAppWebViewController? webViewController;
   double _progress = 0;
   String? _currentBridgeScript;
-  BridgeEventHandler? _eventHandler;
   // WHY: Flag to prevent showing the notification multiple times for the same error.
   bool _isUserAgentNoticeShown = false;
   // WHY: Flag to prevent infinite redirect loops when handling CookieMismatch
@@ -181,6 +182,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   Widget build(BuildContext context) {
     super.build(context); // REQUIRED call for AutomaticKeepAliveClientMixin
     final bridgeScriptAsync = ref.watch(bridgeScriptProvider);
+
+    // ADD this line to activate the observer:
+    ref.watch(bridgeEventsObserverProvider(widget.preset.id));
 
     // WHY: This listener is CRITICAL. It watches for changes in the User Agent
     // settings and increments the webViewKey. This is the only reliable way
@@ -414,14 +418,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             .read(bridgeDiagnosticsStateProvider.notifier)
             .recordWebViewCreated();
 
-        // WHY: Initialize bridge event handler when WebView is created
-        // This ensures it's ready before any events are received
-        _eventHandler ??= BridgeEventHandler(
-          ref,
-          widget.preset.id,
-          widget.preset.name,
-        );
-
         // Navigate to the provider URL when WebView is created
         final url = _getProviderUrl();
         unawaited(controller.loadUrl(urlRequest: URLRequest(url: WebUri(url))));
@@ -429,8 +425,17 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         controller.addJavaScriptHandler(
           handlerName: BridgeConstants.automationHandler,
           callback: (args) {
-            // Logic is now cleanly delegated to BridgeEventHandler
-            _eventHandler?.handle(args);
+            // NEW SIMPLIFIED LOGIC:
+            if (args.isEmpty || args[0] is! Map) return;
+            try {
+              final json = Map<String, dynamic>.from(args[0] as Map);
+              final event = BridgeEvent.fromJson(json);
+              ref
+                  .read(bridgeEventControllerProvider(widget.preset.id))
+                  .add(event);
+            } on Object {
+              // handle parse error
+            }
           },
         );
 

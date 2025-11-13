@@ -43,8 +43,22 @@ void main() {
     );
 
     // ASSERT
-    // We expect the stream to emit a list containing our inserted message.
-    await expectLater(messagesStream, emits([message]));
+    // We expect the stream to emit MessageData, which we then map to Message for comparison
+    await expectLater(
+      messagesStream,
+      emits(
+        predicate<List<MessageData>>(
+          (list) {
+            if (list.length != 1) return false;
+            final data = list[0];
+            return data.id == message.id &&
+                data.content == message.text &&
+                data.isFromUser == message.isFromUser &&
+                data.status == message.status;
+          },
+        ),
+      ),
+    );
   });
 
   test('Database can update a message', () async {
@@ -71,7 +85,22 @@ void main() {
     );
 
     // ASSERT
-    await expectLater(messagesStream, emits([updatedMessage]));
+    // We expect the stream to emit MessageData, which we then verify matches the updated message
+    await expectLater(
+      messagesStream,
+      emits(
+        predicate<List<MessageData>>(
+          (list) {
+            if (list.length != 1) return false;
+            final data = list[0];
+            return data.id == updatedMessage.id &&
+                data.content == updatedMessage.text &&
+                data.isFromUser == updatedMessage.isFromUser &&
+                data.status == updatedMessage.status;
+          },
+        ),
+      ),
+    );
   });
 
   test('Database can clear all messages', () async {

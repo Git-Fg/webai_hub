@@ -1,0 +1,265 @@
+import 'dart:async';
+
+import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/sequential_orchestrator_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
+import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
+import 'package:ai_hybrid_hub/main.dart';
+import 'package:drift/drift.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'automation_orchestrator.g.dart';
+
+@Riverpod(keepAlive: true)
+class AutomationOrchestrator extends _$AutomationOrchestrator {
+  @override
+  void build() {} // No state needed
+
+  Future<void> startMultiPresetAutomation({
+    required String prompt,
+    required List<int> selectedPresetIds,
+    required int conversationId,
+    String? excludeMessageId,
+  }) async {
+    final talker = ref.read(talkerProvider);
+    if (selectedPresetIds.isEmpty) {
+      talker.warning(
+        'startMultiPresetAutomation called with no selected presets.',
+      );
+      return;
+    }
+
+    // Start the sequential orchestrator
+    unawaited(
+      ref
+          .read(sequentialOrchestratorProvider.notifier)
+          .start(
+            presetIds: selectedPresetIds,
+            prompt: prompt,
+            conversationId: conversationId,
+            excludeMessageId: excludeMessageId,
+          ),
+    );
+  }
+
+  // WHY: This method synthesizes multiple selected responses into a single,
+  // superior answer by using an AI model to analyze and merge best elements.
+  Future<void> synthesizeResponses() async {
+    final talker = ref.read(talkerProvider);
+    final selectedIds = ref.read(selectedStagedResponsesProvider);
+    if (selectedIds.length < 2) {
+      talker.warning('Synthesis requires at least 2 selected responses.');
+      return;
+    }
+
+    final allStaged = ref.read(stagedResponsesProvider);
+    final selectedResponses = allStaged.values
+        .where((r) => selectedIds.contains(r.presetId))
+        .toList();
+
+    // Get the original prompt from the last user message
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) {
+      talker.error('Cannot synthesize: no active conversation.');
+      return;
+    }
+
+    final db = ref.read(appDatabaseProvider);
+    final messages =
+        await (db.select(db.messages)
+              ..where((t) => t.conversationId.equals(activeId))
+              ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+            .get();
+
+    final lastUserMessage = messages.firstWhere(
+      (m) => m.isFromUser,
+      orElse: () => throw StateError('No user message found'),
+    );
+    final originalPrompt = lastUserMessage.content;
+
+    // Get first available preset as synthesizer
+    final allPresets = await ref.read(presetsProvider.future);
+    final presetPresets = allPresets
+        .where((p) => p.providerId != null)
+        .toList();
+    if (presetPresets.isEmpty) {
+      talker.error('Cannot synthesize: no presets available.');
+      return;
+    }
+    final synthesisPresetId = presetPresets.first.id;
+
+    // Construct the meta-prompt
+    final responsesText = selectedResponses
+        .map((r) => '<response from="${r.presetName}">\n${r.text}\n</response>')
+        .join('\n\n');
+    final metaPrompt =
+        '''
+Based on the original prompt: "$originalPrompt"
+
+Analyze the following AI-generated responses. Identify the strengths and weaknesses of each, and then synthesize them into a single, superior response that incorporates the best elements of all provided answers.
+
+$responsesText
+''';
+
+    // Mark the new response as "Synthesizing..."
+    ref
+        .read(stagedResponsesProvider.notifier)
+        .addOrUpdate(
+          const StagedResponse(
+            presetId: -1, // Special ID for synthesized response
+            presetName: 'Synthesized',
+            text: 'Synthesizing...',
+            isLoading: true,
+          ),
+        );
+
+    // Dispatch the new automation request
+    await startMultiPresetAutomation(
+      prompt: metaPrompt,
+      selectedPresetIds: [synthesisPresetId],
+      conversationId: activeId,
+    );
+
+    // Clear selections
+    ref.read(selectedStagedResponsesProvider.notifier).clear();
+  }
+
+  // Extract and return to Hub without finalizing automation (for single-provider workflow)
+  Future<void> extractAndReturnToHub(int presetId) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+
+    final responseText = await _extractResponse(presetId);
+
+    if (ref.mounted) {
+      await _updateLastMessage(
+        responseText,
+        MessageStatus.success,
+        conversationId: activeId,
+      );
+      ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
+      ref.read(currentTabIndexProvider.notifier).changeTo(0);
+    }
+  }
+
+  // WHY: Finalizes a turn by adding the selected response to the conversation,
+  // clearing staged responses, and returning automation to idle state.
+  // This method belongs in AutomationOrchestrator as it orchestrates the
+  // completion of an automation workflow.
+  Future<void> finalizeTurnWithResponse(String responseText) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+
+    await ref
+        .read(conversationActionsProvider.notifier)
+        .addMessage(
+          responseText,
+          isFromUser: false,
+          conversationId: activeId,
+          status: MessageStatus.success,
+        );
+    ref.read(stagedResponsesProvider.notifier).clear();
+    ref.read(automationStateProvider.notifier).returnToIdle();
+  }
+
+  Future<void> cancelAutomation() async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+
+    await _updateLastMessage(
+      'Automation cancelled by user.',
+      MessageStatus.error,
+      conversationId: activeId,
+    );
+    ref.read(automationStateProvider.notifier).returnToIdle();
+
+    ref.read(currentTabIndexProvider.notifier).changeTo(0);
+  }
+
+  Future<void> onAutomationFailed(String error) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+
+    await _updateLastMessage(
+      'Automation failed: $error',
+      MessageStatus.error,
+      conversationId: activeId,
+    );
+    ref.read(automationStateProvider.notifier).moveToFailed();
+  }
+
+  // NEW private helper method, moved from ConversationActions
+  Future<String> _extractResponse(int presetId) async {
+    final talker = ref.read(talkerProvider);
+    talker.info(
+      '[AutomationOrchestrator] Extracting response for preset: $presetId',
+    );
+    final bridge = ref.read(javaScriptBridgeProvider(presetId));
+    final automationNotifier = ref.read(automationStateProvider.notifier);
+
+    automationNotifier.setExtracting(extracting: true);
+
+    try {
+      final responseText = await bridge.extractFinalResponse();
+      talker.info('[AutomationOrchestrator] Extraction successful.');
+      return responseText;
+    } on Object catch (e, st) {
+      talker.handle(e, st, 'Response extraction failed.');
+      if (e is AutomationError) rethrow;
+      throw AutomationError(
+        errorCode: AutomationErrorCode.responseExtractionFailed,
+        location: 'extractResponse',
+        message: 'An unexpected error occurred: $e',
+      );
+    } finally {
+      if (ref.mounted) {
+        automationNotifier.setExtracting(extracting: false);
+      }
+    }
+  }
+
+  Future<void> _updateLastMessage(
+    String text,
+    MessageStatus status, {
+    required int conversationId,
+  }) async {
+    if (!ref.mounted) return;
+
+    final db = ref.read(appDatabaseProvider);
+
+    final query = db.select(db.messages)
+      ..where((t) => t.conversationId.equals(conversationId))
+      ..where((t) => t.status.equals(MessageStatus.sending.name))
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+      ..limit(1);
+
+    final messageToUpdate = await query.getSingleOrNull();
+
+    if (messageToUpdate != null) {
+      final updatedMessage = Message(
+        id: messageToUpdate.id,
+        text: text,
+        isFromUser: false,
+        status: status,
+      );
+      await ref
+          .read(messageServiceProvider.notifier)
+          .updateMessage(updatedMessage);
+      await ref
+          .read(conversationServiceProvider.notifier)
+          .updateTimestamp(conversationId);
+    }
+  }
+}

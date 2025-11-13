@@ -40,17 +40,30 @@ export async function runChatbotWorkflow(
     console.log(`[Engine LOG] ${currentPhase}...`);
     await chatbot.waitForReady();
 
-    // Phase 3: Apply all configurations (Model, Temperature, System Prompt, etc.).
+    // Phase 3: Apply all configurations (System Prompt, Model, Temperature, etc.).
+    // WHY: System prompt must be set FIRST as a separate operation because it opens/closes
+    // its own settings panel and dialog. Then applyAllSettings is called separately
+    // to set model, temperature, etc. This matches the old working logic.
     currentPhase = 'Phase 3: Applying configurations';
     console.log(`[Engine LOG] ${currentPhase}...`);
     // Check if the chatbot is an instance of AiStudioChatbot
     if (chatbot instanceof AiStudioChatbot) {
+      // Step 3a: Set system prompt FIRST (handles its own panel open/close)
       if (options.systemPrompt) {
         console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
-        // Directly call the method on the settings manager
         await chatbot.settingsManager.setSystemPrompt(options.systemPrompt);
       }
-      await chatbot.settingsManager.applyAllSettings(options);
+      // Step 3b: Apply all other settings AFTER (handles its own panel open/close)
+      // WHY: Exclude systemPrompt from applyAllSettings since it's already handled above
+      const settingsWithoutSystemPrompt: AutomationOptions = {
+        ...options,
+        systemPrompt: undefined, // Exclude system prompt from applyAllSettings
+      };
+      await chatbot.settingsManager.applyAllSettings(settingsWithoutSystemPrompt);
+    } else if (chatbot.applyAllSettings) {
+      // WHY: For other chatbots (like Kimi), applyAllSettings is called directly
+      // if the method exists. Kimi doesn't have a separate system prompt step.
+      await chatbot.applyAllSettings(options);
     }
 
     // Phase 4 & 5 combined: Enter prompt and wait for finalization.

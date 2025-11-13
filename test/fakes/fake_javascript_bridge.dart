@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge_interface.dart';
 
 enum ErrorType {
@@ -9,44 +8,115 @@ enum ErrorType {
   automationError,
 }
 
+// Enhanced error configuration for more granular control
+class ErrorConfig {
+  // Simulate delay before error
+
+  const ErrorConfig({
+    required this.type,
+    this.errorCode,
+    this.message,
+    this.diagnostics,
+    this.delayMs,
+  });
+  final ErrorType type;
+  final AutomationErrorCode? errorCode;
+  final String? message;
+  final Map<String, dynamic>? diagnostics;
+  final int? delayMs;
+
+  static const ErrorConfig none = ErrorConfig(type: ErrorType.none);
+}
+
 class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // For verifying that methods were called
   String? lastPromptSent;
-  AutomationOptions? lastOptionsSent;
+  String? lastProviderId;
+  String? lastSettingsJson;
+  double? lastTimeoutModifier;
   bool wasExtractCalled = false;
+  int startAutomationCallCount = 0;
+  int extractFinalResponseCallCount = 0;
 
-  // To simulate errors — separated per method
-  ErrorType startAutomationErrorType = ErrorType.none;
-  ErrorType extractFinalResponseErrorType = ErrorType.none;
+  // Enhanced error configuration
+  ErrorConfig startAutomationErrorConfig = ErrorConfig.none;
+  ErrorConfig extractFinalResponseErrorConfig = ErrorConfig.none;
   String? extractFinalResponseValue =
       'This is a fake AI response from the test bridge.';
 
+  // Bridge readiness simulation
+  bool _isReady = true;
+  int? readinessDelayMs;
+
   // Legacy support: if shouldThrowError is true, throw a generic Exception
   bool get shouldThrowError =>
-      startAutomationErrorType == ErrorType.genericException ||
-      extractFinalResponseErrorType == ErrorType.genericException;
+      startAutomationErrorConfig.type == ErrorType.genericException ||
+      extractFinalResponseErrorConfig.type == ErrorType.genericException;
 
   set shouldThrowError(bool value) {
     if (value) {
-      startAutomationErrorType = ErrorType.genericException;
-      extractFinalResponseErrorType = ErrorType.genericException;
+      startAutomationErrorConfig = const ErrorConfig(
+        type: ErrorType.genericException,
+      );
+      extractFinalResponseErrorConfig = const ErrorConfig(
+        type: ErrorType.genericException,
+      );
     } else {
-      startAutomationErrorType = ErrorType.none;
-      extractFinalResponseErrorType = ErrorType.none;
+      startAutomationErrorConfig = ErrorConfig.none;
+      extractFinalResponseErrorConfig = ErrorConfig.none;
     }
   }
 
   // --- NEW: Async control for the bridge readiness state ---
-  bool _isReady = true;
-
   // Allow tests to simulate a page reload: the bridge becomes not-ready again
-  void simulateReload() {
+  void simulateReload({int? delayMs}) {
     _isReady = false;
+    readinessDelayMs = delayMs;
   }
 
   // Allow tests to mark the bridge as ready again
   void markAsReady() {
     _isReady = true;
+    readinessDelayMs = null;
+  }
+
+  // Set custom error for startAutomation
+  void setStartAutomationError({
+    required ErrorType type,
+    AutomationErrorCode? errorCode,
+    String? message,
+    Map<String, dynamic>? diagnostics,
+    int? delayMs,
+  }) {
+    startAutomationErrorConfig = ErrorConfig(
+      type: type,
+      errorCode: errorCode,
+      message: message,
+      diagnostics: diagnostics,
+      delayMs: delayMs,
+    );
+  }
+
+  // Set custom error for extractFinalResponse
+  void setExtractFinalResponseError({
+    required ErrorType type,
+    AutomationErrorCode? errorCode,
+    String? message,
+    Map<String, dynamic>? diagnostics,
+    int? delayMs,
+  }) {
+    extractFinalResponseErrorConfig = ErrorConfig(
+      type: type,
+      errorCode: errorCode,
+      message: message,
+      diagnostics: diagnostics,
+      delayMs: delayMs,
+    );
+  }
+
+  // Set custom response value
+  void setExtractFinalResponseValue(String value) {
+    extractFinalResponseValue = value;
   }
 
   @override
@@ -55,7 +125,14 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     const checkInterval = Duration(milliseconds: 50);
     const maxWaitTime = Duration(seconds: 30);
     final startTime = DateTime.now();
-    
+
+    // Apply readiness delay if configured
+    if (readinessDelayMs != null) {
+      await Future<void>.delayed(Duration(milliseconds: readinessDelayMs!));
+      _isReady = true;
+      readinessDelayMs = null;
+    }
+
     while (!_isReady) {
       final elapsed = DateTime.now().difference(startTime);
       if (elapsed >= maxWaitTime) {
@@ -64,47 +141,88 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
           maxWaitTime,
         );
       }
-      
+
       await Future<void>.delayed(checkInterval);
     }
   }
 
   @override
-  Future<void> startAutomation(AutomationOptions options) async {
+  Future<void> startAutomation(
+    String providerId,
+    String prompt,
+    String settingsJson,
+    double timeoutModifier,
+  ) async {
+    startAutomationCallCount++;
+
+    // Apply delay before error if configured
+    if (startAutomationErrorConfig.delayMs != null) {
+      await Future<void>.delayed(
+        Duration(milliseconds: startAutomationErrorConfig.delayMs!),
+      );
+    }
+
     // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    switch (startAutomationErrorType) {
+    switch (startAutomationErrorConfig.type) {
       case ErrorType.genericException:
-        throw Exception('Fake automation error');
+        throw Exception(
+          startAutomationErrorConfig.message ?? 'Fake automation error',
+        );
       case ErrorType.automationError:
         throw AutomationError(
-          errorCode: AutomationErrorCode.automationExecutionFailed,
+          errorCode:
+              startAutomationErrorConfig.errorCode ??
+              AutomationErrorCode.automationExecutionFailed,
           location: 'startAutomation',
-          message: 'Fake automation execution failed for testing',
-          diagnostics: {'options': options.toJson()},
+          message:
+              startAutomationErrorConfig.message ??
+              'Fake automation execution failed for testing',
+          diagnostics:
+              startAutomationErrorConfig.diagnostics ??
+              {'providerId': providerId, 'prompt': prompt},
         );
       case ErrorType.none:
-        // Record the options for verification
-        lastOptionsSent = options;
-        lastPromptSent = options.prompt;
+        // Record options for verification
+        lastPromptSent = prompt;
+        lastProviderId = providerId;
+        lastSettingsJson = settingsJson;
+        lastTimeoutModifier = timeoutModifier;
     }
   }
 
   @override
   Future<String> extractFinalResponse() async {
+    extractFinalResponseCallCount++;
+
+    // Apply delay before error if configured
+    if (extractFinalResponseErrorConfig.delayMs != null) {
+      await Future<void>.delayed(
+        Duration(milliseconds: extractFinalResponseErrorConfig.delayMs!),
+      );
+    }
+
     // Simulate a network delay
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    switch (extractFinalResponseErrorType) {
+    switch (extractFinalResponseErrorConfig.type) {
       case ErrorType.genericException:
-        throw Exception('Fake extraction error');
+        throw Exception(
+          extractFinalResponseErrorConfig.message ?? 'Fake extraction error',
+        );
       case ErrorType.automationError:
         throw AutomationError(
-          errorCode: AutomationErrorCode.responseExtractionFailed,
+          errorCode:
+              extractFinalResponseErrorConfig.errorCode ??
+              AutomationErrorCode.responseExtractionFailed,
           location: 'extractFinalResponse',
-          message: 'Fake response extraction failed for testing',
-          diagnostics: {'wasExtractCalled': wasExtractCalled},
+          message:
+              extractFinalResponseErrorConfig.message ??
+              'Fake response extraction failed for testing',
+          diagnostics:
+              extractFinalResponseErrorConfig.diagnostics ??
+              {'wasExtractCalled': wasExtractCalled},
         );
       case ErrorType.none:
         wasExtractCalled = true;
@@ -119,8 +237,6 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     }
   }
 
-  // REMOVED: waitForResponseCompletion is no longer needed
-
   // Method to simulate getCapturedLogs (used by conversation_provider)
   @override
   Future<List<Map<String, dynamic>>> getCapturedLogs() async {
@@ -130,14 +246,19 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   // Utility method to reset state between tests
   void reset() {
     lastPromptSent = null;
-    lastOptionsSent = null;
+    lastProviderId = null;
+    lastSettingsJson = null;
+    lastTimeoutModifier = null;
     wasExtractCalled = false;
-    startAutomationErrorType = ErrorType.none;
-    extractFinalResponseErrorType = ErrorType.none;
+    startAutomationCallCount = 0;
+    extractFinalResponseCallCount = 0;
+    startAutomationErrorConfig = ErrorConfig.none;
+    extractFinalResponseErrorConfig = ErrorConfig.none;
     extractFinalResponseValue =
         'This is a fake AI response from the test bridge.';
     // Reset readiness to true by default to avoid hanging tests
     _isReady = true;
+    readinessDelayMs = null;
   }
 
   @override

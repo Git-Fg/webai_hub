@@ -6,6 +6,10 @@
     "strict": true,
     "esModuleInterop": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitReturns": true
+    "noImplicitReturns": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["ts_src/*"]
+    }
   }
 }

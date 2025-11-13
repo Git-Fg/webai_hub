@@ -1,0 +1,120 @@
+{
+  "status": "SETUP_COMPLETE",
+  "sessionId": "2025-11-13_07-21-36",
+  "testPlan": [
+    {
+      "id": "readiness_check",
+      "name": "Readiness Check",
+      "description": "Verify waitForReady() - Prompt input availability",
+      "method": "waitForReady"
+    },
+    {
+      "id": "model_switch_glm45",
+      "name": "Model Switch to GLM-4.5",
+      "description": "Switch model to GLM-4.5 using model switcher",
+      "method": "_switchModel",
+      "params": { "modelName": "GLM-4.5" }
+    },
+    {
+      "id": "glm45_settings",
+      "name": "GLM-4.5 Settings (Tools & Web Search)",
+      "description": "Test Tools button and Web Search toggle for GLM-4.5",
+      "method": "applyAllSettings",
+      "params": { "model": "GLM-4.5", "useWebSearch": true }
+    },
+    {
+      "id": "model_switch_glm46",
+      "name": "Model Switch to GLM-4.6",
+      "description": "Switch model to GLM-4.6 using model switcher",
+      "method": "_switchModel",
+      "params": { "modelName": "GLM-4.6" }
+    },
+    {
+      "id": "glm46_settings",
+      "name": "GLM-4.6 Settings (Web Search)",
+      "description": "Test Web Search button presence and toggle for GLM-4.6",
+      "method": "applyAllSettings",
+      "params": { "model": "GLM-4.6", "useWebSearch": true }
+    },
+    {
+      "id": "deep_think_toggle",
+      "name": "Deep Think Toggle",
+      "description": "Test Deep Think toggle functionality",
+      "method": "applyAllSettings",
+      "params": { "disableThinking": false }
+    },
+    {
+      "id": "prompt_send",
+      "name": "Prompt Input & Send",
+      "description": "Test sending a prompt message",
+      "method": "sendPrompt",
+      "params": { "prompt": "Hello Z.ai, this is a validation test." }
+    },
+    {
+      "id": "response_extraction",
+      "name": "Response Extraction",
+      "description": "Test extracting response text from the UI",
+      "method": "extractResponse"
+    }
+  ],
+  "results": [
+    {
+      "testId": "readiness_check",
+      "status": "Fail",
+      "timestamp": "2025-11-13T07:24:53Z",
+      "logExcerpt": "Automation started but extraction failed: 'No chatbot found for extraction'. No [Engine LOG] workflow messages found, suggesting automation workflow did not execute properly.",
+      "error": "Extraction returned null or an invalid type - chatbot instance not set in automation state"
+    },
+    {
+      "testId": "model_switch_glm45",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing. Root cause needs to be fixed first.",
+      "error": "Cannot test individual methods - automation workflow not running"
+    },
+    {
+      "testId": "glm45_settings",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    },
+    {
+      "testId": "model_switch_glm46",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    },
+    {
+      "testId": "glm46_settings",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    },
+    {
+      "testId": "deep_think_toggle",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    },
+    {
+      "testId": "prompt_send",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    },
+    {
+      "testId": "response_extraction",
+      "status": "Skipped",
+      "timestamp": "2025-11-13T07:26:00Z",
+      "logExcerpt": "Test skipped - automation workflow not executing.",
+      "error": "Cannot test - automation workflow not running"
+    }
+  ],
+  "fixAttempts": []
+}
+

@@ -18,16 +18,16 @@ class AutomationError extends StateError {
     this.diagnostics = const {},
     this.originalError,
     this.stackTrace,
-  })  : timestamp = DateTime.now(),
-        super(
-          _buildErrorMessage(
-            errorCode,
-            location,
-            message,
-            diagnostics,
-            originalError,
-          ),
-        );
+  }) : timestamp = DateTime.now(),
+       super(
+         _buildErrorMessage(
+           errorCode,
+           location,
+           message,
+           diagnostics,
+           originalError,
+         ),
+       );
   final AutomationErrorCode errorCode;
   final String location;
   final Map<String, dynamic> diagnostics;

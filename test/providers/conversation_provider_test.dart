@@ -1,11 +1,13 @@
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +18,16 @@ import '../fakes/fake_javascript_bridge.dart';
 // Helper to allow providers to settle
 extension PumpExtension on ProviderContainer {
   Future<void> pump() => Future<void>.delayed(Duration.zero);
+}
+
+// Test implementation of SelectedPresetIds to avoid Hive dependency
+class _TestSelectedPresetIds extends SelectedPresetIds {
+  _TestSelectedPresetIds(this._value);
+
+  final List<int> _value;
+
+  @override
+  List<int> build() => _value;
 }
 
 void main() {
@@ -55,6 +67,10 @@ void main() {
         javaScriptBridgeProvider(testPresetId1).overrideWithValue(fakeBridge),
         javaScriptBridgeProvider(testPresetId2).overrideWithValue(fakeBridge),
         appDatabaseProvider.overrideWithValue(testDatabase),
+        // Override selectedPresetIdsProvider to avoid Hive dependency in tests
+        selectedPresetIdsProvider.overrideWith(
+          () => _TestSelectedPresetIds([testPresetId1]),
+        ),
       ],
     );
 
@@ -126,7 +142,9 @@ void main() {
   );
 
   test('finalizeTurnWithResponse adds message and clears staging', () async {
-    final notifier = container.read(conversationActionsProvider.notifier);
+    final orchestrator = container.read(
+      automationOrchestratorProvider.notifier,
+    );
     container
         .read(stagedResponsesProvider.notifier)
         .addOrUpdate(
@@ -138,7 +156,7 @@ void main() {
           ),
         );
 
-    await notifier.finalizeTurnWithResponse('Final chosen response.');
+    await orchestrator.finalizeTurnWithResponse('Final chosen response.');
     await container.pump();
 
     final conversation = await container.read(conversationProvider.future);
@@ -147,5 +165,44 @@ void main() {
 
     final staged = container.read(stagedResponsesProvider);
     expect(staged, isEmpty);
+  });
+
+  test('editAndResendPrompt truncates conversation and resends', () async {
+    final notifier = container.read(conversationActionsProvider.notifier);
+
+    // Add initial messages
+    await notifier.addMessage(
+      'First message',
+      isFromUser: true,
+      conversationId: container.read(activeConversationIdProvider)!,
+    );
+    await notifier.addMessage(
+      'First response',
+      isFromUser: false,
+      conversationId: container.read(activeConversationIdProvider)!,
+    );
+    await notifier.addMessage(
+      'Second message',
+      isFromUser: true,
+      conversationId: container.read(activeConversationIdProvider)!,
+    );
+    await container.pump();
+
+    // Get the message ID of the first message
+    final conversation = await container.read(conversationProvider.future);
+    final firstMessageId = conversation[0].id;
+
+    // Edit and resend the first message
+    await notifier.editAndResendPrompt(firstMessageId, 'Edited first message');
+    await container.pump();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // Verify conversation was truncated (only edited message remains)
+    final updatedConversation = await container.read(
+      conversationProvider.future,
+    );
+    expect(updatedConversation.length, 1);
+    expect(updatedConversation[0].text, 'Edited first message');
+    expect(updatedConversation[0].isFromUser, true);
   });
 }

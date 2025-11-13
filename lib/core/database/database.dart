@@ -225,21 +225,10 @@ class AppDatabase extends _$AppDatabase {
 
   // WHY: This method provides a reactive stream for messages in a specific conversation.
   // The UI will automatically rebuild whenever messages in that conversation are modified.
-  Stream<List<Message>> watchMessagesForConversation(int convId) {
+  Stream<List<MessageData>> watchMessagesForConversation(int convId) {
     return (select(
       messages,
-    )..where((t) => t.conversationId.equals(convId))).watch().map((rows) {
-      return rows
-          .map(
-            (row) => Message(
-              id: row.id,
-              text: row.content,
-              isFromUser: row.isFromUser,
-              status: row.status,
-            ),
-          )
-          .toList();
-    });
+    )..where((t) => t.conversationId.equals(convId))).watch();
   }
 
   // NOTE: This class uses both Manager API and Query Builder API intentionally:

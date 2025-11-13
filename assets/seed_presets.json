@@ -24,6 +24,15 @@
     "providerId": "kimi",
     "displayOrder": 3,
     "settings": {}
+  },
+  {
+    "name": "Z-AI GLM-4.6",
+    "providerId": "z_ai",
+    "displayOrder": 4,
+    "settings": {
+      "model": "GLM-4.6",
+      "useWebSearch": false
+    }
   }
 ]
 

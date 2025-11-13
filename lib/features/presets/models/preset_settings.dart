@@ -13,6 +13,8 @@ sealed class PresetSettings with _$PresetSettings {
     // enabling powerful prompt engineering techniques like role-playing or formatting instructions.
     String? promptPrefix,
     String? promptSuffix,
+    bool? useWebSearch,
+    bool? disableThinking,
   }) = _PresetSettings;
 
   factory PresetSettings.fromJson(Map<String, dynamic> json) =>

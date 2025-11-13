@@ -10,16 +10,12 @@ class PresetAccordion extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final presetsAsync = ref.watch(presetsProvider);
-    final selectedIdsAsync = ref.watch(selectedPresetIdsProvider);
+    final selectedIds = ref.watch(selectedPresetIdsProvider);
 
     return presetsAsync.when(
       data: (presets) {
         if (presets.isEmpty) return const SizedBox.shrink();
 
-        final selectedIds = selectedIdsAsync.maybeWhen(
-          data: (ids) => ids,
-          orElse: () => <int>[],
-        );
         final selectedPresets = presets
             .where((p) => selectedIds.contains(p.id))
             .toList();

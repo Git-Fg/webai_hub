@@ -31,7 +31,7 @@ const TIMING = {
 } as const;
 
 // --- Selectors (enhanced fallbacks) ---
-const SELECTORS = {
+export const SELECTORS = {
     NEW_CHAT_BUTTON: 'a[href="/prompts/new_chat"]',
     RUN_SETTINGS_TOGGLE_MOBILE: 'button.runsettings-toggle-button',
     MODEL_SELECTOR_DESKTOP: 'button.model-selector-card',
@@ -94,24 +94,57 @@ const CONFIG = {
 } as const;
 
 // Helper interface for SettingsManager to access chatbot methods
-interface ChatbotHelpers {
+/**
+ * Interface defining the dependencies required by SettingsManager.
+ * This follows the Dependency Inversion Principle by allowing SettingsManager
+ * to depend on abstractions rather than concrete implementations.
+ */
+export interface ISettingsManagerDependencies {
+  /**
+   * Retries an operation with exponential backoff
+   * @param operation The async operation to retry
+   * @param operationName Name of the operation for logging
+   * @param maxRetries Maximum number of retry attempts
+   * @param delayMs Initial delay between retries in milliseconds
+   */
   retryOperation<T>(
     operation: () => Promise<T>,
     operationName: string,
     maxRetries?: number,
     delayMs?: number
   ): Promise<T>;
+  
+  /**
+   * Creates an error with contextual information
+   * @param operation The operation that failed
+   * @param message Error message
+   * @param additionalContext Additional context for debugging
+   */
   createErrorWithContext(
     operation: string,
     message: string,
     additionalContext?: string
   ): Error;
+  
+  /**
+   * Opens the settings panel
+   */
   openSettingsPanel(): Promise<void>;
+  
+  /**
+   * Closes the settings panel
+   */
   closeSettingsPanel(): Promise<void>;
 }
 
 class SettingsManager {
-  constructor(private chatbot: ChatbotHelpers) {}
+  constructor(private chatbot: ISettingsManagerDependencies) {
+    // Validate that all required methods are provided
+    if (!chatbot.retryOperation || !chatbot.createErrorWithContext || 
+        !chatbot.openSettingsPanel || !chatbot.closeSettingsPanel) {
+      throw new Error('SettingsManager requires all dependency methods to be implemented');
+    }
+  }
 
   // Move _setModel, _setTemperature, _setTopP, etc. here
   // Make them public within this class
@@ -420,6 +453,29 @@ class SettingsManager {
     try {
       if (options.model) {
         await this.setModel(options.model);
+        
+        // WHY: Model selection may cause page navigation which closes the settings panel.
+        // After model selection, wait for page to stabilize, then verify the panel is still open.
+        // If it's closed, reopen it and wait for content to load.
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS * 2));
+        
+        const panelStillOpen = document.querySelector(SELECTORS.SETTINGS_PANEL_CLOSE_BUTTON);
+        if (!panelStillOpen) {
+          console.log('[AI Studio LOG] Settings panel closed after model selection, reopening...');
+          await this.chatbot.openSettingsPanel();
+          // Wait for panel content to load after reopening and page navigation
+          // eslint-disable-next-line custom/disallow-timeout-for-waits
+          await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS * 2));
+          
+          // Verify settings panel content is loaded
+          const settingsContentCheck = document.querySelector('.settings-item-column, input[type="number"]');
+          if (!settingsContentCheck) {
+            console.warn('[AI Studio LOG] Settings panel content not yet loaded after reopening, waiting additional time...');
+            // eslint-disable-next-line custom/disallow-timeout-for-waits
+            await new Promise(resolve => setTimeout(resolve, TIMING.UI_STABILIZE_DELAY_MS));
+          }
+        }
       }
       if (options.temperature !== undefined) {
         await this.setTemperature(options.temperature);
@@ -444,7 +500,7 @@ class SettingsManager {
   }
 }
 
-export class AiStudioChatbot implements Chatbot {
+export class AiStudioChatbot implements Chatbot, ISettingsManagerDependencies {
   public settingsManager: SettingsManager;
 
   constructor() {

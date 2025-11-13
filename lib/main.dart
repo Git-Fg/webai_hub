@@ -4,7 +4,7 @@ import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
-import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/companion_overlay_visibility_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
@@ -47,6 +47,10 @@ void main() async {
   // WHY: Open the box that will store our settings. This makes it available
   // synchronously later in the app.
   await Hive.openBox<GeneralSettingsData>('general_settings_box');
+
+  // WHY: Open the box that will store app state (like selected preset IDs).
+  // This makes it available synchronously after app initialization.
+  await Hive.openBox<dynamic>('app_state_box');
 
   // WHY: Create ProviderContainer before runApp to perform startup logic.
   // This allows us to access providers synchronously during initialization.
@@ -153,19 +157,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
     super.dispose();
   }
 
-  // WHY: Helper method to create/update the TabController with proper lifecycle management.
-  // This ensures the controller is always synchronized with the preset count.
-  void _updateTabController(int length) {
-    if (_tabController?.length == length) return; // No change needed
-
-    _tabController?.dispose(); // Dispose the old one if it exists
-    _tabController = TabController(
-      length: length,
-      vsync: this,
-      initialIndex: ref.read(currentTabIndexProvider).clamp(0, length - 1),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final presetsAsync = ref.watch(presetsProvider);
@@ -203,17 +194,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
             ),
             Consumer(
               builder: (context, ref, _) {
-                final status = ref.watch(automationStateProvider);
-                final currentTabIndex = ref.watch(currentTabIndexProvider);
-
-                // Visibility logic is now here, outside the overlay itself
-                final isVisible = status.maybeWhen(
-                      refining: (activePresetId, messageCount, isExtracting) => true,
-                      needsLogin: (onResume) => true,
-                      orElse: () => false,
-                    ) &&
-                    currentTabIndex > 0;
-
+                final isVisible = ref.watch(companionOverlayVisibilityProvider);
                 return Visibility(
                   visible: isVisible,
                   child: CompanionOverlay(overlayKey: _overlayKey),
@@ -229,9 +210,23 @@ class _MainScreenState extends ConsumerState<MainScreen>
                 .where((p) => p.providerId != null)
                 .toList();
             final totalTabs = 1 + presetsWithProviders.length;
-            _updateTabController(totalTabs); // Update controller here
 
-            // Controller is guaranteed to be non-null after _updateTabController
+            // NEW: CONSOLIDATED LOGIC
+            // If controller doesn't exist or its length is wrong, create/update it.
+            if (_tabController == null || _tabController!.length != totalTabs) {
+              _tabController?.dispose(); // Dispose old one if it exists
+              _tabController = TabController(
+                length: totalTabs,
+                vsync: this,
+                // Sync initial index with the provider state
+                initialIndex: ref
+                    .read(currentTabIndexProvider)
+                    .clamp(0, totalTabs - 1),
+              );
+            }
+            // END NEW LOGIC
+
+            // Controller is guaranteed to be non-null after the consolidated logic
             final controller = _tabController;
             if (controller == null) {
               return const SizedBox.shrink();

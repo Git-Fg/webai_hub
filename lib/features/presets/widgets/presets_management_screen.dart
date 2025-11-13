@@ -337,6 +337,13 @@ class _PresetsManagementScreenState
     final suffixController = TextEditingController(
       text: initialSettings?['promptSuffix'] as String? ?? '',
     );
+    // WHY: The setting is 'disableThinking', so the UI should show the opposite state.
+    final useWebSearchNotifier = ValueNotifier<bool>(
+      initialSettings?['useWebSearch'] as bool? ?? true,
+    );
+    final enableThinkingNotifier = ValueNotifier<bool>(
+      !(initialSettings?['disableThinking'] as bool? ?? false),
+    );
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -421,6 +428,43 @@ class _PresetsManagementScreenState
                               keyboardType: TextInputType.number,
                             ),
                           ],
+                          if (configurableSettings.contains(
+                            'useWebSearch',
+                          )) ...[
+                            const SizedBox(height: 16),
+                            ValueListenableBuilder<bool>(
+                              valueListenable: useWebSearchNotifier,
+                              builder: (context, value, _) {
+                                return CheckboxListTile(
+                                  title: const Text('Enable Web Search'),
+                                  value: value,
+                                  onChanged: (newValue) {
+                                    if (newValue != null) {
+                                      useWebSearchNotifier.value = newValue;
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          ],
+                          if (configurableSettings.contains(
+                            'disableThinking',
+                          )) ...[
+                            ValueListenableBuilder<bool>(
+                              valueListenable: enableThinkingNotifier,
+                              builder: (context, value, _) {
+                                return CheckboxListTile(
+                                  title: const Text('Enable K2 Thinking'),
+                                  value: value,
+                                  onChanged: (newValue) {
+                                    if (newValue != null) {
+                                      enableThinkingNotifier.value = newValue;
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          ],
                         ],
                         // Affix fields (shown for both Groups and Presets)
                         const SizedBox(height: 16),
@@ -464,6 +508,16 @@ class _PresetsManagementScreenState
                           if (configurableSettings.contains('topP')) {
                             settings['topP'] =
                                 double.tryParse(topPController.text) ?? 0.95;
+                          }
+                          if (configurableSettings.contains('useWebSearch')) {
+                            settings['useWebSearch'] =
+                                useWebSearchNotifier.value;
+                          }
+                          if (configurableSettings.contains(
+                            'disableThinking',
+                          )) {
+                            settings['disableThinking'] =
+                                !enableThinkingNotifier.value;
                           }
                         }
                         // Always include affixes

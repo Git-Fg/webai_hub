@@ -5,6 +5,7 @@ import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 enum ProviderType {
   aiStudio,
   kimi,
+  zAi,
 }
 
 class ProviderMetadata {
@@ -32,6 +33,12 @@ final Map<ProviderType, ProviderMetadata> providerDetails = {
     id: 'kimi',
     name: 'Kimi',
     url: WebViewConstants.kimiUrl,
-    configurableSettings: [], // Kimi has no configurable settings in the UI yet
+    configurableSettings: ['useWebSearch', 'disableThinking'],
+  ),
+  ProviderType.zAi: const ProviderMetadata(
+    id: 'z_ai',
+    name: 'Z.ai',
+    url: WebViewConstants.zAiUrl,
+    configurableSettings: ['model', 'useWebSearch', 'disableThinking'],
   ),
 };

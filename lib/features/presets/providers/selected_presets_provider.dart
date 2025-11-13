@@ -2,7 +2,6 @@
 
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -12,12 +11,12 @@ const _boxName = 'app_state_box';
 const _lastKey = 'last_used_preset_ids';
 
 // WHY: Service to persist selected preset IDs in Hive
+// WHY: Box is opened synchronously in main.dart, so we can access it directly
 class SelectedPresetsService {
-  Future<Box<dynamic>> get _box async => Hive.openBox<dynamic>(_boxName);
+  Box<dynamic> get _box => Hive.box<dynamic>(_boxName);
 
-  Future<List<int>> getLastUsedPresets() async {
-    final box = await _box;
-    final stored = box.get(_lastKey);
+  List<int> getLastUsedPresets() {
+    final stored = _box.get(_lastKey);
     if (stored is List) {
       return stored.cast<int>();
     }
@@ -25,8 +24,7 @@ class SelectedPresetsService {
   }
 
   Future<void> setLastUsedPresets(List<int> presetIds) async {
-    final box = await _box;
-    await box.put(_lastKey, presetIds);
+    await _box.put(_lastKey, presetIds);
   }
 }
 
@@ -38,64 +36,60 @@ SelectedPresetsService selectedPresetsService(Ref ref) {
 // WHY: This provider holds the IDs of presets the user has selected
 // in the Hub UI. It supports both single and multi-selection modes.
 // It's kept alive to remember the user's choice across the app.
+// WHY: Box is opened synchronously in main.dart, so we can load the initial
+// value synchronously and return List<int> directly instead of AsyncValue.
 @Riverpod(keepAlive: true)
 class SelectedPresetIds extends _$SelectedPresetIds {
   @override
-  Future<List<int>> build() async {
+  List<int> build() {
     final service = ref.read(selectedPresetsServiceProvider);
-    final lastUsed = await service.getLastUsedPresets();
+    final lastUsed = service.getLastUsedPresets();
 
     if (lastUsed.isNotEmpty) {
       return lastUsed;
     }
 
     // Set a default if no saved value exists.
-    final presets = await ref.read(presetsProvider.future);
-    return presets.isNotEmpty ? [presets.first.id] : [];
+    // WHY: We can't await presetsProvider here since build() is synchronous.
+    // The default will be set when presets are first loaded via a listener or
+    // the UI will handle empty selection gracefully.
+    return [];
   }
 
   // WHY: Set a single preset (replaces current selection)
   void setSingle(int presetId) {
-    state = AsyncData([presetId]);
+    state = [presetId];
     _persist();
   }
 
   // WHY: Toggle a preset in the selection (for multi-select mode)
   void toggle(int presetId) {
-    final current = state.maybeWhen(
-      data: (ids) => ids,
-      orElse: () => <int>[],
-    );
-    final newList = List<int>.from(current);
+    final newList = List<int>.from(state);
     if (newList.contains(presetId)) {
       newList.remove(presetId);
     } else {
       newList.add(presetId);
     }
-    state = AsyncData(newList);
+    state = newList;
     _persist();
   }
 
   // WHY: Set multiple presets at once (replaces current selection)
   void setMultiple(List<int> presetIds) {
-    state = AsyncData(List<int>.from(presetIds));
+    state = List<int>.from(presetIds);
     _persist();
   }
 
   // WHY: Clear all selections
   void clear() {
-    state = const AsyncData([]);
+    state = [];
     _persist();
   }
 
   // WHY: Persist the selection asynchronously
   void _persist() {
-    if (state.hasValue) {
-      unawaited(
-        ref
-            .read(selectedPresetsServiceProvider)
-            .setLastUsedPresets(state.requireValue),
-      );
-    }
+    unawaited(
+      ref.read(selectedPresetsServiceProvider).setLastUsedPresets(state),
+    );
   }
 }

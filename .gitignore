@@ -72,3 +72,5 @@ app.*.map.json
 
 # Environment variables (contains sensitive cookies)
 .env
+
+playwright/cookies

@@ -35,10 +35,12 @@ class BridgeDiagnostics {
       lastErrorTimestamp: clearLastError
           ? null
           : (lastErrorTimestamp ?? this.lastErrorTimestamp),
-      lastErrorCode:
-          clearLastError ? null : (lastErrorCode ?? this.lastErrorCode),
-      lastErrorLocation:
-          clearLastError ? null : (lastErrorLocation ?? this.lastErrorLocation),
+      lastErrorCode: clearLastError
+          ? null
+          : (lastErrorCode ?? this.lastErrorCode),
+      lastErrorLocation: clearLastError
+          ? null
+          : (lastErrorLocation ?? this.lastErrorLocation),
       bridgeSignaledReadyTimestamp: clearBridgeReady
           ? null
           : (bridgeSignaledReadyTimestamp ?? this.bridgeSignaledReadyTimestamp),
@@ -54,8 +56,8 @@ class BridgeDiagnostics {
       'lastErrorTimestamp': lastErrorTimestamp?.toIso8601String(),
       'lastErrorCode': lastErrorCode,
       'lastErrorLocation': lastErrorLocation,
-      'bridgeSignaledReadyTimestamp':
-          bridgeSignaledReadyTimestamp?.toIso8601String(),
+      'bridgeSignaledReadyTimestamp': bridgeSignaledReadyTimestamp
+          ?.toIso8601String(),
       'webViewCreatedTimestamp': webViewCreatedTimestamp?.toIso8601String(),
     };
   }

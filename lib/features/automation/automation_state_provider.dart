@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -26,35 +25,6 @@ sealed class AutomationStateData with _$AutomationStateData {
   const factory AutomationStateData.needsLogin({
     Future<void> Function()? onResume,
   }) = _NeedsLogin;
-
-  String get title => when(
-    idle: () => '',
-    sending: (prompt) => 'Phase 1: Sending prompt...',
-    observing: () => 'Phase 2: Assistant is responding...',
-    refining: (activePresetId, messageCount, isExtracting) =>
-        'Phase 3: Ready for refinement.',
-    failed: () => 'Automation Failed.',
-    needsLogin: (onResume) =>
-        'Please sign in to your provider Account to continue.',
-  );
-
-  IconData get icon => when(
-    idle: () => Icons.info,
-    sending: (prompt) => Icons.send,
-    observing: () => Icons.visibility,
-    refining: (activePresetId, messageCount, isExtracting) => Icons.edit,
-    failed: () => Icons.error,
-    needsLogin: (onResume) => Icons.login,
-  );
-
-  Color get color => when(
-    idle: () => Colors.grey,
-    sending: (prompt) => Colors.blue,
-    observing: () => Colors.orange,
-    refining: (activePresetId, messageCount, isExtracting) => Colors.green,
-    failed: () => Colors.red,
-    needsLogin: (onResume) => Colors.amber,
-  );
 }
 
 @Riverpod(keepAlive: true)

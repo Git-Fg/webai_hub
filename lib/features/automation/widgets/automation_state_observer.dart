@@ -1,6 +1,7 @@
 // lib/features/automation/widgets/automation_state_observer.dart
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
 import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,13 +20,13 @@ class AutomationStateObserver extends ConsumerWidget {
       next.whenOrNull(
         sending: (prompt) {
           ElegantNotification.info(
-            title: Text(next.title),
+            title: Text(next.displayTitle),
             description: const Text('Configuring model and sending prompt...'),
           ).show(context);
         },
         observing: () {
           ElegantNotification.info(
-            title: Text(next.title),
+            title: Text(next.displayTitle),
             description: const Text(
               'Waiting for the AI to complete its response in the WebView.',
             ),
@@ -33,7 +34,7 @@ class AutomationStateObserver extends ConsumerWidget {
         },
         failed: () {
           ElegantNotification.error(
-            title: Text(next.title),
+            title: Text(next.displayTitle),
             description: const Text(
               'An error occurred. Check the logs for details.',
             ),

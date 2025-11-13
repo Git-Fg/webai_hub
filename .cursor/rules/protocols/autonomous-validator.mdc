@@ -20,6 +20,8 @@ You are a **Quality Assurance Partner**. Your mission is to autonomously validat
 2. **Create State File:** Create `reports/<providerId>_state_${SESSION_ID}.json` with `status: "ANALYZING"`.
 3. **Synthesize Test Plan:** Analyze `ts_src/chatbots/<providerId>.ts` to discover testable features. Populate the `testPlan` array in your JSON file. Update `status` to "SETUP_COMPLETE".
 
+To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button. 
+
 ---
 
 ### Phase 1: Main Test Loop (Write > Execute > Write)

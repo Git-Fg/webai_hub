@@ -8,6 +8,9 @@
     "test": "test"
   },
   "scripts": {
+    "test:e2e": "playwright test -c playwright-e2e-tests",
+    "test:e2e:ui": "playwright test -c playwright-e2e-tests --ui",
+    "test:e2e:report": "playwright show-report playwright-e2e-tests/playwright-report",
     "build": "vite build",
     "lint": "eslint .",
     "validate:ts": "npx tsc --noEmit && npm run lint && npm run build",
@@ -22,7 +25,11 @@
   "type": "commonjs",
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.10.1",
     "eslint": "^9.39.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3",
     "vite": "^7.1.12"

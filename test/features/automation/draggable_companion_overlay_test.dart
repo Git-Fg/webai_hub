@@ -55,7 +55,13 @@ void main() {
     expect(overlayFinder, findsOneWidget);
 
     // Perform a large drag; the internal logic should clamp within screen bounds.
-    await tester.drag(overlayFinder, const Offset(10000, 10000));
+    // WHY: Suppress warning about drag coordinates being outside bounds - this is expected
+    // behavior as we're testing the clamping logic
+    await tester.drag(
+      overlayFinder,
+      const Offset(10000, 10000),
+      warnIfMissed: false,
+    );
     await tester.pump();
 
     final state = spy.value;
@@ -65,7 +71,12 @@ void main() {
     expect(state.dy.isFinite, isTrue);
 
     // Now drag negatively beyond bounds and ensure it still remains finite.
-    await tester.drag(overlayFinder, const Offset(-20000, -20000));
+    // WHY: Suppress warning about drag coordinates being outside bounds
+    await tester.drag(
+      overlayFinder,
+      const Offset(-20000, -20000),
+      warnIfMissed: false,
+    );
     await tester.pump();
 
     final state2 = spy.value;

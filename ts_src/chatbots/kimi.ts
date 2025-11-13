@@ -1,12 +1,12 @@
 // ts_src/chatbots/kimi.ts
 
-import { Chatbot } from '../types/chatbot';
-import { waitForElementWithin } from '../utils/wait-for-element';
+import { Chatbot, AutomationOptions } from '../types/chatbot';
+import { waitForElementWithin, waitForElementByText } from '../utils/wait-for-element';
 import { waitForActionableElement } from '../utils/wait-for-actionable-element';
 import { getModifiedTimeout } from '../utils/timeout';
 
 // --- Sélecteurs validés pour Kimi ---
-const SELECTORS = {
+export const SELECTORS = {
   LOGIN_BUTTON: 'button.login-button',
   PROMPT_INPUT: 'div[contenteditable=true]',
   SEND_BUTTON_CONTAINER: '.send-button-container',
@@ -15,6 +15,10 @@ const SELECTORS = {
   RESPONSE_CONTAINER: '.segment-content',
   RESPONSE_TEXT: '.segment-content > div:first-child',
   COPY_BUTTON: '.segment-assistant-actions-content div[data-v-10d40aa8]',
+  SETTINGS_PANEL_TOGGLE: '.option-item',
+  TOOLKIT_ITEM_CONTAINER: '.toolkit-item',
+  SWITCH_INPUT: 'input[type="checkbox"]',
+  SWITCH_LABEL: 'label.switch',
 };
 
 class KimiChatbot implements Chatbot {
@@ -34,6 +38,74 @@ class KimiChatbot implements Chatbot {
     // event-driven waiting instead of polling. This checks for visibility, stability, and actionability.
     await waitForActionableElement([SELECTORS.PROMPT_INPUT], 'Prompt Input');
     console.log('[Kimi] UI is ready.');
+  }
+
+  async applyAllSettings(options: AutomationOptions): Promise<void> {
+    const hasKimiSettings = options.useWebSearch !== undefined || options.disableThinking !== undefined;
+    if (!hasKimiSettings) {
+      console.log('[Kimi] No specific settings to apply.');
+      return;
+    }
+
+    console.log('[Kimi] Applying settings:', { useWebSearch: options.useWebSearch, disableThinking: options.disableThinking });
+
+    const settingsButton = await waitForActionableElement<HTMLElement>(
+      [SELECTORS.SETTINGS_PANEL_TOGGLE], 
+      'Settings Panel Toggle'
+    );
+
+    settingsButton.click();
+    // WHY: Wait for panel animation to complete before interacting with switches
+    // eslint-disable-next-line custom/disallow-timeout-for-waits
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    try {
+      if (options.useWebSearch !== undefined) {
+        await this._toggleSwitch('Search', options.useWebSearch);
+      }
+      if (options.disableThinking !== undefined) {
+        const enableThinking = !options.disableThinking;
+        await this._toggleSwitch('Thinking', enableThinking);
+      }
+    } finally {
+      settingsButton.click(); // Close the panel
+      // WHY: Wait for panel animation to complete before continuing
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  private async _toggleSwitch(label: 'Search' | 'Thinking', shouldBeEnabled: boolean): Promise<void> {
+    try {
+      console.log(`[Kimi] Configuring "${label}" switch to be ${shouldBeEnabled ? 'enabled' : 'disabled'}.`);
+      const labelElement = await waitForElementByText('div', label, 3000);
+      const parentContainer = labelElement.closest(SELECTORS.TOOLKIT_ITEM_CONTAINER);
+      if (!parentContainer) {
+        throw new Error(`Could not find parent container for label "${label}".`);
+      }
+
+      const switchInput = parentContainer.querySelector(SELECTORS.SWITCH_INPUT) as HTMLInputElement;
+      if (!switchInput) {
+        throw new Error(`Could not find checkbox input for "${label}".`);
+      }
+
+      if (switchInput.checked !== shouldBeEnabled) {
+        const clickableSwitch = parentContainer.querySelector(SELECTORS.SWITCH_LABEL) as HTMLElement;
+        if (!clickableSwitch) {
+          throw new Error(`Could not find clickable label for "${label}".`);
+        }
+        clickableSwitch.click();
+        console.log(`[Kimi] Toggled "${label}" switch to ${shouldBeEnabled}.`);
+        // WHY: Wait for UI to update after toggle
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        console.log(`[Kimi] "${label}" switch is already in the desired state.`);
+      }
+    } catch (error) {
+      console.error(`[Kimi] Failed to toggle "${label}" switch.`, error);
+      throw error;
+    }
   }
 
   private async _waitForResponseFinalization(): Promise<void> {

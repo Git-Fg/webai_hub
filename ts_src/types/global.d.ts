@@ -1,5 +1,4 @@
 // ts_src/types/global.d.ts
-import { AutomationOptions } from './chatbot';
 
 declare global {
   interface Window {
@@ -16,7 +15,12 @@ declare global {
     __hasAttemptedRetry?: boolean;
 
     /** Entry point for automation. Called from Dart. */
-    startAutomation: (options: AutomationOptions) => Promise<void>;
+    startAutomation: (
+      providerId: string,
+      prompt: string,
+      settingsJson: string,
+      timeoutModifier: number
+    ) => Promise<void>;
 
     /** Extracts the final response text. Called from Dart. */
     extractFinalResponse: () => Promise<string>;

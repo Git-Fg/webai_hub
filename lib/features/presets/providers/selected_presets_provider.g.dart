@@ -61,7 +61,7 @@ String _$selectedPresetsServiceHash() =>
 const selectedPresetIdsProvider = SelectedPresetIdsProvider._();
 
 final class SelectedPresetIdsProvider
-    extends $AsyncNotifierProvider<SelectedPresetIds, List<int>> {
+    extends $NotifierProvider<SelectedPresetIds, List<int>> {
   const SelectedPresetIdsProvider._()
     : super(
         from: null,
@@ -79,22 +79,30 @@ final class SelectedPresetIdsProvider
   @$internal
   @override
   SelectedPresetIds create() => SelectedPresetIds();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(List<int> value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<List<int>>(value),
+    );
+  }
 }
 
-String _$selectedPresetIdsHash() => r'2150a1ade383b0f9fb7c42858c15e02c87c1f565';
+String _$selectedPresetIdsHash() => r'd7c1534bbdd5662081f4a6709442561eeed73950';
 
-abstract class _$SelectedPresetIds extends $AsyncNotifier<List<int>> {
-  FutureOr<List<int>> build();
+abstract class _$SelectedPresetIds extends $Notifier<List<int>> {
+  List<int> build();
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build();
-    final ref = this.ref as $Ref<AsyncValue<List<int>>, List<int>>;
+    final ref = this.ref as $Ref<List<int>, List<int>>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<AsyncValue<List<int>>, List<int>>,
-              AsyncValue<List<int>>,
+              AnyNotifier<List<int>, List<int>>,
+              List<int>,
               Object?,
               Object?
             >;

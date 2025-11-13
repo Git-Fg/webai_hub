@@ -2,7 +2,7 @@
 
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:flutter/material.dart';
@@ -62,7 +62,7 @@ class CurationPanel extends ConsumerWidget {
                           onPressed: () {
                             unawaited(
                               ref
-                                  .read(conversationActionsProvider.notifier)
+                                  .read(automationOrchestratorProvider.notifier)
                                   .finalizeTurnWithResponse(response.text),
                             );
                           },
@@ -81,7 +81,7 @@ class CurationPanel extends ConsumerWidget {
                     onPressed: () {
                       unawaited(
                         ref
-                            .read(conversationActionsProvider.notifier)
+                            .read(automationOrchestratorProvider.notifier)
                             .synthesizeResponses(),
                       );
                     },

@@ -13,7 +13,7 @@ class PresetSelector extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final presetsAsync = ref.watch(presetsProvider);
-    final selectedIdsAsync = ref.watch(selectedPresetIdsProvider);
+    final selectedIds = ref.watch(selectedPresetIdsProvider);
 
     return presetsAsync.when(
       data: (presets) {
@@ -21,10 +21,6 @@ class PresetSelector extends ConsumerWidget {
           return const SizedBox.shrink();
         }
 
-        final selectedIds = selectedIdsAsync.maybeWhen(
-          data: (ids) => ids,
-          orElse: () => <int>[],
-        );
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Wrap(

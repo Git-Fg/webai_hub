@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
@@ -8,7 +7,6 @@ import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.d
 import 'package:ai_hybrid_hub/features/hub/services/prompt_builder.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
-import 'package:ai_hybrid_hub/features/webview/bridge/automation_options.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -126,41 +124,31 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
           );
       if (!ref.mounted) return;
 
-      // 4. Build AutomationOptions
-      final settings = jsonDecode(preset.settingsJson) as Map<String, dynamic>;
+      // 4. Get settings and providerId
+      final settings = preset.settingsJson;
       final generalSettings = ref.read(generalSettingsProvider).value;
+      final timeoutModifier = generalSettings?.timeoutModifier ?? 1.0;
       final providerId = preset.providerId;
+
       if (providerId == null) {
         throw StateError(
           'Cannot start automation: preset ${preset.id} has no providerId (it may be a group)',
         );
       }
-      final automationOptions = AutomationOptions(
-        providerId: providerId,
-        prompt: promptWithContext,
-        model: settings['model'] as String?,
-        systemPrompt: settings['systemPrompt'] as String?,
-        temperature: settings['temperature'] != null
-            ? (settings['temperature'] as num).toDouble()
-            : null,
-        topP: settings['topP'] != null
-            ? (settings['topP'] as num).toDouble()
-            : null,
-        thinkingBudget: settings['thinkingBudget'] != null
-            ? (settings['thinkingBudget'] as num).toInt()
-            : null,
-        useWebSearch: settings['useWebSearch'] as bool?,
-        disableThinking: settings['disableThinking'] as bool?,
-        urlContext: settings['urlContext'] as bool?,
-        timeoutModifier: generalSettings?.timeoutModifier,
-      );
 
-      // 5. Trigger and await the entire automation cycle
+      // 5. Trigger and await entire automation cycle
       if (!ref.mounted) return;
       final bridge = ref.read(javaScriptBridgeProvider(presetId));
       await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
-      await bridge.startAutomation(automationOptions);
+
+      // WHY: settings is already a JSON string from preset.settingsJson, so we pass it directly
+      await bridge.startAutomation(
+        providerId,
+        promptWithContext,
+        settings,
+        timeoutModifier,
+      );
       if (!ref.mounted) return;
 
       // 6. Extract the response

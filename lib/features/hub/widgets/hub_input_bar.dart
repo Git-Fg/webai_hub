@@ -32,11 +32,7 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
 
     final message = _textController.text.trim();
     // Get selected preset IDs directly from the provider
-    final selectedPresetIdsAsync = ref.read(selectedPresetIdsProvider);
-    final selectedPresetIds = selectedPresetIdsAsync.maybeWhen(
-      data: (ids) => ids,
-      orElse: () => <int>[],
-    );
+    final selectedPresetIds = ref.read(selectedPresetIdsProvider);
     if (selectedPresetIds.isEmpty) {
       // No preset selected, can't send
       return;

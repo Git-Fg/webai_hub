@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
@@ -11,6 +11,39 @@ import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+
+// WHY: Extension to provide UI presentation properties for AutomationStateData.
+// This separates presentation logic from the pure state model.
+extension AutomationStateUI on AutomationStateData {
+  String get displayTitle => when(
+    idle: () => '',
+    sending: (prompt) => 'Phase 1: Sending prompt...',
+    observing: () => 'Phase 2: Assistant is responding...',
+    refining: (activePresetId, messageCount, isExtracting) =>
+        'Phase 3: Ready for refinement.',
+    failed: () => 'Automation Failed.',
+    needsLogin: (onResume) =>
+        'Please sign in to your provider Account to continue.',
+  );
+
+  IconData get displayIcon => when(
+    idle: () => Icons.info,
+    sending: (prompt) => Icons.send,
+    observing: () => Icons.visibility,
+    refining: (activePresetId, messageCount, isExtracting) => Icons.edit,
+    failed: () => Icons.error,
+    needsLogin: (onResume) => Icons.login,
+  );
+
+  Color get displayColor => when(
+    idle: () => Colors.grey,
+    sending: (prompt) => Colors.blue,
+    observing: () => Colors.orange,
+    refining: (activePresetId, messageCount, isExtracting) => Colors.green,
+    failed: () => Colors.red,
+    needsLogin: (onResume) => Colors.amber,
+  );
+}
 
 class CompanionOverlay extends ConsumerWidget {
   const CompanionOverlay({
@@ -190,7 +223,7 @@ class CompanionOverlay extends ConsumerWidget {
                 // WHY: Parent ensures this widget is only built for refining and needsLogin states,
                 // so we always apply border and shadow (idle state cannot occur).
                 border: Border.all(
-                  color: status.color.withValues(alpha: 0.3),
+                  color: status.displayColor.withValues(alpha: 0.3),
                   width: 2,
                 ),
                 boxShadow: [
@@ -245,19 +278,19 @@ class CompanionOverlay extends ConsumerWidget {
               ? null
               : () async {
                   try {
-                    // Get presetId directly from the state
+                    // Get presetId directly from state
                     final refiningState = ref.read(automationStateProvider);
                     refiningState.mapOrNull(
                       refining: (data) {
                         unawaited(
                           ref
-                              .read(conversationActionsProvider.notifier)
+                              .read(automationOrchestratorProvider.notifier)
                               .extractAndReturnToHub(data.activePresetId),
                         );
                       },
                     );
                   } on Object catch (e) {
-                    // WHY: This is the clean, reactive way. The UI layer catches the
+                    // WHY: This is a clean, reactive way. The UI layer catches the
                     // error from the business logic layer and decides how to display it.
                     if (e is AutomationError) {
                       if (!context.mounted) return;
@@ -313,14 +346,14 @@ class CompanionOverlay extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(kSmallPadding),
                 decoration: BoxDecoration(
-                  color: status.color.withValues(alpha: 0.1),
+                  color: status.displayColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(kSmallBorderRadius),
                 ),
                 child: isLoading
                     ? const LoadingIndicator(size: kDefaultIconSize)
                     : Icon(
-                        status.icon,
-                        color: status.color,
+                        status.displayIcon,
+                        color: status.displayColor,
                         size: kDefaultIconSize,
                       ),
               ),
@@ -329,7 +362,7 @@ class CompanionOverlay extends ConsumerWidget {
                 child: Semantics(
                   liveRegion: true,
                   child: Text(
-                    status.title,
+                    status.displayTitle,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: kSmallFontSize,

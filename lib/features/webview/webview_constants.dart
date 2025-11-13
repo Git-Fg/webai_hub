@@ -10,6 +10,9 @@ class WebViewConstants {
   // WHY: Kimi redirects to www.kimi.com, so we need to support both domains
   static const String kimiDomainAlt = 'www.kimi.com';
 
+  static const String zAiUrl = 'https://chat.z.ai/';
+  static const String zAiDomain = 'chat.z.ai';
+
   // WHY: Central list of supported domains for security validation.
   // This prevents script injection into untrusted domains and makes it easier
   // to manage as more providers are added.
@@ -17,5 +20,6 @@ class WebViewConstants {
     aiStudioDomain,
     kimiDomain,
     kimiDomainAlt,
+    zAiDomain,
   ];
 }

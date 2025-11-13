@@ -29,3 +29,7 @@ To explicitly stop the current session without starting a new one, execute:
 ```bash
 bash reports/run_session.sh stop
 ```
+
+### 3. Sending message in the interface
+
+To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button. 
