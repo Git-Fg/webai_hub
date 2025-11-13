@@ -170,19 +170,6 @@ class _MainScreenState extends ConsumerState<MainScreen>
   Widget build(BuildContext context) {
     final presetsAsync = ref.watch(presetsProvider);
 
-    // WHY: Reactively sync TabController when presets change
-    // This ensures the TabController is always in sync with the actual preset count
-    ref.listen(presetsProvider, (_, next) {
-      next.whenData((presets) {
-        final totalTabs = 1 + presets.length;
-        if (_tabController?.length != totalTabs) {
-          setState(() {
-            _updateTabController(totalTabs);
-          });
-        }
-      });
-    });
-
     ref.listen(currentTabIndexProvider, (_, next) {
       if (_tabController?.index != next) {
         _tabController?.animateTo(next);
