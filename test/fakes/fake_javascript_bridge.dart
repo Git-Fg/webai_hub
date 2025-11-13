@@ -37,24 +37,36 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
   }
 
   // --- NEW: Async control for the bridge readiness state ---
-  late Completer<void> _readyCompleter = Completer<void>()..complete();
+  bool _isReady = true;
 
   // Allow tests to simulate a page reload: the bridge becomes not-ready again
   void simulateReload() {
-    _readyCompleter = Completer<void>();
+    _isReady = false;
   }
 
   // Allow tests to mark the bridge as ready again
   void markAsReady() {
-    if (!_readyCompleter.isCompleted) {
-      _readyCompleter.complete();
-    }
+    _isReady = true;
   }
 
   @override
   Future<void> waitForBridgeReady() async {
-    // Explicitly wait until tests mark the bridge as ready
-    await _readyCompleter.future;
+    // Use a polling approach similar to the main implementation
+    const checkInterval = Duration(milliseconds: 50);
+    const maxWaitTime = Duration(seconds: 30);
+    final startTime = DateTime.now();
+    
+    while (!_isReady) {
+      final elapsed = DateTime.now().difference(startTime);
+      if (elapsed >= maxWaitTime) {
+        throw TimeoutException(
+          'Fake bridge did not become ready within the timeout period.',
+          maxWaitTime,
+        );
+      }
+      
+      await Future<void>.delayed(checkInterval);
+    }
   }
 
   @override
@@ -124,8 +136,8 @@ class FakeJavaScriptBridge implements JavaScriptBridgeInterface {
     extractFinalResponseErrorType = ErrorType.none;
     extractFinalResponseValue =
         'This is a fake AI response from the test bridge.';
-    // Reset readiness to completed by default to avoid hanging tests
-    _readyCompleter = Completer<void>()..complete();
+    // Reset readiness to true by default to avoid hanging tests
+    _isReady = true;
   }
 
   @override

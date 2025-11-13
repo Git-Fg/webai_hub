@@ -4,8 +4,6 @@ part 'bridge_diagnostics_provider.g.dart';
 
 class BridgeDiagnostics {
   const BridgeDiagnostics({
-    required this.completerInitialized,
-    required this.completerCompleted,
     required this.webViewControllerExists,
     this.lastErrorTimestamp,
     this.lastErrorCode,
@@ -13,8 +11,6 @@ class BridgeDiagnostics {
     this.bridgeSignaledReadyTimestamp,
     this.webViewCreatedTimestamp,
   });
-  final bool completerInitialized;
-  final bool completerCompleted;
   final bool webViewControllerExists;
   final DateTime? lastErrorTimestamp;
   final String? lastErrorCode;
@@ -23,8 +19,6 @@ class BridgeDiagnostics {
   final DateTime? webViewCreatedTimestamp;
 
   BridgeDiagnostics copyWith({
-    bool? completerInitialized,
-    bool? completerCompleted,
     bool? webViewControllerExists,
     DateTime? lastErrorTimestamp,
     String? lastErrorCode,
@@ -36,8 +30,6 @@ class BridgeDiagnostics {
     bool clearWebViewCreated = false,
   }) {
     return BridgeDiagnostics(
-      completerInitialized: completerInitialized ?? this.completerInitialized,
-      completerCompleted: completerCompleted ?? this.completerCompleted,
       webViewControllerExists:
           webViewControllerExists ?? this.webViewControllerExists,
       lastErrorTimestamp: clearLastError
@@ -58,8 +50,6 @@ class BridgeDiagnostics {
 
   Map<String, dynamic> toMap() {
     return {
-      'completerInitialized': completerInitialized,
-      'completerCompleted': completerCompleted,
       'webViewControllerExists': webViewControllerExists,
       'lastErrorTimestamp': lastErrorTimestamp?.toIso8601String(),
       'lastErrorCode': lastErrorCode,
@@ -76,8 +66,6 @@ class BridgeDiagnosticsState extends _$BridgeDiagnosticsState {
   @override
   BridgeDiagnostics build() {
     return const BridgeDiagnostics(
-      completerInitialized: false,
-      completerCompleted: false,
       webViewControllerExists: false,
     );
   }
@@ -99,7 +87,6 @@ class BridgeDiagnosticsState extends _$BridgeDiagnosticsState {
   void recordBridgeReady() {
     state = state.copyWith(
       bridgeSignaledReadyTimestamp: DateTime.now(),
-      completerCompleted: true,
     );
   }
 
@@ -111,9 +98,8 @@ class BridgeDiagnosticsState extends _$BridgeDiagnosticsState {
   }
 
   void recordCompleterInitialized() {
-    state = state.copyWith(
-      completerInitialized: true,
-    );
+    // This method is no longer needed as completerInitialized is removed.
+    // Keeping it for now to avoid breaking existing calls, but it will do nothing.
   }
 
   void clearError() {
