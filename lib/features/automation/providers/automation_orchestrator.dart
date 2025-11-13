@@ -8,11 +8,9 @@ import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
@@ -144,11 +142,12 @@ $responsesText
     final responseText = await _extractResponse(presetId);
 
     if (ref.mounted) {
-      await _updateLastMessage(
-        responseText,
-        MessageStatus.success,
-        conversationId: activeId,
-      );
+      await ref
+          .read(conversationActionsProvider.notifier)
+          .updateLastAssistantMessage(
+            responseText,
+            MessageStatus.success,
+          );
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
       ref.read(currentTabIndexProvider.notifier).changeTo(0);
     }
@@ -178,11 +177,12 @@ $responsesText
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    await _updateLastMessage(
-      'Automation cancelled by user.',
-      MessageStatus.error,
-      conversationId: activeId,
-    );
+    await ref
+        .read(conversationActionsProvider.notifier)
+        .updateLastAssistantMessage(
+          'Automation cancelled by user.',
+          MessageStatus.error,
+        );
     ref.read(automationStateProvider.notifier).returnToIdle();
 
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
@@ -192,11 +192,12 @@ $responsesText
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    await _updateLastMessage(
-      'Automation failed: $error',
-      MessageStatus.error,
-      conversationId: activeId,
-    );
+    await ref
+        .read(conversationActionsProvider.notifier)
+        .updateLastAssistantMessage(
+          'Automation failed: $error',
+          MessageStatus.error,
+        );
     ref.read(automationStateProvider.notifier).moveToFailed();
   }
 
@@ -227,39 +228,6 @@ $responsesText
       if (ref.mounted) {
         automationNotifier.setExtracting(extracting: false);
       }
-    }
-  }
-
-  Future<void> _updateLastMessage(
-    String text,
-    MessageStatus status, {
-    required int conversationId,
-  }) async {
-    if (!ref.mounted) return;
-
-    final db = ref.read(appDatabaseProvider);
-
-    final query = db.select(db.messages)
-      ..where((t) => t.conversationId.equals(conversationId))
-      ..where((t) => t.status.equals(MessageStatus.sending.name))
-      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-      ..limit(1);
-
-    final messageToUpdate = await query.getSingleOrNull();
-
-    if (messageToUpdate != null) {
-      final updatedMessage = Message(
-        id: messageToUpdate.id,
-        text: text,
-        isFromUser: false,
-        status: status,
-      );
-      await ref
-          .read(messageServiceProvider.notifier)
-          .updateMessage(updatedMessage);
-      await ref
-          .read(conversationServiceProvider.notifier)
-          .updateTimestamp(conversationId);
     }
   }
 }

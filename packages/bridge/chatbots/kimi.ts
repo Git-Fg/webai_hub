@@ -7,6 +7,8 @@ import { getModifiedTimeout } from '../utils/timeout';
 
 // --- Sélecteurs validés pour Kimi ---
 export const SELECTORS = {
+  OK_COMPUTER_DIALOG_BUTTON: '.common-notice-dialog button.kimi-button.plain',
+  TUTORIAL_CLOSE_BUTTON: '.edu-card-popover svg.iconify.close',
   LOGIN_BUTTON: 'button.login-button',
   PROMPT_INPUT: 'div[contenteditable=true]',
   SEND_BUTTON_CONTAINER: '.send-button-container',
@@ -25,6 +27,37 @@ class KimiChatbot implements Chatbot {
 
   async waitForReady(): Promise<void> {
     console.log('[Kimi] Starting readiness check...');
+
+    // WHY: Opportunistically look for any known dialogs and dismiss them.
+    // Using a short timeout ensures we don't wait long if they don't appear.
+    try {
+      // WHY: Dismiss tutorial popover if present - this appears on first visit and can block interaction
+      const closeButton = await waitForActionableElement([SELECTORS.TUTORIAL_CLOSE_BUTTON], 'Tutorial Close Button', 3000, 0);
+      console.log('[Kimi] Found and dismissing tutorial popover...');
+      closeButton.click();
+      // WHY: Allow for the popover dismissal animation to complete before proceeding
+      // eslint-disable-next-line custom/disallow-timeout-for-waits
+      await new Promise(r => setTimeout(r, 500));
+    } catch {
+      // WHY: This is expected if the tutorial does not appear. Log info but continue.
+      console.log('[Kimi] Info: Tutorial popover not found. Skipping dismissal.');
+    }
+
+    try {
+      // WHY: Dismiss "OK Computer" dialog if present - this appears when agent mode is announced
+      const okComputerButton = Array.from(document.querySelectorAll(SELECTORS.OK_COMPUTER_DIALOG_BUTTON))
+                                   .find(el => el.textContent?.trim() === 'Got it') as HTMLElement | undefined;
+      if (okComputerButton) {
+        console.log('[Kimi] Found and dismissing "OK Computer" dialog...');
+        okComputerButton.click();
+        // WHY: Allow for the dialog dismissal animation to complete before proceeding
+        // eslint-disable-next-line custom/disallow-timeout-for-waits
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } catch {
+      // WHY: This is not a critical failure, as dialogs may not always appear.
+      console.log('[Kimi] Info: "OK Computer" dialog not found or failed to dismiss. Continuing...');
+    }
 
     // WHY: Check for login button first - if present, user needs to log in before automation can proceed
     const loginButton = document.querySelector(SELECTORS.LOGIN_BUTTON);

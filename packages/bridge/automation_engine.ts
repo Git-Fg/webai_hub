@@ -109,7 +109,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         timeoutModifier,
       };
       
-      console.log('[Engine LOG] >>> Full automation cycle started by Dart. Options:', JSON.stringify(options, null, 2));
+      console.log('[Engine] >>> Full automation cycle started by Dart. Options:', JSON.stringify(options, null, 2));
       
       window.__hasAttemptedRetry = false;
       window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
@@ -125,29 +125,29 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
 
       await runChatbotWorkflow(chatbot, options);
     } catch (error) {
-      console.error('[Engine LOG] startAutomation error:', error);
+      console.error('[Engine] startAutomation error:', error);
       throw error;
     }
   };
 
   // Global function called by Dart to extract the response
   window.extractFinalResponse = async function(): Promise<string> {
-    console.log('[Engine LOG] extractFinalResponse called');
+    console.log('[Engine] extractFinalResponse called');
     
     const chatbot = automationState.currentChatbot;
     if (!chatbot) {
       const errorMsg = 'No chatbot available for extraction. Automation must be started first.';
-      console.error('[Engine LOG] No chatbot found for extraction');
+      console.error('[Engine] No chatbot found for extraction');
       notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'NO_CHATBOT_INSTANCE', payload: errorMsg });
       throw new Error(errorMsg);
     }
 
     const startTime = Date.now();
-    console.log(`[Engine LOG] Starting extraction with chatbot: ${chatbot.constructor.name}`);
+    console.log(`[Engine] Starting extraction with chatbot: ${chatbot.constructor.name}`);
     
     try {
       // ENHANCED LOGGING: Log DOM state before extraction
-      console.log('[Engine LOG] [ENHANCED] DOM state before extraction:', {
+      console.log('[Engine] [ENHANCED] DOM state before extraction:', {
         url: window.location.href,
         readyState: document.readyState,
         title: document.title,
@@ -156,10 +156,10 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       
       const result = await chatbot.extractResponse();
       const elapsedTime = Date.now() - startTime;
-      console.log(`[Engine LOG] Extraction completed successfully in ${elapsedTime}ms, extracted ${result.length} chars`);
+      console.log(`[Engine] Extraction completed successfully in ${elapsedTime}ms, extracted ${result.length} chars`);
       
       // ENHANCED LOGGING: Log extraction result details
-      console.log('[Engine LOG] [ENHANCED] Extraction result details:', {
+      console.log('[Engine] [ENHANCED] Extraction result details:', {
         success: true,
         resultLength: result.length,
         resultPreview: result.substring(0, 100) + (result.length > 100 ? '...' : ''),
@@ -172,7 +172,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       const elapsedTime = Date.now() - startTime;
       
       // ENHANCED LOGGING: Log detailed error information
-      console.error('[Engine LOG] [ENHANCED] Extraction failed with details:', {
+      console.error('[Engine] [ENHANCED] Extraction failed with details:', {
         success: false,
         errorMessage: errorMessage,
         errorType: error instanceof Error ? error.constructor.name : typeof error,
@@ -192,7 +192,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       
       // Enhanced error with more context
       const enhancedErrorMessage = `Extraction failed: ${errorMessage} (Type: ${error instanceof Error ? error.constructor.name : typeof error}, Time: ${elapsedTime}ms)`;
-      console.error(`[Engine LOG] ${enhancedErrorMessage}`);
+      console.error(`[Engine] ${enhancedErrorMessage}`);
       
       // Notify Dart with enhanced error information
       notifyDart({

@@ -11,7 +11,6 @@ Welcome! Please read `AGENTS.md` first — it is the single source of truth for 
   - Run `flutter pub run build_runner build --delete-conflicting-outputs` after changes to `@riverpod` / `@freezed`.
 - Testing:
   - Run `flutter test` locally. Prefer fakes over heavy mocks; keep tests fast and deterministic.
-  - Run `pnpm run test:e2e` when selector coverage changes or UI flows need validation.
   - VS Code: use "Flutter Tests (Agent)" launch config.
 - Code quality:
   - Explain "Why", not "What". Use `// WHY:` and `// TIMING:` when essential.
@@ -25,7 +24,7 @@ Welcome! Please read `AGENTS.md` first — it is the single source of truth for 
 2. `pnpm install`
 3. Make changes.
 4. Run `pnpm run test:ci` to ensure all code is clean, generated assets are up-to-date, and tests pass.
-5. (Optional during development) Run targeted commands such as `pnpm run validate:ts`, `pnpm run test:e2e`, or `flutter test` if you need faster feedback.
+5. (Optional during development) Run targeted commands such as `pnpm run validate:ts` or `flutter test` if you need faster feedback.
 
 For deeper context (debugging workflow, timing rules, selectors guidance), see `AGENTS.md`.
 

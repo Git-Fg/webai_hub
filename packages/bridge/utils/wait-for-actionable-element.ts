@@ -85,6 +85,33 @@ async function isStable(element: HTMLElement, timeoutMs: number = DEFAULT_ANIMAT
 }
 
 /**
+ * Waits for all animations on a given element to finish.
+ * @param element The element to observe.
+ * @param timeoutMs The maximum time to wait.
+ */
+export async function waitForAnimationEnd(element: HTMLElement, timeoutMs: number = DEFAULT_ANIMATION_TIMEOUT_MS): Promise<void> {
+  try {
+    // WHY: Use subtree: true to capture animations on child elements
+    const animations = element.getAnimations({ subtree: true });
+    
+    if (animations.length === 0) {
+      return;
+    }
+
+    // WHY: Wait for all animations to finish, with timeout fallback to prevent infinite waits
+    const animationPromises = animations.map(anim => anim.finished);
+    await Promise.race([
+      Promise.all(animationPromises),
+      // WHY: Timeout for animation completion check, not a UI wait
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+  } catch {
+    // If getAnimations is not available or throws, resolve immediately.
+    return;
+  }
+}
+
+/**
  * Checks if an element is enabled (not disabled or inert).
  */
 function isEnabled(element: HTMLElement): boolean {

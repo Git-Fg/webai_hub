@@ -46,15 +46,11 @@ assets/
 └── js/
     └── bridge.js               # Generated JS bundle
 packages/
-├── bridge/                     # Automation engine source (compiled into assets/js/bridge.js)
-│   ├── automation_engine.ts
-│   ├── chatbots/
-│   ├── types/
-│   └── utils/
-└── e2e-tests/                  # Playwright selector validation suite
-    ├── fixtures/
-    ├── tests/
-    └── playwright.config.ts
+└── bridge/                     # Automation engine source (compiled into assets/js/bridge.js)
+    ├── automation_engine.ts
+    ├── chatbots/
+    ├── types/
+    └── utils/
 ```
 
 ## 3. Key Features & Workflows

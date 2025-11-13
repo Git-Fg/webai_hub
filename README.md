@@ -205,9 +205,5 @@ packages/
 │   ├── chatbots/
 │   ├── types/
 │   └── utils/
-├── e2e-tests/       # Playwright-based selector validation suite
-│   ├── fixtures/
-│   ├── tests/
-│   └── playwright.config.ts
 └── manual_validation/ # Developer utilities for manual selector validation
 ```

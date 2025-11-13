@@ -51,8 +51,6 @@ export default tseslint.config(
       '**/assets/js/bridge.js',
       '**/manual_validation/**',
       '**/eslint_rules/**',
-      '**/playwright-report/**',
-      '**/test-results/**',
     ],
   },
 );

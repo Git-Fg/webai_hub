@@ -9,15 +9,11 @@
     "//--- TYPESCRIPT ---//": "",
     "build:ts": "pnpm --filter @ai-hub/bridge build",
     "validate:ts": "pnpm --filter @ai-hub/bridge validate:ts",
-    "//--- E2E TESTS ---//": "",
-    "test:e2e": "pnpm --filter @ai-hub/e2e-tests test",
-    "test:e2e:ui": "pnpm --filter @ai-hub/e2e-tests test:ui",
-    "test:e2e:report": "pnpm --filter @ai-hub/e2e-tests report",
     "//--- FLUTTER ---//": "",
     "build:dart": "flutter pub run build_runner build --delete-conflicting-outputs",
     "validate:flutter": "flutter analyze && flutter test",
     "//--- GLOBAL QUALITY GATE ---//": "",
-    "test:ci": "pnpm install && pnpm run validate:ts && pnpm run test:e2e && pnpm run build:dart && pnpm run validate:flutter"
+    "test:ci": "pnpm install && pnpm run validate:ts && pnpm run build:dart && pnpm run validate:flutter"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

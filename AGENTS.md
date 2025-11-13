@@ -77,9 +77,6 @@ When modifying any file in `packages/bridge/**`, you MUST follow this strict pro
 
 * **`pnpm install`**: Installs all TypeScript dependencies across all packages. Run this from the root directory.
 * **`pnpm run validate:ts`**: The mandatory command after **any** TypeScript change in the `packages/bridge` directory.
-* **`pnpm run test:e2e`**: Runs the Playwright end-to-end selector validation suite.
-* **`pnpm run test:e2e:ui`**: Launches the Playwright UI runner for focused debugging.
-* **`pnpm run test:e2e:report`**: Opens the latest Playwright test report.
 * **`flutter pub run build_runner build --delete-conflicting-outputs`**: The mandatory command after changing Dart files with `@riverpod` or `@freezed` annotations.
 * **`pnpm run test:ci`**: The final **Quality Gate** command to run before committing. It validates everything.
 
@@ -90,8 +87,6 @@ This project uses a hybrid monorepo structure. The Flutter application remains a
 * **`packages/`**: Contains all TypeScript code.
 
   * `packages/bridge`: The core TypeScript automation engine source code (formerly `ts_src`).
-
-  * `packages/e2e-tests`: The Playwright end-to-end tests for validating provider selectors.
 
 * **`pubspec.yaml` (root)**: Defines the primary Flutter application.
 

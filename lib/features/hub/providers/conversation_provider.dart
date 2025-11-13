@@ -10,6 +10,7 @@ import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.da
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
+import 'package:drift/drift.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
@@ -113,6 +114,43 @@ class ConversationActions extends _$ConversationActions {
           activeId,
           newPrompt.isEmpty ? null : newPrompt,
         );
+  }
+
+  // WHY: Centralizes all conversation-related message updates in ConversationActions
+  // to maintain a single source of truth for mutations, replacing the previous
+  // _updateLastMessage in AutomationOrchestrator.
+  Future<void> updateLastAssistantMessage(
+    String text,
+    MessageStatus status,
+  ) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null || !ref.mounted) return;
+
+    final db = ref.read(appDatabaseProvider);
+
+    final query = db.select(db.messages)
+      ..where((t) => t.conversationId.equals(activeId))
+      ..where((t) => t.isFromUser.equals(false))
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+      ..limit(1);
+
+    final messageToUpdate = await query.getSingleOrNull();
+
+    if (messageToUpdate != null) {
+      final updatedMessage = Message(
+        id: messageToUpdate.id,
+        text: text,
+        isFromUser: false,
+        status: status,
+      );
+      // Delegate to the service layer
+      await ref
+          .read(messageServiceProvider.notifier)
+          .updateMessage(updatedMessage);
+      await ref
+          .read(conversationServiceProvider.notifier)
+          .updateTimestamp(activeId);
+    }
   }
 
   Future<void> editAndResendPrompt(String messageId, String newText) async {
