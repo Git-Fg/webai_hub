@@ -91,28 +91,43 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
   }
 
   // Global function called by Dart to start automation
-  window.startAutomation = async function(options: AutomationOptions): Promise<void> {
-    console.log('[Engine LOG] >>> Full automation cycle started by Dart. Options:', JSON.stringify(options, null, 2));
-    
-    // WHY: Reset the retry flag for each new automation run.
-    window.__hasAttemptedRetry = false;
-    
-    // Set the global modifier for this run
-    window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
-    console.log(`[Engine] Using timeout modifier: ${window.__AI_TIMEOUT_MODIFIER__}x`);
-    
-    const chatbot = getChatbot(options.providerId);
-    if (!chatbot) {
-      notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_PROVIDER', payload: `Provider "${options.providerId}" is not supported.` });
-      return;
+  window.startAutomation = async function(
+    providerId: string,
+    prompt: string,
+    settingsJson: string,
+    timeoutModifier: number,
+  ): Promise<void> {
+    try {
+      // Parse the settings from the JSON string passed by Dart
+      const settings = JSON.parse(settingsJson);
+
+      // Construct the full AutomationOptions object internally
+      const options: AutomationOptions = {
+        providerId,
+        prompt,
+        ...settings,
+        timeoutModifier,
+      };
+      
+      console.log('[Engine LOG] >>> Full automation cycle started by Dart. Options:', JSON.stringify(options, null, 2));
+      
+      window.__hasAttemptedRetry = false;
+      window.__AI_TIMEOUT_MODIFIER__ = options.timeoutModifier ?? 1.0;
+      console.log(`[Engine] Using timeout modifier: ${window.__AI_TIMEOUT_MODIFIER__}x`);
+      
+      const chatbot = getChatbot(options.providerId);
+      if (!chatbot) {
+        notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'UNSUPPORTED_PROVIDER', payload: `Provider "${options.providerId}" is not supported.` });
+        return;
+      }
+
+      automationState.currentChatbot = chatbot;
+
+      await runChatbotWorkflow(chatbot, options);
+    } catch (error) {
+      console.error('[Engine LOG] startAutomation error:', error);
+      throw error;
     }
-
-    // WHY: Store chatbot instance in state for use in extractFinalResponse
-    automationState.currentChatbot = chatbot;
-
-    // WHY: Delegate the entire workflow to the reusable workflow function
-    // This makes the automation lifecycle explicit and maintainable
-    await runChatbotWorkflow(chatbot, options);
   };
 
   // Global function called by Dart to extract the response
