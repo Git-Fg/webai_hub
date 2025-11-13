@@ -68,7 +68,7 @@ fi
     echo "--- Started at: $(date -u +%Y-%m-%dT%H:%M:%SZ) ---" >> "$LOG_FILE"
 
     echo "[SETUP] Building TypeScript assets..." >> "$LOG_FILE" 2>&1
-    npm run build >> "$LOG_FILE" 2>&1
+    pnpm run validate:ts >> "$LOG_FILE" 2>&1
     if [ $? -ne 0 ]; then
         echo "[FATAL] NPM BUILD FAILED." >> "$LOG_FILE" 2>&1
         exit 1

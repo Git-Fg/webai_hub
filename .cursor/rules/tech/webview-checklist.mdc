@@ -1,6 +1,6 @@
 ---
-description: A diagnostic checklist for debugging issues related to the WebView and the Dart-JS bridge.
-globs: lib/features/webview/**/*.dart, ts_src/**/*.ts
+description: Diagnostic checklist for debugging issues related to the WebView and the Dart-JS bridge.
+globs: lib/features/webview/**/*.dart, packages/bridge/**/*.ts
 alwaysApply: false
 ---
 # WebView Debugging Checklist
@@ -9,8 +9,8 @@ When debugging a WebView-related issue, perform these verification steps in orde
 
 ## 1. Verify Build State
 
-- **Condition:** You have modified files in `ts_src/**`.
-- **Action:** You **MUST** run `npm run build`. The app loads the compiled `assets/js/bridge.js`, not your source file. An outdated bundle is a common cause of failure.
+- **Condition:** You have modified files in `packages/bridge/**`.
+- **Action:** You **MUST** run `pnpm run validate:ts`. The app loads the compiled `assets/js/bridge.js`, not your source file. An outdated bundle is a common cause of failure.
 
 ## 2. Check for JavaScript Runtime Errors
 

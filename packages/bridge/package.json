@@ -1,0 +1,15 @@
+{
+  "name": "@ai-hub/bridge",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "lint": "pnpm exec eslint .",
+    "validate:ts": "pnpm exec tsc --noEmit && pnpm run lint && pnpm run build"
+  },
+  "devDependencies": {
+    "@ai-hub/config": "workspace:*",
+    "eslint": "9.39.1",
+    "vite": "^7.2.2"
+  }
+}

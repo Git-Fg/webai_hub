@@ -1,0 +1,14 @@
+# Node.js / pnpm
+*/node_modules/
+
+# TypeScript build artifacts
+bridge/dist/
+bridge/assets/
+bridge/coverage/
+
+# Playwright artifacts
+e2e-tests/test-results/
+e2e-tests/playwright-report/
+e2e-tests/.cache/
+e2e-tests/.auth/
+

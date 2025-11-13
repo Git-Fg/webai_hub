@@ -21,7 +21,7 @@ Your mission is to autonomously resolve a reported issue by operating within a p
 
 3. **Phase 3: The Solution (Implement a Fix)**
     * Based on your definitive hypothesis, implement a code change.
-    * If you modify TypeScript, you **MUST** run `npm run build`.
+    * If you modify TypeScript, you **MUST** run `pnpm run validate:ts`.
 
 4. **Phase 4: The Confirmation (Verify the Fix)**
     * Establish a new, clean environment using the `@core/pattern-session-management` protocol.

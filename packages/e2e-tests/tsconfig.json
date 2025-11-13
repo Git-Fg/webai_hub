@@ -1,0 +1,11 @@
+{
+  "extends": "@ai-hub/config/tsconfig",
+  "compilerOptions": {
+    "module": "commonjs",
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["../bridge/*"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

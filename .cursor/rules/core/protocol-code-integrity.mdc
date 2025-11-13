@@ -27,10 +27,10 @@ You MUST follow these steps for any and all code modifications.
 
 #### 3. After Implementation: Pass the Unified Quality Gate
 
-- After implementing your changes, you MUST run the single, unified command that validates the entire codebase:
+- After implementing your changes, you MUST run the single, unified command from the repository root that validates the entire codebase:
 
   ```bash
-  npm run test:ci
+  pnpm run test:ci
   ```
 
 - This command automatically handles:
@@ -42,7 +42,7 @@ You MUST follow these steps for any and all code modifications.
 
 #### 4. On Failure: The Static Analysis Remediation Protocol
 
-If the `npm run test:ci` command reports any static analysis issues (errors, warnings, or info), your work is not complete. You MUST resolve every reported issue by following this protocol:
+If the `pnpm run test:ci` command reports any static analysis issues (errors, warnings, or info), your work is not complete. You MUST resolve every reported issue by following this protocol:
 
 ##### 4.1. Triage by Severity
 
@@ -89,4 +89,4 @@ console.log('Forgot scope');
 
 ##### 4.3. Final Verification
 
-After addressing all reported issues, you MUST re-run `npm run test:ci` until it passes without any errors or unhandled warnings. Only then is your work considered complete and ready for version control.
+After addressing all reported issues, you MUST re-run `pnpm run test:ci` from the repository root until it passes without any errors or unhandled warnings. Only then is your work considered complete and ready for version control.

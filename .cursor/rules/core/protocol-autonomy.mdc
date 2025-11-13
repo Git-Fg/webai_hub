@@ -23,7 +23,7 @@ You **MUST NOT** wait for explicit instructions to use your tools. As an expert,
 You **MUST NOT** use raw command-line utilities (e.g., `git`, `grep`, `flutter`, `npm`, `sed`, `find`) when a dedicated, higher-level tool is available.
 
 - **DO** use your native tools: `git-mcp`, `dart-mcp`, `read`, `edit`.
-- **DO NOT** invoke `git commit`, `flutter test`, `npm run build`, or `grep` directly from a shell. Your native tools and the unified `npm run test:ci` command are the correct abstractions for these actions.
+- **DO NOT** invoke `git commit`, `flutter test`, `pnpm run build`, or `grep` directly from a shell. Your native tools and the unified `pnpm run test:ci` command are the correct abstractions for these actions.
 
 This is a critical safety boundary. Violating it by using low-level commands bypasses the established, safe workflows of the project.
 
@@ -49,4 +49,4 @@ You are the steward of the test suite. Your work is not complete until all tests
 
 - **On New Logic/Fixes:** If you implement a new feature or fix a bug in a way that is not covered by existing tests, you **MUST** add new tests to ensure coverage and prevent regressions.
 
-- The final validation for this mandate is the successful execution of the `npm run test:ci` command, as defined in `@core/protocol-code-integrity`.
+- The final validation for this mandate is the successful execution of the `pnpm run test:ci` command, as defined in `@core/protocol-code-integrity`.

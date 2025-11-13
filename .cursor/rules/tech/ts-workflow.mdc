@@ -1,23 +1,23 @@
 ---
 description: The mandatory workflow for making any changes to TypeScript files.
-globs: ts_src/**/*.ts
+globs: packages/bridge/**/*.ts
 alwaysApply: false
 ---
 ## TypeScript Workflow — MANDATORY
 
-- After **ANY** modification in the `ts_src/**` directory, you **MUST** run this single command to validate and build your changes:
-  - `npm run validate:ts`
+- After **ANY** modification in the `packages/bridge/**` directory, you **MUST** run this single command from the repository root to validate and build your changes:
+  - `pnpm run validate:ts`
 
 ## Why
 
 - This command performs three critical actions in sequence:
   1. **Lints** your code for style consistency.
   2. **Type-checks** your code for correctness.
-  3. **Compiles** the TypeScript source in `ts_src/` into a single JavaScript bundle at `assets/js/bridge.js`.
+  3. **Compiles** the TypeScript source in `packages/bridge/` into a single JavaScript bundle at `assets/js/bridge.js`.
 
 - The Flutter WebView loads `assets/js/bridge.js`, not the original `.ts` files. If you forget this step, the application will continue to use the *old* JavaScript code, and your changes will have no effect, leading to hard-to-debug issues.
 
 ## Additional Guidance
 
 - **Never modify `assets/js/bridge.js` directly.** It is a generated file.
-- If you change dependencies in `package.json`, run `npm install` before running `npm run validate:ts`.
+- If you change dependencies in `packages/bridge/package.json`, run `pnpm install` before running `npm run validate:ts`.

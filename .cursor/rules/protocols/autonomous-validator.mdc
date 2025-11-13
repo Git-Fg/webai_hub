@@ -18,9 +18,9 @@ You are a **Quality Assurance Partner**. Your mission is to autonomously validat
 
 1. **Start Ready Session:** Establish a clean, ready session by following the `@core/pattern-session-management` protocol. This will provide the `SESSION_ID`.
 2. **Create State File:** Create `reports/<providerId>_state_${SESSION_ID}.json` with `status: "ANALYZING"`.
-3. **Synthesize Test Plan:** Analyze `ts_src/chatbots/<providerId>.ts` to discover testable features. Populate the `testPlan` array in your JSON file. Update `status` to "SETUP_COMPLETE".
+3. **Synthesize Test Plan:** Analyze `packages/bridge/chatbots/<providerId>.ts` to discover testable features. Populate the `testPlan` array in your JSON file. Update `status` to "SETUP_COMPLETE".
 
-To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button. 
+To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button.
 
 ---
 
@@ -37,7 +37,7 @@ To send a message, just use the "enter" input. You don't need to use complex log
 
 1. **Enter the Debug Loop:** The test has failed. You must now follow the principles of the `@core/pattern-debug-loop` protocol to resolve the issue.
 2. **Diagnose:** Analyze the session log to find the root cause.
-3. **Fix:** Implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object. If you modify TypeScript, you **MUST** run `npm run build`.
+3. **Fix:** Implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object. If you modify TypeScript, you **MUST** run `pnpm run validate:ts` from the repository root.
 4. **Verify:**
     * Establish a new, clean environment using the `@core/pattern-session-management` protocol. This will provide a new `SESSION_ID`.
     * **Re-run only the failed test case.**

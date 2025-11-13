@@ -45,8 +45,16 @@ lib/
 assets/
 └── js/
     └── bridge.js               # Generated JS bundle
-ts_src/
-└── automation_engine.ts        # Automation engine source code
+packages/
+├── bridge/                     # Automation engine source (compiled into assets/js/bridge.js)
+│   ├── automation_engine.ts
+│   ├── chatbots/
+│   ├── types/
+│   └── utils/
+└── e2e-tests/                  # Playwright selector validation suite
+    ├── fixtures/
+    ├── tests/
+    └── playwright.config.ts
 ```
 
 ## 3. Key Features & Workflows
@@ -148,7 +156,7 @@ Users can customize the instruction text that introduces the conversation histor
 
 ### 4.1. Configuration-Driven DOM Automation Engine
 
-- **Hardcoded Selectors:** CSS selectors are defined directly in the TypeScript automation engine files, organized per provider in the `ts_src/chatbots/` directory.
+- **Hardcoded Selectors:** CSS selectors are defined directly in the TypeScript automation engine files, organized per provider in the `packages/bridge/chatbots/` directory.
   - **Selector Structure:** Each provider implementation uses an array of selectors with a `primary` selector and ordered `fallbacks` for resilience.
   - **Management:** Selectors are maintained in the codebase and updated via app releases when provider UIs change.
 
@@ -160,7 +168,7 @@ Users can customize the instruction text that introduces the conversation histor
 
 - **Modern Waiting Patterns:** The engine uses event-driven APIs (`MutationObserver`, `IntersectionObserver`) instead of polling. See §4.10.2 for the "Sensor Array" pattern and §4.10.3 for comprehensive actionability checks.
 
-This modular architecture supports the README's Multi-Provider Support goal: new providers can be added by implementing the `Chatbot` interface in a new file within `ts_src/chatbots/`, following the established patterns for selector management and fallback strategies.
+This modular architecture supports the README's Multi-Provider Support goal: new providers can be added by implementing the `Chatbot` interface in a new file within `packages/bridge/chatbots/`, following the established patterns for selector management and fallback strategies.
 
 #### For comprehensive documentation on selector strategies, waiting patterns, and debugging methodologies, see §4.10
 
@@ -424,7 +432,7 @@ trySignalReady();
 
 **Rationale:** Event-driven detection is more reliable than timing-based polling, but the fallback polling mechanism is retained for robustness.
 
-**Implementation:** See `ts_src/automation_engine.ts` for the event listener implementation.
+**Implementation:** See `packages/bridge/automation_engine.ts` for the event listener implementation.
 
 #### 4.9.3. Security Configuration Requirements
 
@@ -496,9 +504,9 @@ Fixed `setTimeout` delays are an anti-pattern. A robust script uses a "sensor ar
 
 #### Implementation
 
-- **`waitForElement`** (`ts_src/utils/wait-for-element.ts`): Uses `MutationObserver` as primary strategy, with polling fallback for edge cases
-- **`waitForVisibleElement`** (`ts_src/utils/wait-for-visible-element.ts`): Uses `IntersectionObserver` for viewport visibility detection
-- **`waitForActionableElement`** (`ts_src/utils/wait-for-actionable-element.ts`): Combines `MutationObserver` with comprehensive actionability checks
+- **`waitForElement`** (`packages/bridge/utils/wait-for-element.ts`): Uses `MutationObserver` as primary strategy, with polling fallback for edge cases
+- **`waitForVisibleElement`** (`packages/bridge/utils/wait-for-visible-element.ts`): Uses `IntersectionObserver` for viewport visibility detection
+- **`waitForActionableElement`** (`packages/bridge/utils/wait-for-actionable-element.ts`): Combines `MutationObserver` with comprehensive actionability checks
 
 #### 4.10.3. The 5-Point Actionability Check
 
@@ -725,7 +733,7 @@ Goal: Identify reliable anchor points for each action.
 
 #### Phase 2: Implement Logic (TypeScript)
 
-1. Create a new chatbot file in `ts_src/chatbots/` (e.g., `chatgpt.ts`).
+1. Create a new chatbot file in `packages/bridge/chatbots/` (e.g., `chatgpt.ts`).
 2. Implement the `Chatbot` interface using your validated selectors and strategy:
    - `waitForReady()`: Waits for an element that appears only once the page is fully ready.
    - `sendPrompt(prompt)`: Locate the input field, fill it, locate the submit button, and click.

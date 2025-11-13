@@ -1,0 +1,6 @@
+{
+  "extends": "@ai-hub/config/tsconfig",
+  "include": ["."],
+  "exclude": ["node_modules", "dist"]
+}
+

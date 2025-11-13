@@ -19,7 +19,7 @@ This workflow applies when you are writing or changing feature code.
 3. **Verify (The Quality Gate):** Before committing, you are responsible for ensuring your changes pass the project's entire suite of quality checks. This is done by running a single, unified command:
 
     ```bash
-    npm run test:ci
+    pnpm run test:ci
     ```
 
     This command validates all Dart and TypeScript code, runs tests, and performs code generation. You MUST resolve all errors it reports.
@@ -59,22 +59,42 @@ These are the fundamental principles of quality code in this project.
 
 ### 2.4. TypeScript Modification Protocol
 
-When modifying any file in `ts_src/**`, you MUST follow this strict process:
+When modifying any file in `packages/bridge/**`, you MUST follow this strict process:
 
-1. **Analyze & Modify Types First:** Read and update the type definitions in `ts_src/types/**` before changing any logic.
+1. **Analyze & Modify Types First:** Read and update the type definitions under `packages/bridge/types/**` before changing any logic.
 2. **Implement Logic Changes.**
-3. **Verify and Build:** After making changes, run the mandatory validation command:
+3. **Verify and Build:** After making changes, run the mandatory validation command from the repository root:
 
     ```bash
-    npm run validate:ts
+    pnpm run validate:ts
     ```
 
-    This command lints, type-checks, and builds the `assets/js/bridge.js` bundle.
+    This delegates to the bridge workspace (`@ai-hub/bridge`) and lints, type-checks, and builds the output bundle at `assets/js/bridge.js`.
 
 ---
 
 ## 3. Key Commands Reference
 
-* **`npm run validate:ts`**: The mandatory command after **any** TypeScript change.
+* **`pnpm install`**: Installs all TypeScript dependencies across all packages. Run this from the root directory.
+* **`pnpm run validate:ts`**: The mandatory command after **any** TypeScript change in the `packages/bridge` directory.
+* **`pnpm run test:e2e`**: Runs the Playwright end-to-end selector validation suite.
+* **`pnpm run test:e2e:ui`**: Launches the Playwright UI runner for focused debugging.
+* **`pnpm run test:e2e:report`**: Opens the latest Playwright test report.
 * **`flutter pub run build_runner build --delete-conflicting-outputs`**: The mandatory command after changing Dart files with `@riverpod` or `@freezed` annotations.
-* **`npm run test:ci`**: The final **Quality Gate** command to run before committing. It validates everything.
+* **`pnpm run test:ci`**: The final **Quality Gate** command to run before committing. It validates everything.
+
+## 4. Monorepo Project Structure
+
+This project uses a hybrid monorepo structure. The Flutter application remains at the root, while all TypeScript code is organized into packages within the `packages/` directory, managed by **pnpm workspaces**.
+
+* **`packages/`**: Contains all TypeScript code.
+
+  * `packages/bridge`: The core TypeScript automation engine source code (formerly `ts_src`).
+
+  * `packages/e2e-tests`: The Playwright end-to-end tests for validating provider selectors.
+
+* **`pubspec.yaml` (root)**: Defines the primary Flutter application.
+
+* **`pnpm-workspace.yaml` (root)**: Defines the pnpm workspaces.
+
+**Workflow Constraint:** All new TypeScript code or tooling MUST be added as a new package within the `packages/` directory.
