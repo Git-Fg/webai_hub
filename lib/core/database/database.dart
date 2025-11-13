@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 
@@ -88,10 +89,10 @@ LazyDatabase _openConnection() {
     final dbFolder = await getDatabasesPath();
     final file = File(p.join(dbFolder, 'db.sqlite'));
 
-    // TODO(felix): Remove this block for production; development convenience to wipe the database each launch.
-    // WHY: Dev-only database reset ensures a clean slate for each launch during development.
+    // WHY: In debug mode, wipe the database on each launch for development convenience.
+    // In release mode, preserve user data for production use.
     // ignore: avoid_slow_async_io
-    if (await file.exists()) {
+    if (kDebugMode && await file.exists()) {
       await file.delete();
     }
 
