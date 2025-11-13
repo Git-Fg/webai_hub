@@ -46,7 +46,15 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     ref.read(stagedResponsesProvider.notifier).clear();
     final allPresets = await ref.read(presetsProvider.future);
     for (final presetId in presetIds) {
-      final preset = allPresets.firstWhere((p) => p.id == presetId);
+      final presetIndex = allPresets.indexWhere((p) => p.id == presetId);
+      if (presetIndex == -1) {
+        // WHY: Fail fast if preset not found at start - this indicates a serious issue
+        // (preset was deleted between selection and sending)
+        throw StateError(
+          'Preset $presetId not found. It may have been deleted.',
+        );
+      }
+      final preset = allPresets[presetIndex];
       ref
           .read(stagedResponsesProvider.notifier)
           .addOrUpdate(
@@ -88,8 +96,36 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     final presetId = queue[index];
     final allPresets = await ref.read(presetsProvider.future);
     if (!ref.mounted) return;
-    final preset = allPresets.firstWhere((p) => p.id == presetId);
+    
+    // WHY: Handle case where preset was deleted during orchestration
     final presetIndexInUI = allPresets.indexWhere((p) => p.id == presetId);
+    if (presetIndexInUI == -1) {
+      // Preset was deleted - skip it and show error, then continue
+      ref
+          .read(stagedResponsesProvider.notifier)
+          .addOrUpdate(
+            StagedResponse(
+              presetId: presetId,
+              presetName: 'Preset $presetId',
+              text: 'Error: Preset not found. It may have been deleted.',
+            ),
+          );
+      // Move to next item in queue
+      if (ref.mounted && state is _Running) {
+        final runningState = state as _Running;
+        state = runningState.copyWith(currentIndex: index + 1);
+        unawaited(
+          _runNext(
+            prompt: prompt,
+            conversationId: conversationId,
+            excludeMessageId: excludeMessageId,
+          ),
+        );
+      }
+      return;
+    }
+    
+    final preset = allPresets[presetIndexInUI];
 
     try {
       if (!ref.mounted) return;
