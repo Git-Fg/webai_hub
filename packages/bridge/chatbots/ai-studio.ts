@@ -730,6 +730,10 @@ export class AiStudioChatbot implements Chatbot {
   async sendPrompt(prompt: string): Promise<void> {
     console.log('[AI Studio LOG] Starting automation with prompt:', prompt.substring(0, CONFIG.LOG_PREVIEW_LENGTH));
 
+    // WHY: Dismiss any overlays that may have appeared after settings were applied
+    // This ensures the input field is not occluded when we try to find it
+    await this._dismissOverlays();
+
     if (this.isLoginPage()) {
       console.log('[AI Studio LOG] Login page detected. Notifying Dart.');
       notifyDart({
