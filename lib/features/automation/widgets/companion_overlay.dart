@@ -1,12 +1,14 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
+import 'package:auto_route/auto_route.dart';
 import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,7 @@ extension AutomationStateUI on AutomationStateData {
     failed: () => 'Automation Failed.',
     needsLogin: (onResume) =>
         'Please sign in to your provider Account to continue.',
+    needsUserAgentChange: () => 'Google Login Blocked - User Agent Required',
   );
 
   IconData get displayIcon => when(
@@ -33,6 +36,7 @@ extension AutomationStateUI on AutomationStateData {
     refining: (activePresetId, messageCount, isExtracting) => Icons.edit,
     failed: () => Icons.error,
     needsLogin: (onResume) => Icons.login,
+    needsUserAgentChange: () => Icons.warning,
   );
 
   Color get displayColor => when(
@@ -42,6 +46,7 @@ extension AutomationStateUI on AutomationStateData {
     refining: (activePresetId, messageCount, isExtracting) => Colors.green,
     failed: () => Colors.red,
     needsLogin: (onResume) => Colors.amber,
+    needsUserAgentChange: () => Colors.orange,
   );
 }
 
@@ -57,6 +62,20 @@ class CompanionOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final overlayState = ref.watch(overlayManagerProvider);
     final overlayNotifier = ref.read(overlayManagerProvider.notifier);
+    final automationState = ref.watch(automationStateProvider);
+
+    // WHY: When in needsUserAgentChange state, ensure overlay is centered and non-draggable.
+    final isNeedsUserAgentChange = automationState.maybeWhen(
+      needsUserAgentChange: () => true,
+      orElse: () => false,
+    );
+
+    // WHY: Reset position to center when entering needsUserAgentChange state.
+    if (isNeedsUserAgentChange && overlayState.position != Offset.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        overlayNotifier.resetPosition();
+      });
+    }
 
     final content = AnimatedSwitcher(
       duration: kShortAnimationDuration,
@@ -68,20 +87,27 @@ class CompanionOverlay extends ConsumerWidget {
     final screenSize = MediaQuery.of(context).size;
     final widgetSize = overlayKey.currentContext?.size ?? Size.zero;
 
+    // WHY: Use Offset.zero for needsUserAgentChange to ensure centered position.
+    final position = isNeedsUserAgentChange
+        ? Offset.zero
+        : overlayState.position;
+
     return Align(
       alignment: Alignment.topCenter,
       child: Transform.translate(
-        offset: overlayState.position,
+        offset: position,
         child: Padding(
           padding: const EdgeInsets.all(kDefaultPadding),
-          child: GestureDetector(
-            onPanUpdate: (details) => overlayNotifier.updatePosition(
-              details.delta,
-              screenSize,
-              widgetSize,
-            ),
-            child: content,
-          ),
+          child: isNeedsUserAgentChange
+              ? content
+              : GestureDetector(
+                  onPanUpdate: (details) => overlayNotifier.updatePosition(
+                    details.delta,
+                    screenSize,
+                    widgetSize,
+                  ),
+                  child: content,
+                ),
         ),
       ),
     );
@@ -102,8 +128,8 @@ class CompanionOverlay extends ConsumerWidget {
   Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
     final status = ref.watch(automationStateProvider);
     final screenSize = MediaQuery.of(context).size;
-    // WHY: Visibility logic ensures this widget is only built for refining and needsLogin states.
-    // Therefore, we only need to handle those two cases here.
+    // WHY: Visibility logic ensures this widget is only built for refining, needsLogin, and needsUserAgentChange states.
+    // Therefore, we only need to handle those cases here.
     final content = status.maybeWhen(
       refining: (activePresetId, messageCount, isExtracting) => _buildStatusUI(
         context: context,
@@ -124,6 +150,21 @@ class CompanionOverlay extends ConsumerWidget {
                 },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.amber,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
+      needsUserAgentChange: () => _buildStatusUI(
+        context: context,
+        status: status,
+        actionButton: ElevatedButton.icon(
+          icon: const Icon(Icons.settings),
+          label: const Text('Go to Settings'),
+          onPressed: () {
+            unawaited(context.router.push(const SettingsRoute()));
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
             foregroundColor: Colors.white,
           ),
         ),
@@ -152,63 +193,80 @@ class CompanionOverlay extends ConsumerWidget {
           children: [
             // WHY: The GestureDetector with onPanUpdate is removed. The parent now handles dragging.
             // The header is now just a simple Material widget for visuals.
-            Material(
-              color: Colors.grey[700],
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(kMediumBorderRadius),
-                topRight: Radius.circular(kMediumBorderRadius),
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: kSmallPadding),
-                height: 32, // Reduced height for a slimmer profile
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Icon(Icons.drag_handle, color: Colors.white70),
-                    Row(
-                      children: [
-                        // WHY: Added a reset button for better UX and robustness.
-                        // If the user drags the overlay off-screen, they can easily recover.
-                        Material(
-                          color: Colors.transparent,
-                          child: IconButton(
-                            tooltip: 'Reset Position',
-                            icon: const Icon(
-                              Icons.center_focus_strong,
-                              color: Colors.white,
+            // WHY: Hide header buttons for needsUserAgentChange to create a modal dialog experience.
+            if (!status.maybeWhen(
+              needsUserAgentChange: () => true,
+              orElse: () => false,
+            ))
+              Material(
+                color: Colors.grey[700],
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(kMediumBorderRadius),
+                  topRight: Radius.circular(kMediumBorderRadius),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: kSmallPadding,
+                  ),
+                  height: 32, // Reduced height for a slimmer profile
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Icon(Icons.drag_handle, color: Colors.white70),
+                      Row(
+                        children: [
+                          // WHY: Added a reset button for better UX and robustness.
+                          // If the user drags the overlay off-screen, they can easily recover.
+                          Material(
+                            color: Colors.transparent,
+                            child: IconButton(
+                              tooltip: 'Reset Position',
+                              icon: const Icon(
+                                Icons.center_focus_strong,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                ref
+                                    .read(overlayManagerProvider.notifier)
+                                    .resetPosition();
+                              },
+                              // WHY: Ensure button receives tap events and doesn't conflict with drag gesture
+                              mouseCursor: SystemMouseCursors.click,
+                              // WHY: Ensure minimum 48x48 touch target for mobile accessibility
+                              constraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
                             ),
-                            onPressed: () {
-                              ref
-                                  .read(overlayManagerProvider.notifier)
-                                  .resetPosition();
-                            },
-                            // WHY: Ensure button receives tap events and doesn't conflict with drag gesture
-                            mouseCursor: SystemMouseCursors.click,
                           ),
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: IconButton(
-                            tooltip: 'Minimize Automation Panel',
-                            icon: const Icon(
-                              Icons.close_fullscreen,
-                              color: Colors.white,
+                          Material(
+                            color: Colors.transparent,
+                            child: IconButton(
+                              tooltip: 'Minimize Automation Panel',
+                              icon: const Icon(
+                                Icons.close_fullscreen,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                ref
+                                    .read(overlayManagerProvider.notifier)
+                                    .toggleMinimized();
+                              },
+                              // WHY: Ensure button receives tap events and doesn't conflict with drag gesture
+                              mouseCursor: SystemMouseCursors.click,
+                              // WHY: Ensure minimum 48x48 touch target for mobile accessibility
+                              constraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
                             ),
-                            onPressed: () {
-                              ref
-                                  .read(overlayManagerProvider.notifier)
-                                  .toggleMinimized();
-                            },
-                            // WHY: Ensure button receives tap events and doesn't conflict with drag gesture
-                            mouseCursor: SystemMouseCursors.click,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
             Container(
               // WHY: Parent ensures this widget is only built for refining and needsLogin states,
               // so we always apply padding (idle state cannot occur).
@@ -284,7 +342,7 @@ class CompanionOverlay extends ConsumerWidget {
                       refining: (data) {
                         unawaited(
                           ref
-                              .read(automationOrchestratorProvider.notifier)
+                              .read(automationActionsProvider.notifier)
                               .extractAndReturnToHub(data.activePresetId),
                         );
                       },
