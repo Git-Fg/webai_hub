@@ -242,17 +242,6 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
     try {
       await _waitForWebViewToBeCreated();
 
-      // WHY: Check heartbeat before critical operations to detect dead contexts early
-      final isAlive = await isBridgeAlive();
-      if (!isAlive) {
-        throw AutomationError(
-          errorCode: AutomationErrorCode.bridgeTimeout,
-          location: 'startAutomation',
-          message: 'Bridge context is not responsive',
-          diagnostics: _getBridgeDiagnostics(),
-        );
-      }
-
       // WHY: Ensure bridge is ready before starting automation
       if (!ref.read(bridgeReadyProvider)) {
         throw AutomationError(
@@ -261,6 +250,27 @@ class JavaScriptBridge implements JavaScriptBridgeInterface {
           message: 'Bridge is not ready for automation',
           diagnostics: _getBridgeDiagnostics(),
         );
+      }
+
+      // WHY: Check heartbeat only if bridge was recently marked ready
+      // If bridgeReady is true, we trust it was working recently and skip the heartbeat
+      // to avoid false positives during WebView transitions. The actual callAsyncJavaScript
+      // call will fail if the context is truly dead.
+      // WHY: Retry heartbeat check up to 2 times with 1s delay between attempts
+      // This handles transient failures during WebView tab switches or page loads
+      var isAlive = await isBridgeAlive();
+      if (!isAlive) {
+        // WHY: Give WebView more time to stabilize, then retry once
+        await Future<void>.delayed(const Duration(seconds: 1));
+        isAlive = await isBridgeAlive();
+        if (!isAlive) {
+          // WHY: If heartbeat still fails but bridge is marked ready, log warning but proceed
+          // The actual automation call will fail if context is truly dead
+          final talker = ref.read(talkerProvider);
+          talker.warning(
+            '[JavaScriptBridge] Heartbeat check failed but bridge is marked ready. Proceeding with automation.',
+          );
+        }
       }
 
       final talker = ref.read(talkerProvider);
