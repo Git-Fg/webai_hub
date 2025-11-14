@@ -12,7 +12,9 @@ part 'javascript_bridge.g.dart';
 
 const int _webViewCreationMaxAttempts = 400;
 const Duration _webViewCreationCheckDelay = Duration(milliseconds: 100);
-const Duration _callAsyncJavaScriptTimeout = Duration(seconds: 30);
+// WHY: Increased timeout to accommodate full automation cycle including settings application,
+// prompt sending, and response finalization (which can take 30s+ for slow AI responses)
+const Duration _callAsyncJavaScriptTimeout = Duration(seconds: 90);
 const Duration _heartbeatTimeout = Duration(seconds: 2);
 
 @Riverpod(keepAlive: true)
