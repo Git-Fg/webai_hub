@@ -35,6 +35,22 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
     this.cardDecoration,
     this.panelDecoration,
     
+    // Action Button Colors
+    this.primaryActionButtonColor,
+    this.secondaryActionButtonColor,
+    this.successActionButtonColor,
+    this.warningActionButtonColor,
+    this.actionButtonTextColor,
+    
+    // Tab Bar Colors
+    this.tabBarSelectedColor,
+    this.tabBarUnselectedColor,
+    this.tabBarIndicatorColor,
+    
+    // Overlay Colors
+    this.overlayHeaderColor,
+    this.overlayIconColor,
+    
     // General UI Colors
     this.surfaceColor,
     this.onSurfaceColor,
@@ -83,6 +99,31 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
   
   final BoxDecoration? cardDecoration;
   final BoxDecoration? panelDecoration;
+  
+  // ============================================================================
+  // Action Button Properties
+  // ============================================================================
+  
+  final Color? primaryActionButtonColor;
+  final Color? secondaryActionButtonColor;
+  final Color? successActionButtonColor;
+  final Color? warningActionButtonColor;
+  final Color? actionButtonTextColor;
+  
+  // ============================================================================
+  // Tab Bar Properties
+  // ============================================================================
+  
+  final Color? tabBarSelectedColor;
+  final Color? tabBarUnselectedColor;
+  final Color? tabBarIndicatorColor;
+  
+  // ============================================================================
+  // Overlay Properties
+  // ============================================================================
+  
+  final Color? overlayHeaderColor;
+  final Color? overlayIconColor;
   
   // ============================================================================
   // General UI Properties
@@ -231,6 +272,22 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
       borderRadius: BorderRadius.all(Radius.circular(kDefaultBorderRadius)),
     ),
     
+    // Action Buttons
+    primaryActionButtonColor: Color(0xFF1E88E5), // Colors.blue.shade600
+    secondaryActionButtonColor: Color(0xFFFFA726), // Colors.orange.shade400
+    successActionButtonColor: Color(0xFF66BB6A), // Colors.green.shade400
+    warningActionButtonColor: Color(0xFFFFCA28), // Colors.amber.shade400
+    actionButtonTextColor: Colors.white,
+    
+    // Tab Bar
+    tabBarSelectedColor: Color(0xFF1E88E5), // Colors.blue.shade600
+    tabBarUnselectedColor: Color(0xFF9E9E9E), // Colors.grey.shade500
+    tabBarIndicatorColor: Color(0xFF1E88E5), // Colors.blue.shade600
+    
+    // Overlay
+    overlayHeaderColor: Color(0xFF616161), // Colors.grey.shade700
+    overlayIconColor: Colors.white,
+    
     // General UI
     surfaceColor: Colors.white,
     onSurfaceColor: Color(0xDD000000),
@@ -376,6 +433,22 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
       borderRadius: BorderRadius.all(Radius.circular(kDefaultBorderRadius)),
     ),
     
+    // Action Buttons - Dark Mode
+    primaryActionButtonColor: Color(0xFF1976D2), // Colors.blue.shade700
+    secondaryActionButtonColor: Color(0xFFFB8C00), // Colors.orange.shade700
+    successActionButtonColor: Color(0xFF43A047), // Colors.green.shade600
+    warningActionButtonColor: Color(0xFFFFB300), // Colors.amber.shade600
+    actionButtonTextColor: Colors.white,
+    
+    // Tab Bar - Dark Mode
+    tabBarSelectedColor: Color(0xFF42A5F5), // Colors.blue.shade400 (lighter for dark mode)
+    tabBarUnselectedColor: Color(0xFF757575), // Colors.grey.shade600
+    tabBarIndicatorColor: Color(0xFF42A5F5), // Colors.blue.shade400
+    
+    // Overlay - Dark Mode
+    overlayHeaderColor: Color(0xFF424242), // Colors.grey.shade800
+    overlayIconColor: Color(0xFFE0E0E0), // Lighter for dark mode
+    
     // General UI - Dark Mode
     surfaceColor: Color(0xFF212121),
     onSurfaceColor: Color(0xFFE0E0E0),
@@ -408,6 +481,16 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
     Color? sendButtonIconColor,
     BoxDecoration? cardDecoration,
     BoxDecoration? panelDecoration,
+    Color? primaryActionButtonColor,
+    Color? secondaryActionButtonColor,
+    Color? successActionButtonColor,
+    Color? warningActionButtonColor,
+    Color? actionButtonTextColor,
+    Color? tabBarSelectedColor,
+    Color? tabBarUnselectedColor,
+    Color? tabBarIndicatorColor,
+    Color? overlayHeaderColor,
+    Color? overlayIconColor,
     Color? surfaceColor,
     Color? onSurfaceColor,
     Color? dividerColor,
@@ -433,6 +516,16 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
       sendButtonIconColor: sendButtonIconColor ?? this.sendButtonIconColor,
       cardDecoration: cardDecoration ?? this.cardDecoration,
       panelDecoration: panelDecoration ?? this.panelDecoration,
+      primaryActionButtonColor: primaryActionButtonColor ?? this.primaryActionButtonColor,
+      secondaryActionButtonColor: secondaryActionButtonColor ?? this.secondaryActionButtonColor,
+      successActionButtonColor: successActionButtonColor ?? this.successActionButtonColor,
+      warningActionButtonColor: warningActionButtonColor ?? this.warningActionButtonColor,
+      actionButtonTextColor: actionButtonTextColor ?? this.actionButtonTextColor,
+      tabBarSelectedColor: tabBarSelectedColor ?? this.tabBarSelectedColor,
+      tabBarUnselectedColor: tabBarUnselectedColor ?? this.tabBarUnselectedColor,
+      tabBarIndicatorColor: tabBarIndicatorColor ?? this.tabBarIndicatorColor,
+      overlayHeaderColor: overlayHeaderColor ?? this.overlayHeaderColor,
+      overlayIconColor: overlayIconColor ?? this.overlayIconColor,
       surfaceColor: surfaceColor ?? this.surfaceColor,
       onSurfaceColor: onSurfaceColor ?? this.onSurfaceColor,
       dividerColor: dividerColor ?? this.dividerColor,
@@ -547,6 +640,56 @@ class HubThemeExtension extends ThemeExtension<HubThemeExtension> {
       panelDecoration: BoxDecoration.lerp(
         panelDecoration,
         other.panelDecoration,
+        t,
+      ),
+      primaryActionButtonColor: Color.lerp(
+        primaryActionButtonColor,
+        other.primaryActionButtonColor,
+        t,
+      ),
+      secondaryActionButtonColor: Color.lerp(
+        secondaryActionButtonColor,
+        other.secondaryActionButtonColor,
+        t,
+      ),
+      successActionButtonColor: Color.lerp(
+        successActionButtonColor,
+        other.successActionButtonColor,
+        t,
+      ),
+      warningActionButtonColor: Color.lerp(
+        warningActionButtonColor,
+        other.warningActionButtonColor,
+        t,
+      ),
+      actionButtonTextColor: Color.lerp(
+        actionButtonTextColor,
+        other.actionButtonTextColor,
+        t,
+      ),
+      tabBarSelectedColor: Color.lerp(
+        tabBarSelectedColor,
+        other.tabBarSelectedColor,
+        t,
+      ),
+      tabBarUnselectedColor: Color.lerp(
+        tabBarUnselectedColor,
+        other.tabBarUnselectedColor,
+        t,
+      ),
+      tabBarIndicatorColor: Color.lerp(
+        tabBarIndicatorColor,
+        other.tabBarIndicatorColor,
+        t,
+      ),
+      overlayHeaderColor: Color.lerp(
+        overlayHeaderColor,
+        other.overlayHeaderColor,
+        t,
+      ),
+      overlayIconColor: Color.lerp(
+        overlayIconColor,
+        other.overlayIconColor,
         t,
       ),
       surfaceColor: Color.lerp(

@@ -242,6 +242,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
               return const SizedBox.shrink();
             }
 
+            final theme = Theme.of(context).extension<HubThemeExtension>();
             final tabs = [
               const Tab(icon: Icon(Icons.chat), text: 'Hub'),
               ...presetsWithProviders.map((p) => Tab(text: p.name)),
@@ -253,9 +254,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
               onTap: (index) {
                 ref.read(currentTabIndexProvider.notifier).changeTo(index);
               },
-              labelColor: Colors.blue,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.blue,
+              labelColor: theme?.tabBarSelectedColor ?? Colors.blue,
+              unselectedLabelColor: theme?.tabBarUnselectedColor ?? Colors.grey,
+              indicatorColor: theme?.tabBarIndicatorColor ?? Colors.blue,
             );
           },
           loading: () => const SizedBox.shrink(),

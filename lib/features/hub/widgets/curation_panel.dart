@@ -99,12 +99,12 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
                                   );
                                 },
                           child: isFinalizing
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 24,
                                   height: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: theme.actionButtonTextColor,
                                   ),
                                 )
                               : const Text('Use this'),

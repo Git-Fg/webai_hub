@@ -157,8 +157,8 @@ class CompanionOverlay extends ConsumerWidget {
                   unawaited(onResume());
                 },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.warningActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
           ),
         ),
       ),
@@ -172,8 +172,8 @@ class CompanionOverlay extends ConsumerWidget {
             unawaited(context.router.push(const SettingsRoute()));
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.secondaryActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
           ),
         ),
       ),
@@ -207,7 +207,7 @@ class CompanionOverlay extends ConsumerWidget {
               orElse: () => false,
             ))
               Material(
-                color: theme.dividerColor,
+                color: theme.overlayHeaderColor,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(kMediumBorderRadius),
                   topRight: Radius.circular(kMediumBorderRadius),
@@ -220,7 +220,7 @@ class CompanionOverlay extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.drag_handle, color: Colors.white70),
+                      Icon(Icons.drag_handle, color: theme.overlayIconColor),
                       Row(
                         children: [
                           // WHY: Added a reset button for better UX and robustness.
@@ -229,9 +229,9 @@ class CompanionOverlay extends ConsumerWidget {
                             color: Colors.transparent,
                             child: IconButton(
                               tooltip: 'Reset Position',
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.center_focus_strong,
-                                color: Colors.white,
+                                color: theme.overlayIconColor,
                               ),
                               onPressed: () {
                                 ref
@@ -251,9 +251,9 @@ class CompanionOverlay extends ConsumerWidget {
                             color: Colors.transparent,
                             child: IconButton(
                               tooltip: 'Minimize Automation Panel',
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close_fullscreen,
-                                color: Colors.white,
+                                color: theme.overlayIconColor,
                               ),
                               onPressed: () {
                                 ref
@@ -335,7 +335,7 @@ class CompanionOverlay extends ConsumerWidget {
                   height: kDefaultIconSize,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.white,
+                    color: theme.actionButtonTextColor,
                   ),
                 )
               : const Icon(Icons.check_circle),
@@ -369,8 +369,8 @@ class CompanionOverlay extends ConsumerWidget {
                   }
                 },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.successActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
