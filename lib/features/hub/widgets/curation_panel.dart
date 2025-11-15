@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
@@ -20,6 +21,7 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.hubTheme;
     final stagedResponses = ref.watch(stagedResponsesProvider);
     final selectedIds = ref.watch(selectedStagedResponsesProvider);
 
@@ -30,6 +32,7 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       elevation: 2,
+      color: theme.surfaceColor,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -37,9 +40,11 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
           children: [
             Text(
               'Choose a Response to Continue:',
-              style: Theme.of(context).textTheme.titleSmall,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: theme.onSurfaceColor,
+              ),
             ),
-            const Divider(height: 16),
+            Divider(height: 16, color: theme.dividerColor),
             ...stagedResponses.values.map((response) {
               final isSelected = selectedIds.contains(response.presetId);
               final isFinalizing = _finalizingPresetId == response.presetId;
@@ -57,7 +62,10 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
                         },
                   title: Text(
                     response.presetName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: theme.onSurfaceColor,
+                    ),
                   ),
                   subtitle: response.isLoading
                       ? const LinearProgressIndicator()
@@ -65,6 +73,7 @@ class _CurationPanelState extends ConsumerState<CurationPanel> {
                           response.text,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: theme.onSurfaceColor),
                         ),
                   secondary: !response.isLoading
                       ? ElevatedButton(

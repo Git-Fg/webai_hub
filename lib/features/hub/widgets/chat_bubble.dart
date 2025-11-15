@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
@@ -168,9 +169,14 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   List<Widget> _buildAvatar({required bool isUser}) {
-    final avatarColor = isUser ? Colors.green.shade100 : Colors.blue.shade100;
+    final theme = context.hubTheme;
+    final avatarColor = isUser 
+        ? theme.outgoingBubbleAvatarColor 
+        : theme.incomingBubbleAvatarColor;
     final icon = isUser ? Icons.person : Icons.smart_toy;
-    final iconColor = isUser ? Colors.green.shade700 : Colors.blue.shade700;
+    final iconColor = isUser 
+        ? theme.outgoingBubbleIconColor 
+        : theme.incomingBubbleIconColor;
 
     return [
       if (isUser) const Gap(kDefaultSpacing),
@@ -184,39 +190,23 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   Widget _buildMessageContent() {
+    final theme = context.hubTheme;
+    
+    // WHY: Select decoration based on editing state and message direction
+    final BoxDecoration? decoration = _isEditing
+        ? (widget.message.isFromUser
+              ? theme.outgoingBubbleEditingDecoration
+              : theme.incomingBubbleEditingDecoration)
+        : (widget.message.isFromUser
+              ? theme.outgoingBubbleDecoration
+              : theme.incomingBubbleDecoration);
+    
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: kDefaultPadding,
         vertical: 10,
       ),
-      decoration: BoxDecoration(
-        color: _isEditing
-            ? (widget.message.isFromUser
-                  ? Colors.blue.shade700
-                  : Colors.grey.shade300)
-            : (widget.message.isFromUser
-                  ? Colors.blue.shade500
-                  : Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(kDefaultBorderRadius).copyWith(
-          bottomLeft: Radius.circular(
-            widget.message.isFromUser
-                ? kDefaultBorderRadius
-                : kChatBubbleSmallRadius,
-          ),
-          bottomRight: Radius.circular(
-            widget.message.isFromUser
-                ? kChatBubbleSmallRadius
-                : kDefaultBorderRadius,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: kSmallBlurRadius,
-            offset: kDefaultShadowOffset,
-          ),
-        ],
-      ),
+      decoration: decoration,
       child: AnimatedSwitcher(
         duration: kShortAnimationDuration,
         child: _isEditing ? _buildEditView() : _buildMarkdownView(),
@@ -225,6 +215,11 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   Widget _buildMarkdownView() {
+    final theme = context.hubTheme;
+    final textStyle = widget.message.isFromUser
+        ? theme.outgoingBubbleTextStyle
+        : theme.incomingBubbleTextStyle;
+    
     // WHY: Use GptMarkdown to render AI responses, which supports code blocks,
     // tables, and LaTeX. The content is selectable by default.
     return Column(
@@ -233,10 +228,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
       children: [
         GptMarkdown(
           widget.message.text,
-          style: TextStyle(
-            color: widget.message.isFromUser ? Colors.white : Colors.black87,
-            fontSize: kDefaultTextFontSize,
-          ),
+          style: textStyle,
         ),
         if (widget.message.status != MessageStatus.success)
           _buildStatusIndicator(),
@@ -245,6 +237,11 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   Widget _buildEditView() {
+    final theme = context.hubTheme;
+    final textStyle = widget.message.isFromUser
+        ? theme.outgoingBubbleTextStyle
+        : theme.incomingBubbleTextStyle;
+    
     return Column(
       key: const ValueKey('edit_view'),
       mainAxisSize: MainAxisSize.min,
@@ -255,9 +252,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
           focusNode: _focusNode,
           autofocus: true,
           maxLines: null,
-          style: TextStyle(
-            color: widget.message.isFromUser ? Colors.white : Colors.black87,
-          ),
+          style: textStyle,
           decoration: const InputDecoration(
             isDense: true,
             border: InputBorder.none,
@@ -269,12 +264,12 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: Icon(Icons.close, color: Colors.red.shade200),
+              icon: Icon(Icons.close, color: theme.editCancelIconColor),
               onPressed: _cancelEdit,
               tooltip: 'Cancel',
             ),
             IconButton(
-              icon: Icon(Icons.check, color: Colors.green.shade200),
+              icon: Icon(Icons.check, color: theme.editSaveIconColor),
               onPressed: _saveChanges,
               tooltip: 'Save',
             ),
@@ -285,12 +280,15 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   Widget _buildStatusIndicator() {
+    final theme = context.hubTheme;
     final isSending = widget.message.status == MessageStatus.sending;
     final icon = isSending ? null : Icons.error_outline;
     final text = isSending ? 'Sending...' : 'Error';
-    final color = widget.message.isFromUser
-        ? (isSending ? Colors.white70 : Colors.red.shade200)
-        : (isSending ? Colors.grey.shade600 : Colors.red.shade600);
+    
+    // WHY: Use theme colors for status indicators, but adjust based on message type
+    final Color? color = isSending 
+        ? theme.messageSendingColor 
+        : theme.messageErrorColor;
 
     return Padding(
       padding: const EdgeInsets.only(top: kTinyPadding),
