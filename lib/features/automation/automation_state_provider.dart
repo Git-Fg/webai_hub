@@ -25,6 +25,10 @@ sealed class AutomationStateData with _$AutomationStateData {
   const factory AutomationStateData.needsLogin({
     Future<void> Function()? onResume,
   }) = _NeedsLogin;
+  // WHY: Persistent state for user agent errors that require user action.
+  // Unlike ephemeral notifications, this ensures the error cannot be missed.
+  const factory AutomationStateData.needsUserAgentChange() =
+      _NeedsUserAgentChange;
 }
 
 @Riverpod(keepAlive: true)
@@ -72,6 +76,9 @@ class AutomationState extends _$AutomationState {
 
   void moveToNeedsLogin({Future<void> Function()? onResume}) =>
       state = AutomationStateData.needsLogin(onResume: onResume);
+
+  void moveToNeedsUserAgentChange() =>
+      state = const AutomationStateData.needsUserAgentChange();
 
   void returnToIdle() {
     _currentPrompt = null;

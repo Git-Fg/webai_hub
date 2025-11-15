@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +27,7 @@ Future<void> seedPresets(ProviderContainer container) async {
         name: presetData['name'] as String,
         providerId: Value(presetData['providerId'] as String),
         displayOrder: presetData['displayOrder'] as int,
-        settingsJson: jsonEncode(presetData['settings']),
+        settings: PresetSettings.fromJson(presetData['settings'] as Map<String, dynamic>),
       ),
     );
   }

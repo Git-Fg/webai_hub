@@ -37,7 +37,17 @@ To send a message, just use the "enter" input. You don't need to use complex log
 
 1. **Enter the Debug Loop:** The test has failed. You must now follow the principles of the `@core/pattern-debug-loop` protocol to resolve the issue.
 2. **Diagnose:** Analyze the session log to find the root cause.
-3. **Fix:** Implement a code change in the `.ts` file. Document the fix in the JSON `fixAttempt` object. If you modify TypeScript, you **MUST** run `pnpm run validate:ts` from the repository root.
+3. **Fix:** Implement a code change. **CRITICAL:** All fixes MUST respect the architecture:
+   * **Dart Layer (Three-Layer Architecture):**
+     * Business logic fixes go in service classes (`lib/features/*/services/`)
+     * State management fixes go in providers (`lib/features/*/providers/`)
+     * UI fixes go in widgets (`lib/features/*/widgets/`)
+     * NEVER patch business logic at the widget level
+   * **TypeScript Bridge (Self-Contained Provider Files):**
+     * Provider fixes (selectors, extraction, interaction) MUST be made ONLY in the provider's dedicated file (`packages/bridge/chatbots/<providerId>.ts`)
+     * NEVER extract provider-specific logic into shared utilities
+     * All provider-specific code (selectors, DOM traversal, timing constants) stays in the provider file
+   * Document the fix in the JSON `fixAttempt` object. If you modify TypeScript, you **MUST** run `pnpm run validate:ts` from the repository root.
 4. **Verify:**
     * Establish a new, clean environment using the `@core/pattern-session-management` protocol. This will provide a new `SESSION_ID`.
     * **Re-run only the failed test case.**

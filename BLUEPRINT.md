@@ -35,11 +35,24 @@ This stack is prescriptive and optimized for static type-safety and performance.
 lib/
 ├── core/                       # Shared services, base models
 │   ├── database/               # Drift configuration and DAOs
-│   └── services/               # Services (e.g., SessionManager)
+│   └── services/               # Core services (e.g., SessionManager)
 ├── features/                   # Feature modules
 │   ├── hub/                    # Native chat UI and logic
-│   ├── webview/                # WebView management and bridge
-│   └── automation/             # Workflow logic and Overlay
+│   │   ├── services/           # Business logic services
+│   │   │   ├── conversation_service.dart
+│   │   │   └── prompt_builder.dart
+│   │   ├── providers/          # State management (orchestration only)
+│   │   └── widgets/            # UI components (triggers only)
+│   ├── presets/                # Preset management
+│   │   ├── services/           # Business logic services
+│   │   │   └── preset_service.dart
+│   │   ├── providers/          # State management
+│   │   └── widgets/            # UI components
+│   ├── automation/             # Workflow logic and Overlay
+│   │   ├── services/           # Business logic services
+│   │   │   └── orchestration_service.dart
+│   │   └── providers/         # State management
+│   └── webview/                # WebView management and bridge
 ├── shared/                     # Reusable widgets and constants
 └── main.dart                   # Entry point, 5-tab architecture
 assets/
@@ -52,6 +65,52 @@ packages/
     ├── types/
     └── utils/
 ```
+
+### 2.1. Architectural Principles: Three-Layer Separation
+
+The application enforces a **strict three-layer architecture** that separates concerns and ensures maintainability:
+
+#### Layer 1: UI Components (Widgets)
+
+- **Location:** `lib/features/*/widgets/`
+- **Responsibility:** User input, rendering, and visual feedback
+- **Allowed Operations:**
+  - Capture user interactions
+  - Display data from providers via `ref.watch()`
+  - Trigger provider actions via `ref.read().notifier.method()`
+- **Forbidden Operations:**
+  - ❌ Direct database access (`appDatabaseProvider`)
+  - ❌ Business logic (data transformations, validations)
+  - ❌ Direct service calls (must go through providers)
+
+#### Layer 2: Providers (State Management)
+
+- **Location:** `lib/features/*/providers/`
+- **Responsibility:** Orchestrate state updates and coordinate services
+- **Allowed Operations:**
+  - Call service methods for business operations
+  - Manage reactive state (streams, notifiers)
+  - Trigger UI signals (scroll requests, notifications)
+  - Coordinate multiple services
+- **Forbidden Operations:**
+  - ❌ Business logic (delegate to services)
+  - ❌ Direct database queries (except stream providers watching data)
+  - ❌ Data transformations (delegate to services)
+
+#### Layer 3: Services (Business Logic)
+
+- **Location:** `lib/features/*/services/` or `lib/core/services/`
+- **Responsibility:** All business logic, data transformations, and side effects
+- **Allowed Operations:**
+  - Database operations (CRUD)
+  - Data transformations and validations
+  - Business rule enforcement
+  - Complex workflow orchestration
+- **Forbidden Operations:**
+  - ❌ Direct UI state management
+  - ❌ Triggering UI actions directly (use signal providers)
+
+**Critical Rule:** When debugging, testing, or fixing issues, **always interact with the service/provider layer**, never patch business logic at the widget level. All fixes must be implemented in the appropriate service or provider.
 
 ## 3. Key Features & Workflows
 
@@ -265,7 +324,7 @@ The application uses a **sequential, Dart-driven orchestration model** that cent
 
   3. **Sequential Execution Flow:**
       - The orchestrator switches to the correct WebView tab for each preset
-      - Builds the prompt with context using `PromptBuilder`
+      - Builds the prompt with context using `OrchestrationService.buildPromptForPreset()` (which delegates to `PromptBuilder`)
       - Calls `bridge.startAutomation()` which awaits the full TypeScript automation cycle
       - Extracts the response via `bridge.extractFinalResponse()`
       - Updates the staging area with the result
@@ -286,6 +345,13 @@ This architecture provides centralized control, dramatically simplifies the Type
 
 - **Context Management:** A dedicated `PromptBuilder` service (`lib/features/hub/services/prompt_builder.dart`) is responsible for generating the prompt string. Its `buildPromptWithContext` method composes `<system>`, `<history>`, and `<user_input>` from the current state. The instruction text that introduces the conversation history is customizable via the `historyContextInstruction` setting in `GeneralSettings`, allowing users to fine-tune how context is framed for the AI.
 
+- **Service Layer Integration:** The `SequentialOrchestrator` provider delegates all business logic to the `OrchestrationService`:
+  - Prompt building: `orchestrationService.buildPromptForPreset()`
+  - Preset validation: `orchestrationService.validatePresetExists()`
+  - Parameter preparation: `orchestrationService.prepareAutomationParameters()`
+  
+  This ensures the provider focuses solely on state management and workflow orchestration, while all business logic resides in the service layer.
+
 - **WebView Lifecycle Control:** The TypeScript engine is now responsible for resetting the UI. At the beginning of each automation cycle, it calls its internal `resetState()` method, which simulates a click on the "New Chat" button within the web page. This in-page navigation is significantly faster than the previous full-page reload (`loadUrl`) initiated by Dart.
 
 - **State Machine Logic:** The `AutomationState` provider acts as the central state machine.
@@ -302,9 +368,11 @@ This architecture provides centralized control, dramatically simplifies the Type
 
 The logic for manual message editing is handled entirely within the Dart/Riverpod layer, requiring no changes to the TypeScript automation engine.
 
-- **State Management:** The `ConversationProvider` will expose a new method, `editMessage(messageId, newText)`. This method finds the target message in the state list and replaces it with a new instance containing the updated text.
+- **Service Layer:** The `MessageService` provides `getMessageById()` and `updateMessage()` methods that handle all database operations and business logic.
 
-- **UI Trigger:** The `ChatBubble` widget's `onTap` behavior will be updated to allow editing of both user and assistant messages, but only when the `AutomationState` is `idle`. This prevents editing a message that is actively being refined by the AI.
+- **Provider Orchestration:** The `ConversationActions` provider exposes `updateMessageContent(messageId, newText)`, which delegates to `MessageService` for all business operations.
+
+- **UI Trigger:** The `ChatBubble` widget's `onTap` behavior triggers the provider action. The widget never directly accesses the database or contains business logic.
 
 ### 4.6. Unified System Prompt Injection via XML (with Native UI Exception)
 
@@ -337,11 +405,12 @@ The XML prompt structure intentionally duplicates the user prompt and system pro
 - **Focus Maintenance:** When extensive context (history, files) is included, models may lose focus on the actual user request
 - **Mitigation Strategy:** Placing the user's current input at both beginning and end ensures the model maintains focus on the current task while still benefiting from context
 
-#### Implementation Details
+#### Implementation Details for Prompt Duplication
 
-- The duplication occurs in `_buildPromptWithContext` method in `conversation_provider.dart`
+- The duplication occurs in `_buildXmlPrompt` method in `PromptBuilder` service (`lib/features/hub/services/prompt_builder.dart`)
 - System prompt is only included if `shouldInjectSystemPrompt` is true (based on provider capabilities)
 - This pattern is applied consistently across all providers that don't support native system prompts
+- The `PromptBuilder` service encapsulates all prompt-building business logic, ensuring providers only orchestrate the workflow
 
 This pattern is a proven technique for maintaining model focus in complex prompting scenarios and should be preserved when extending the prompt system.
 
@@ -627,7 +696,11 @@ A new, dedicated UI will be created for managing presets, likely accessible from
 
 - **Technology:** **Drift** is used to create a local SQLite database.
 - **Schema:** The database stores `Conversations` and `Messages`.
-- **Interaction:** A Riverpod `ConversationActions` provider orchestrates high-level user actions. It delegates all direct database modifications for messages to a dedicated `MessageService` provider, which interacts with Drift-generated DAOs. The UI layer uses reactive queries (`.watch()`) to update automatically.
+- **Service Layer:** All database operations are encapsulated in service classes:
+  - **`ConversationService`** - Handles conversation CRUD operations
+  - **`MessageService`** - Handles message CRUD operations and business logic (ID generation, querying, truncation)
+- **Provider Orchestration:** The `ConversationActions` provider orchestrates high-level user actions by calling service methods. It contains no business logic itself.
+- **UI Layer:** Widgets trigger provider actions only. The UI uses reactive queries (`.watch()`) to update automatically, but never directly accesses the database.
 
 ### 5.2. Web Session Persistence
 
@@ -689,6 +762,7 @@ By evolving the schema (e.g., adding attributes or new sections), the prompt bec
 | **`MutationObserver`**| Simple (absence of indicator)   | ✅ **Optimized (two-step)**                            |
 | **Advanced Cases**  | Ignored (e.g., Shadow DOM)      | ✅ **Handled**                                         |
 | **Code Quality**    | `flutter_lints` (standard)      | ✅ **`very_good_analysis` (strict)**                   |
+| **Architecture**    | Business logic in providers/widgets | ✅ **Three-layer separation (UI/Provider/Service)**   |
 
 ## 7. New Provider Integration Guide
 
@@ -696,11 +770,17 @@ This section promotes and translates the original French annex to a first-class 
 
 ### Fundamental Principles
 
-1. Simplicity first: Start with the simplest and most standard CSS selectors and DOM operations.
-2. From reliable to uncertain: If a container is hard to target, find a stable inner element (like a button) and traverse up to its parent using `.closest()` to locate a robust anchor.
-3. Explicit asynchrony: Avoid blind fixed delays (`setTimeout`, `Future.delayed`). Prefer active waits (e.g., a `waitForElement` utility) and explicit asynchronous communication (`callAsyncJavaScript`).
-4. Fault tolerance: The automation must be resilient. It should still accomplish its primary mission (e.g., extract text) even if non-critical errors occur in the page.
-5. Universal injection: The bridge script should be present on all pages to survive navigations and rendering crashes. The decision logic ("Should I act?") belongs in the script itself, not in the injection code.
+1. **Self-Contained Provider Files:** Every provider MUST be implemented in a single, self-contained TypeScript file. All selectors, interaction logic, extraction logic, and provider-specific constants must reside in that file. This prevents accidental coupling, enables rapid maintenance, and allows easy provider swaps/removals.
+
+2. **Simplicity first:** Start with the simplest and most standard CSS selectors and DOM operations.
+
+3. **From reliable to uncertain:** If a container is hard to target, find a stable inner element (like a button) and traverse up to its parent using `.closest()` to locate a robust anchor.
+
+4. **Explicit asynchrony:** Avoid blind fixed delays (`setTimeout`, `Future.delayed`). Prefer active waits (e.g., a `waitForElement` utility) and explicit asynchronous communication (`callAsyncJavaScript`).
+
+5. **Fault tolerance:** The automation must be resilient. It should still accomplish its primary mission (e.g., extract text) even if non-critical errors occur in the page.
+
+6. **Universal injection:** The bridge script should be present on all pages to survive navigations and rendering crashes. The decision logic ("Should I act?") belongs in the script itself, not in the injection code.
 
 ---
 
@@ -729,13 +809,69 @@ Goal: Identify reliable anchor points for each action.
 
 #### Phase 2: Implement Logic (TypeScript)
 
-1. Create a new chatbot file in `packages/bridge/chatbots/` (e.g., `chatgpt.ts`).
-2. Implement the `Chatbot` interface using your validated selectors and strategy:
+##### CRITICAL: Self-Contained File Requirement
+
+1. **Create a new, self-contained chatbot file** in `packages/bridge/chatbots/` (e.g., `chatgpt.ts`).
+
+   **All of the following MUST be in this single file:**
+   - All selectors (export as `SELECTORS` constant)
+   - All timing constants (e.g., `TIMING` object)
+   - All interaction logic (input simulation, button clicks)
+   - All extraction logic (response parsing, text cleaning)
+   - All fallback strategies (selector arrays, error recovery)
+   - Implementation of the `Chatbot` interface
+
+2. **Implement the `Chatbot` interface** using your validated selectors and strategy:
    - `waitForReady()`: Waits for an element that appears only once the page is fully ready.
    - `sendPrompt(prompt)`: Locate the input field, fill it, locate the submit button, and click.
    - `extractResponse()`: Implement the validated extraction strategy. Use a resilient approach to separate value extraction from cleanup actions (e.g., closing edit mode) with permissive `try...catch` blocks.
-3. Add small strategic delays (50–100ms) only after DOM-changing actions (like a click that reveals a textarea) to allow the page framework to settle.
-4. Update `automation_engine.ts` to register the new provider in `SUPPORTED_SITES`.
+
+3. **Keep provider-specific logic local:**
+   - Add small strategic delays (50–100ms) only after DOM-changing actions (like a click that reveals a textarea) to allow the page framework to settle.
+   - Define all provider-specific constants (timeouts, intervals) within the file.
+   - **DO NOT** extract provider-specific selectors or logic into shared utility files.
+
+4. **Register the provider:**
+   - Update `packages/bridge/chatbots/index.ts` to export your new chatbot and add it to `SUPPORTED_SITES`.
+
+**Example Structure:**
+
+```typescript
+// packages/bridge/chatbots/chatgpt.ts
+
+import { Chatbot, AutomationOptions } from '../types/chatbot';
+import { waitForElement } from '../utils/wait-for-element'; // ✅ Cross-provider utility
+import { notifyDart } from '../utils/notify-dart'; // ✅ Cross-provider utility
+
+// ✅ All provider-specific constants in this file
+const TIMING = {
+  READINESS_CHECK_INTERVAL_MS: 100,
+  // ... provider-specific timing
+} as const;
+
+// ✅ All provider-specific selectors in this file
+export const SELECTORS = {
+  PROMPT_INPUT: 'textarea[data-id="root"]',
+  SEND_BUTTON: 'button[aria-label="Send message"]',
+  RESPONSE_CONTAINER: '[data-testid="conversation-turn"]',
+  // ... all selectors for this provider
+};
+
+// ✅ All provider-specific logic in this file
+export const chatgpt: Chatbot = {
+  waitForReady: async () => {
+    // Provider-specific implementation
+  },
+  sendPrompt: async (prompt: string) => {
+    // Provider-specific implementation
+  },
+  extractResponse: async () => {
+    // Provider-specific implementation
+  },
+};
+```
+
+**Rationale:** Self-contained provider files prevent accidental logic coupling, enable easier provider swaps/removals, and allow immediate onboarding for contributors. Modifications or bugfixes for a provider require changing only its file—no global utils or mixed selectors.
 
 #### Phase 3: Orchestration & Communication (Dart)
 

@@ -8,22 +8,96 @@ import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/automation_errors.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:drift/drift.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-part 'automation_orchestrator.g.dart';
+part 'automation_actions.g.dart';
 
 @Riverpod(keepAlive: true)
-class AutomationOrchestrator extends _$AutomationOrchestrator {
+class AutomationActions extends _$AutomationActions {
   @override
   void build() {} // No state needed
+
+  Future<void> sendPromptToAutomation(
+    String prompt, {
+    required List<int> selectedPresetIds,
+    bool isResend = false,
+    String? excludeMessageId,
+  }) async {
+    final talker = ref.read(talkerProvider);
+    if (selectedPresetIds.isEmpty) {
+      talker.warning('sendPromptToAutomation called with no selected presets.');
+      return;
+    }
+
+    final conversationService = ref.read(conversationServiceProvider.notifier);
+    final activeId = await conversationService.getOrCreateActiveConversation(
+      prompt,
+    );
+    if (!ref.mounted) return;
+
+    String? userMessageId;
+    if (!isResend) {
+      final messageService = ref.read(messageServiceProvider.notifier);
+      userMessageId = messageService.generateMessageId();
+      final message = Message(
+        id: userMessageId,
+        text: prompt,
+        isFromUser: true,
+      );
+      await messageService.addMessage(message, activeId);
+      ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
+    }
+
+    await startMultiPresetAutomation(
+      prompt: prompt,
+      selectedPresetIds: selectedPresetIds,
+      conversationId: activeId,
+      excludeMessageId: excludeMessageId ?? userMessageId,
+    );
+  }
+
+  Future<void> editAndResendPrompt(String messageId, String newText) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null) return;
+
+    final messageService = ref.read(messageServiceProvider.notifier);
+    await messageService.truncateConversationFromMessage(messageId, activeId);
+
+    // Delegate message update back to ConversationActions
+    await ref
+        .read(conversationActionsProvider.notifier)
+        .updateMessageContent(
+          messageId,
+          newText,
+        );
+
+    final selectedPresetIds = ref.read(selectedPresetIdsProvider);
+    if (selectedPresetIds.isEmpty) {
+      ref
+          .read(talkerProvider)
+          .warning('Edit & Resend failed: No preset selected.');
+      return;
+    }
+
+    // Call the method now local to this class
+    await sendPromptToAutomation(
+      newText,
+      selectedPresetIds: selectedPresetIds,
+      isResend: true,
+      excludeMessageId: messageId,
+    );
+  }
 
   Future<void> startMultiPresetAutomation({
     required String prompt,
@@ -155,7 +229,7 @@ $responsesText
 
   // WHY: Finalizes a turn by adding the selected response to the conversation,
   // clearing staged responses, and returning automation to idle state.
-  // This method belongs in AutomationOrchestrator as it orchestrates the
+  // This method belongs in AutomationActions as it orchestrates the
   // completion of an automation workflow.
   Future<void> finalizeTurnWithResponse(String responseText) async {
     final activeId = ref.read(activeConversationIdProvider);
@@ -205,7 +279,7 @@ $responsesText
   Future<String> _extractResponse(int presetId) async {
     final talker = ref.read(talkerProvider);
     talker.info(
-      '[AutomationOrchestrator] Extracting response for preset: $presetId',
+      '[AutomationActions] Extracting response for preset: $presetId',
     );
     final bridge = ref.read(javaScriptBridgeProvider(presetId));
     final automationNotifier = ref.read(automationStateProvider.notifier);
@@ -214,7 +288,7 @@ $responsesText
 
     try {
       final responseText = await bridge.extractFinalResponse();
-      talker.info('[AutomationOrchestrator] Extraction successful.');
+      talker.info('[AutomationActions] Extraction successful.');
       return responseText;
     } on Object catch (e, st) {
       talker.handle(e, st, 'Response extraction failed.');

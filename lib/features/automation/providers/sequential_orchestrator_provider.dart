@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/services/orchestration_service.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/services/prompt_builder.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
-import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
 import 'package:ai_hybrid_hub/main.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -44,16 +42,17 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     // WHY: Clear and pre-populate staged responses before starting the queue
     // This ensures the UI shows "waiting" placeholders for all presets in the queue
     ref.read(stagedResponsesProvider.notifier).clear();
+
+    // Validate all presets exist before starting
+    final orchestrationService = ref.read(orchestrationServiceProvider.notifier);
+    await orchestrationService.validatePresetsExist(presetIds);
+
     final allPresets = await ref.read(presetsProvider.future);
     for (final presetId in presetIds) {
-      final presetIndex = allPresets.indexWhere((p) => p.id == presetId);
-      if (presetIndex == -1) {
-        // WHY: Fail fast if preset not found at start - this indicates a serious issue
-        // (preset was deleted between selection and sending)
-        throw StateError(
-          'Preset $presetId not found. It may have been deleted.',
-        );
-      }
+      final presetIndex = orchestrationService.findPresetInList(
+        allPresets,
+        presetId,
+      );
       final preset = allPresets[presetIndex];
       ref
           .read(stagedResponsesProvider.notifier)
@@ -96,9 +95,15 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     final presetId = queue[index];
     final allPresets = await ref.read(presetsProvider.future);
     if (!ref.mounted) return;
-    
+
+    // WHY: Read orchestration service fresh to avoid using disposed Ref
+    final orchestrationService = ref.read(orchestrationServiceProvider.notifier);
+
     // WHY: Handle case where preset was deleted during orchestration
-    final presetIndexInUI = allPresets.indexWhere((p) => p.id == presetId);
+    final presetIndexInUI = orchestrationService.findPresetInList(
+      allPresets,
+      presetId,
+    );
     if (presetIndexInUI == -1) {
       // Preset was deleted - skip it and show error, then continue
       ref
@@ -124,7 +129,7 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
       }
       return;
     }
-    
+
     final preset = allPresets[presetIndexInUI];
 
     try {
@@ -150,27 +155,32 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
 
       // 3. Build prompt with context
       if (!ref.mounted) return;
-      final db = ref.read(appDatabaseProvider);
-      final promptWithContext = await PromptBuilder(ref: ref, db: db)
-          .buildPromptWithContext(
-            prompt,
+      // WHY: Read service fresh before async operations to avoid disposed Ref
+      final orchestrationServiceForPrompt = ref.read(
+        orchestrationServiceProvider.notifier,
+      );
+      final promptWithContext = await orchestrationServiceForPrompt
+          .buildPromptForPreset(
+            prompt: prompt,
             conversationId: conversationId,
             presetId: presetId,
             excludeMessageId: excludeMessageId,
           );
       if (!ref.mounted) return;
 
-      // 4. Get settings and providerId
-      final settings = preset.settingsJson;
-      final generalSettings = ref.read(generalSettingsProvider).value;
-      final timeoutModifier = generalSettings?.timeoutModifier ?? 1.0;
-      final providerId = preset.providerId;
-
-      if (providerId == null) {
-        throw StateError(
-          'Cannot start automation: preset ${preset.id} has no providerId (it may be a group)',
-        );
-      }
+      // 4. Prepare automation parameters
+      // WHY: Read service fresh again before async operations
+      final orchestrationServiceForParams = ref.read(
+        orchestrationServiceProvider.notifier,
+      );
+      orchestrationServiceForParams.validatePresetExists(preset, presetId);
+      final (
+        providerId,
+        settingsJson,
+        timeoutModifier,
+      ) = await orchestrationServiceForParams.prepareAutomationParameters(
+        preset,
+      );
 
       // 5. Trigger and await entire automation cycle
       if (!ref.mounted) return;
@@ -178,11 +188,11 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
       await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
 
-      // WHY: settings is already a JSON string from preset.settingsJson, so we pass it directly
+      // WHY: Convert PresetSettings to JSON string for bridge call
       await bridge.startAutomation(
         providerId,
         promptWithContext,
-        settings,
+        settingsJson,
         timeoutModifier,
       );
       if (!ref.mounted) return;

@@ -1,0 +1,99 @@
+---
+description: The mandatory protocol for maintaining CHANGELOG.md. Ensures accurate, concise changelog entries with proper date handling.
+alwaysApply: true
+---
+# Core Protocol: Changelog Maintenance
+
+## **YOUR MISSION & CORE DIRECTIVES**
+
+Your mission is to maintain `CHANGELOG.md` at the project root with accurate, concise entries that document major achievements. This protocol ensures consistency and prevents duplicate entries.
+
+---
+
+### The Changelog Maintenance Mandate
+
+You MUST follow these rules when working with `CHANGELOG.md`:
+
+#### 1. When to Create or Update Entries
+
+- **Create New Entry:** Only for **massive achievements** (architecture overhaul, new core system, large refactor, protocol overhaul).
+- **Update Existing Entry:** For smaller changes, add as a bullet/clarification to the latest entry, or omit entirely.
+- **CRITICAL Same-Day Rule:** Before creating a new entry, you MUST check if an entry already exists for today's date. If it does, update/clarify that existing entry instead of creating a new one. Never create multiple entries for the same day.
+
+#### 2. Date Handling
+
+- **MANDATORY:** You MUST use the `date +%Y-%m-%d` command to get the current date in YYYY-MM-DD format.
+- **Never hardcode dates.** Always obtain the date dynamically using the command.
+- Before creating or updating an entry, run `date +%Y-%m-%d` to get today's date, then check if an entry with that date already exists.
+
+#### 3. Entry Format
+
+- **Location:** Always add new entries at the **top** of the file, so the most recent achievement is listed first.
+- **Format:** `# [YYYY-MM-DD] - Major Achievement Title`
+- **Summary:** Follow with a single summary line (1-2 lines max).
+- **Conciseness:** Focus only on "what" and "why" in as few words as possible. Remove filler, background, or exhaustive lists.
+
+#### 4. History Preservation
+
+- **Never remove history.** Entries are only clarified, not deleted.
+- Previous entries are never removed; only clarified for accuracy.
+
+#### 5. Update Workflow
+
+When finalizing a major task:
+
+1. Run `date +%Y-%m-%d` to get the current date.
+2. Read `CHANGELOG.md` and check if an entry already exists for that date.
+3. If an entry exists for today:
+   - Update/clarify that existing entry (add to summary or clarify details).
+   - Do NOT create a new entry.
+4. If no entry exists for today:
+   - Create a new entry at the top of the file.
+   - Use the date from the command output.
+   - Follow the format: `## [YYYY-MM-DD] - Major Achievement Title`
+   - Add a concise 1-2 line summary.
+
+#### 6. Review Requirement
+
+Before committing major changes, verify that `CHANGELOG.md` is up to date and accurate. Every workflow for finalization or QA includes this verification step.
+
+---
+
+### Examples
+
+**Correct Entry Creation:**
+
+```bash
+# Get date
+date +%Y-%m-%d  # Output: 2025-11-14
+
+# Check CHANGELOG.md - no entry for 2025-11-14 exists
+# Create new entry at top:
+```
+
+```markdown
+## [2025-11-14] - Three-Layer Architecture Refactoring
+- Centralized all business logic into service/provider layers.
+```
+
+**Correct Entry Update (Same Day):**
+
+```bash
+# Get date
+date +%Y-%m-%d  # Output: 2025-11-14
+
+# Check CHANGELOG.md - entry for 2025-11-14 already exists
+# Update existing entry instead of creating new one:
+```
+
+```markdown
+## [2025-11-14] - Three-Layer Architecture & Self-Contained Providers
+- Centralized all business logic into service/provider layers. All provider integrations now reside in self-contained TypeScript files.
+```
+
+**Incorrect (Violation):**
+
+- Creating multiple entries for the same date
+- Hardcoding dates instead of using `date +%Y-%m-%d`
+- Including excessive context or rationale in entries
+- Removing or deleting previous entries

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/widgets/preset_accordion.dart';
 import 'package:ai_hybrid_hub/shared/ui_constants.dart';
@@ -40,7 +40,7 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
 
     unawaited(
       ref
-          .read(conversationActionsProvider.notifier)
+          .read(automationActionsProvider.notifier)
           .sendPromptToAutomation(
             message,
             selectedPresetIds: selectedPresetIds,

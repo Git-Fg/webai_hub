@@ -1,16 +1,12 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
-import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/message_service_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/scroll_request_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
-import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
-import 'package:drift/drift.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'conversation_provider.g.dart';
@@ -56,39 +52,35 @@ class ConversationActions extends _$ConversationActions {
     required int conversationId,
     MessageStatus? status,
   }) async {
+    final messageService = ref.read(messageServiceProvider.notifier);
+    final messageId = messageService.generateMessageId();
     final message = Message(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: messageId,
       text: text,
       isFromUser: isFromUser,
       status: status ?? MessageStatus.success,
     );
-    await ref
-        .read(messageServiceProvider.notifier)
-        .addMessage(message, conversationId);
+    await messageService.addMessage(message, conversationId);
     // Signal UI to scroll to bottom after adding message
     ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
   }
 
   Future<void> updateMessageContent(String messageId, String newText) async {
-    final db = ref.read(appDatabaseProvider);
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
     // Get current message to update (scoped to active conversation)
-    final messages = await (db.select(
-      db.messages,
-    )..where((t) => t.conversationId.equals(activeId))).get();
-    final messageData = messages.firstWhere(
-      (m) => m.id == messageId,
-      orElse: () => throw StateError('Message not found: $messageId'),
-    );
-    final message = Message(
-      id: messageData.id,
+    final messageService = ref.read(messageServiceProvider.notifier);
+    final message = await messageService.getMessageById(messageId, activeId);
+    if (message == null) return;
+
+    final updatedMessage = Message(
+      id: message.id,
       text: newText,
-      isFromUser: messageData.isFromUser,
-      status: messageData.status,
+      isFromUser: message.isFromUser,
+      status: message.status,
     );
-    await ref.read(messageServiceProvider.notifier).updateMessage(message);
+    await messageService.updateMessage(updatedMessage);
   }
 
   Future<void> clearConversation() async {
@@ -126,123 +118,21 @@ class ConversationActions extends _$ConversationActions {
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null || !ref.mounted) return;
 
-    final db = ref.read(appDatabaseProvider);
+    final messageService = ref.read(messageServiceProvider.notifier);
+    final lastMessage = await messageService.getLastAssistantMessage(activeId);
 
-    final query = db.select(db.messages)
-      ..where((t) => t.conversationId.equals(activeId))
-      ..where((t) => t.isFromUser.equals(false))
-      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
-      ..limit(1);
-
-    final messageToUpdate = await query.getSingleOrNull();
-
-    if (messageToUpdate != null) {
+    if (lastMessage != null) {
       final updatedMessage = Message(
-        id: messageToUpdate.id,
+        id: lastMessage.id,
         text: text,
         isFromUser: false,
         status: status,
       );
       // Delegate to the service layer
-      await ref
-          .read(messageServiceProvider.notifier)
-          .updateMessage(updatedMessage);
+      await messageService.updateMessage(updatedMessage);
       await ref
           .read(conversationServiceProvider.notifier)
           .updateTimestamp(activeId);
     }
-  }
-
-  Future<void> editAndResendPrompt(String messageId, String newText) async {
-    final db = ref.read(appDatabaseProvider);
-    final activeId = ref.read(activeConversationIdProvider);
-    if (activeId == null) return;
-
-    // Get messages scoped to active conversation
-    final messages = await (db.select(
-      db.messages,
-    )..where((t) => t.conversationId.equals(activeId))).get();
-    final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
-    if (messageIndex == -1) return;
-
-    // WHY: Truncate conversation to the edited message (inclusive) to maintain context consistency
-    // Delete all messages after the edited one
-    final messagesToDelete = messages.sublist(messageIndex + 1);
-    for (final msg in messagesToDelete) {
-      await (db.delete(db.messages)..where((f) => f.id.equals(msg.id))).go();
-    }
-
-    // Update the edited message
-    await updateMessageContent(messageId, newText);
-
-    // Get selected preset IDs directly from the provider
-    final selectedPresetIds = ref.read(selectedPresetIdsProvider);
-    if (selectedPresetIds.isEmpty) {
-      ref
-          .read(talkerProvider)
-          .warning('Edit & Resend failed: No preset selected.');
-      return;
-    }
-
-    await sendPromptToAutomation(
-      newText,
-      selectedPresetIds: selectedPresetIds,
-      isResend: true,
-      excludeMessageId: messageId,
-    );
-  }
-
-  Future<void> sendPromptToAutomation(
-    String prompt, {
-    required List<int> selectedPresetIds,
-    bool isResend = false,
-    String? excludeMessageId,
-  }) async {
-    final talker = ref.read(talkerProvider);
-    if (selectedPresetIds.isEmpty) {
-      talker.warning('sendPromptToAutomation called with no selected presets.');
-      return;
-    }
-
-    var activeId = ref.read(activeConversationIdProvider);
-    final db = ref.read(appDatabaseProvider);
-
-    // Create conversation if it doesn't exist
-    if (activeId == null) {
-      final title = prompt.length > 30 ? prompt.substring(0, 30) : prompt;
-      activeId = await ref
-          .read(conversationServiceProvider.notifier)
-          .createConversation(title);
-      if (!ref.mounted) return;
-      ref.read(activeConversationIdProvider.notifier).set(activeId);
-    }
-
-    if (!ref.mounted) return;
-
-    // Add user's prompt to the conversation history
-    String? userMessageId;
-    if (!isResend) {
-      userMessageId = DateTime.now().microsecondsSinceEpoch.toString();
-      final message = Message(
-        id: userMessageId,
-        text: prompt,
-        isFromUser: true,
-      );
-      await db.insertMessage(message, activeId);
-      await ref
-          .read(conversationServiceProvider.notifier)
-          .updateTimestamp(activeId);
-      ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
-    }
-
-    // DELEGATE to the new orchestrator provider
-    await ref
-        .read(automationOrchestratorProvider.notifier)
-        .startMultiPresetAutomation(
-          prompt: prompt,
-          selectedPresetIds: selectedPresetIds,
-          conversationId: activeId,
-          excludeMessageId: excludeMessageId ?? userMessageId,
-        );
   }
 }

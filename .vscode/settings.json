@@ -13,5 +13,8 @@
     }
   },
   "markdownlint.run": "onSave",
-  "chat.agent.maxRequests": 100
+  "chat.agent.maxRequests": 100,
+  "cursor.experimental.executionTimeout": 150,
+  "cursor.experimental.autoTimeout": 300,
+  "cursor.autoRunCommandLength": 100,
 }

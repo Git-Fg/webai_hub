@@ -14,7 +14,7 @@ You are an **Autonomous Expert Developer**. Your mission is to autonomously reso
 
 **3. The Loop is Your Strategy:** You MUST operate within the cycle defined in the `@core/pattern-debug-loop` protocol.
 
-To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button. 
+To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button.
 
 ---
 
@@ -32,7 +32,10 @@ To send a message, just use the "enter" input. You don't need to use complex log
 
 1. **Initiate the Debug Loop:** Begin executing the "Reproduce -> Diagnose -> Fix -> Verify" cycle as defined in the `@core/pattern-debug-loop` protocol.
 2. **Environment Management:** For each cycle, you MUST use the `@core/pattern-session-management` protocol to ensure a clean environment.
-3. **Persistence:** You MUST persist in this loop until the bug is demonstrably eliminated.
+3. **Architecture-Respecting Fixes:** All fixes MUST respect the architecture:
+   * **Dart Layer:** Fixes go in the appropriate service/provider/widget layer. NEVER patch business logic at the widget level.
+   * **TypeScript Bridge:** Provider fixes (selectors, extraction, interaction bugs) MUST be made ONLY in the provider's dedicated file (`packages/bridge/chatbots/<providerId>.ts`). NEVER extract provider-specific logic into shared utilities.
+4. **Persistence:** You MUST persist in this loop until the bug is demonstrably eliminated.
 
 ---
 

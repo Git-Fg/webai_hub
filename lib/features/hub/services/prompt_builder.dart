@@ -1,10 +1,8 @@
-import 'dart:convert';
-
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
-import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/services/preset_service.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,10 +51,12 @@ class PromptBuilder {
 
     // 3. Fetch presets and combine affixes
     final allPresets = await ref.read(presetsProvider.future);
-    final (presetSettings, groupSettings) = _findPresetAndGroupSettings(
-      allPresets,
-      presetId,
-    );
+    final (presetSettings, groupSettings) = ref
+        .read(presetServiceProvider.notifier)
+        .findPresetAndGroupSettings(
+          allPresets,
+          presetId,
+        );
 
     // 4. Combine affixes: groupPrefix + presetPrefix + userInput + presetSuffix + groupSuffix
     final groupPrefix = groupSettings?.promptPrefix ?? '';
@@ -132,35 +132,6 @@ User: $newPrompt
 ''';
 
     return fullPrompt.trim();
-  }
-
-  /// Finds the preset and its parent group settings by iterating backwards from preset index.
-  (PresetSettings, PresetSettings?) _findPresetAndGroupSettings(
-    List<PresetData> allPresets,
-    int targetPresetId,
-  ) {
-    final presetIndex = allPresets.indexWhere((p) => p.id == targetPresetId);
-    if (presetIndex == -1) {
-      throw StateError('Preset with ID $targetPresetId not found.');
-    }
-
-    final presetData = allPresets[presetIndex];
-    final presetSettings = PresetSettings.fromJson(
-      jsonDecode(presetData.settingsJson) as Map<String, dynamic>,
-    );
-
-    // Find parent group by iterating backwards
-    PresetSettings? groupSettings;
-    for (var i = presetIndex - 1; i >= 0; i--) {
-      if (allPresets[i].providerId == null) {
-        // It's a group
-        groupSettings = PresetSettings.fromJson(
-          jsonDecode(allPresets[i].settingsJson) as Map<String, dynamic>,
-        );
-        break;
-      }
-    }
-    return (presetSettings, groupSettings);
   }
 
   String _buildXmlPrompt(

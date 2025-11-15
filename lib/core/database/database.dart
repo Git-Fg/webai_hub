@@ -1,8 +1,10 @@
 // lib/core/database/database.dart
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
+import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
@@ -30,6 +32,22 @@ class MessageStatusConverter extends TypeConverter<MessageStatus, String> {
 
   @override
   String toSql(MessageStatus value) => value.name;
+}
+
+// WHY: This custom converter allows Drift to store our PresetSettings model as a
+// JSON String in the database, while letting the app work with typed objects.
+class SettingsConverter extends TypeConverter<PresetSettings, String> {
+  const SettingsConverter();
+
+  @override
+  PresetSettings fromSql(String fromDb) {
+    return PresetSettings.fromJson(json.decode(fromDb) as Map<String, dynamic>);
+  }
+
+  @override
+  String toSql(PresetSettings value) {
+    return json.encode(value.toJson());
+  }
 }
 
 // --- Data Models (for Drift) ---
@@ -73,7 +91,8 @@ class Presets extends Table {
   // and Groups (null). Groups act as organizational containers without provider-specific settings.
   TextColumn get providerId => text().nullable()();
   IntColumn get displayOrder => integer()();
-  TextColumn get settingsJson => text()();
+  TextColumn get settings =>
+      text().map(const SettingsConverter()).named('settings_json')();
   // WHY: UI state flags allow users to customize the preset management interface,
   // pinning important presets and collapsing groups for better organization.
   BoolColumn get isPinned => boolean().withDefault(const Constant(false))();

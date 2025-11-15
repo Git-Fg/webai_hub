@@ -15,6 +15,7 @@ bool companionOverlayVisibility(Ref ref) {
   final isInteractiveState = status.maybeWhen(
     refining: (activePresetId, messageCount, isExtracting) => true,
     needsLogin: (onResume) => true,
+    needsUserAgentChange: () => true,
     orElse: () => false,
   );
 

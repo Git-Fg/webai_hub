@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
@@ -25,8 +25,8 @@ void bridgeEventsObserver(Ref ref, int presetId) {
 
       final notifier = ref.read(conversationActionsProvider.notifier);
       final automationNotifier = ref.read(automationStateProvider.notifier);
-      final automationOrchestrator = ref.read(
-        automationOrchestratorProvider.notifier,
+      final automationActions = ref.read(
+        automationActionsProvider.notifier,
       );
 
       switch (event.type) {
@@ -35,7 +35,7 @@ void bridgeEventsObserver(Ref ref, int presetId) {
             event,
             notifier,
             automationNotifier,
-            automationOrchestrator,
+            automationActions,
             ref,
             presetId,
           );
@@ -44,7 +44,7 @@ void bridgeEventsObserver(Ref ref, int presetId) {
           _handleLoginRequired(event, automationNotifier, ref, presetId);
           return;
         case BridgeConstants.eventTypeAutomationFailed:
-          _handleAutomationFailed(event, automationOrchestrator, ref);
+          _handleAutomationFailed(event, automationActions, ref);
           return;
         case BridgeConstants.eventTypeAutomationRetryRequired:
           _handleAutomationRetryRequired(ref);
@@ -61,7 +61,7 @@ void _handleNewResponse(
   BridgeEvent event,
   ConversationActions notifier,
   AutomationState automationNotifier,
-  AutomationOrchestrator automationOrchestrator,
+  AutomationActions automationActions,
   Ref ref,
   int presetId,
 ) {
@@ -90,7 +90,7 @@ void _handleNewResponse(
     if (yoloModeEnabled) {
       // Trigger automatic extraction for single-provider workflow
       unawaited(
-        automationOrchestrator.extractAndReturnToHub(presetId),
+        automationActions.extractAndReturnToHub(presetId),
       );
     }
   }
@@ -114,7 +114,7 @@ void _handleLoginRequired(
         // WHY: Ensure retry uses the correct (and only current) preset ID.
         // Treat as a resend to avoid duplicate user messages.
         await ref
-            .read(conversationActionsProvider.notifier)
+            .read(automationActionsProvider.notifier)
             .sendPromptToAutomation(
               pendingPrompt,
               selectedPresetIds: [presetId],
@@ -130,7 +130,7 @@ void _handleLoginRequired(
 
 void _handleAutomationFailed(
   BridgeEvent event,
-  AutomationOrchestrator automationOrchestrator,
+  AutomationActions automationActions,
   Ref ref,
 ) {
   final payload = event.payload ?? 'Unknown error';
@@ -152,7 +152,7 @@ void _handleAutomationFailed(
     }
   }
 
-  unawaited(automationOrchestrator.onAutomationFailed(errorMessage));
+  unawaited(automationActions.onAutomationFailed(errorMessage));
 }
 
 void _handleAutomationRetryRequired(Ref ref) {

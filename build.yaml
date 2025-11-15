@@ -1,7 +1,93 @@
+# ===================================================================
+# Fichier build.yaml pour l'optimisation de build_runner
+# Projet : AI Hybrid Hub
+# Date : Novembre 2025
+#
+# Objectif : Réduire drastiquement les temps de compilation en
+# restreignant chaque générateur aux seuls fichiers pertinents.
+# ===================================================================
+
 targets:
   $default:
+    # Définit les sources globales pour la cible par défaut.
+    sources:
+      # Inclure tout le répertoire 'lib' par défaut...
+      include:
+        - "lib/**"
+      # Exclure explicitement tous les fichiers générés.
+      # C'est une étape CRUCIALE pour éviter les cycles de build inutiles
+      # et empêcher les générateurs de traiter leurs propres sorties.
+      exclude:
+        - "lib/**/*.g.dart"
+        - "lib/**/*.freezed.dart"
+        - "lib/**/*.gr.dart"
+
     builders:
-      drift_dev:
+      # -------------------------------------------------------------------
+      # Configuration pour riverpod_generator
+      # Génère les providers à partir des annotations @riverpod.
+      # -------------------------------------------------------------------
+      riverpod_generator:riverpod_generator:
+        enabled: true
+        generate_for:
+          - "lib/features/**/providers/**/*.dart"
+          - "lib/core/providers/**/*.dart"
+          - "lib/providers/**/*.dart"
+          - "lib/main.dart"
+          - "lib/features/**/services/**/*.dart"
+          - "lib/features/webview/bridge/**/*.dart"
+
+      # -------------------------------------------------------------------
+      # Configuration pour freezed
+      # Génère les classes de données immuables.
+      # -------------------------------------------------------------------
+      freezed:freezed:
+        enabled: true
+        generate_for:
+          - "lib/features/**/models/**/*.dart"
+          - "lib/features/**/providers/**/*.dart"
+          - "lib/features/automation/automation_state_provider.dart"
+
+      # -------------------------------------------------------------------
+      # Configuration pour json_serializable
+      # Génère la logique de sérialisation fromJson/toJson.
+      # Doit s'exécuter sur les mêmes fichiers que freezed.
+      # -------------------------------------------------------------------
+      json_serializable:json_serializable:
+        enabled: true
+        generate_for:
+          - "lib/features/**/models/**/*.dart"
+          - "lib/features/**/providers/**/*.dart"
+          - "lib/features/automation/automation_state_provider.dart"
+
+      # -------------------------------------------------------------------
+      # Configuration pour drift_dev
+      # Génère le code de la base de données SQLite.
+      # -------------------------------------------------------------------
+      drift_dev:drift_dev:
+        enabled: true
+        generate_for:
+          - "lib/core/database/**/*.dart"
+        # Préserve les options existantes de la configuration précédente.
         options:
           store_date_time_values_as_text: true
 
+      # -------------------------------------------------------------------
+      # Configuration pour auto_route_generator
+      # Il y a deux builders à configurer pour ce package.
+      # -------------------------------------------------------------------
+      # 1. Builder pour les pages (@RoutePage)
+      auto_route_generator:auto_route_generator:
+        enabled: true
+        generate_for:
+          # Cible le fichier principal du routeur ET tous les écrans/pages.
+          - "lib/core/router/app_router.dart"
+          - "lib/main.dart"
+          - "lib/features/**/widgets/*_screen.dart"
+
+      # 2. Builder pour le routeur lui-même (@AutoRouterConfig)
+      auto_route_generator:auto_router_generator:
+        enabled: true
+        generate_for:
+          # Ce builder ne doit s'exécuter QUE sur le fichier de configuration du routeur.
+          - "lib/core/router/app_router.dart"

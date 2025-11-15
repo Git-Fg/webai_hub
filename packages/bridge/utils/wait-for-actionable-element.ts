@@ -1,6 +1,7 @@
 // ts_src/utils/wait-for-actionable-element.ts
 
 import { getModifiedTimeout } from './timeout';
+import { retryOperation } from './retry';
 
 // NOTE: waitForElement and waitForElementWithin are imported for potential future use
 // but currently not used in this file
@@ -26,6 +27,15 @@ interface ActionabilityDiagnostics {
     inert?: boolean;
     occludingElement?: Element | null;
   };
+}
+
+class ActionabilityError extends Error {
+  diagnostics: ActionabilityDiagnostics;
+  constructor(message: string, diagnostics: ActionabilityDiagnostics) {
+    super(message);
+    this.name = 'ActionabilityError';
+    this.diagnostics = diagnostics;
+  }
 }
 
 /**
@@ -391,7 +401,8 @@ async function waitForActionableElementInternal<T extends HTMLElement = HTMLElem
         
         if (finalElement) {
           const { diagnostics } = await checkActionability(finalElement as HTMLElement);
-          reject(new Error(formatActionabilityError(selectors, timeout, diagnostics, elementName)));
+          const message = formatActionabilityError(selectors, timeout, diagnostics, elementName);
+          reject(new ActionabilityError(message, diagnostics));
         } else {
           reject(new Error(`waitForActionableElement failed: None of the selectors [${selectors.join(', ')}] found within ${timeout}ms`));
         }
@@ -447,10 +458,21 @@ export function waitForActionableElement<T extends HTMLElement = HTMLElement>(
 ): Promise<T> {
   // Apply the modifier to the timeout before passing it to the internal function
   const modifiedTimeout = getModifiedTimeout(timeout);
+  
+  const isRetryableError = (error: Error): boolean => {
+    const message = error.message.toLowerCase();
+    return message.includes('not found') ||
+           message.includes('timeout') ||
+           message.includes('none of the selectors') ||
+           message.includes('not actionable');
+  };
+  
   return retryOperation(
     () => waitForActionableElementInternal<T>(selectors, elementName, modifiedTimeout),
+    `waitForActionableElement(${elementName})`,
     retries,
-    `waitForActionableElement(${elementName})`
+    300,
+    isRetryableError
   );
 }
 
@@ -473,45 +495,22 @@ export function waitForActionableElementWithin<T extends HTMLElement = HTMLEleme
 ): Promise<T> {
   // Apply the modifier to the timeout before passing it to the internal function
   const modifiedTimeout = getModifiedTimeout(timeout);
+  
+  const isRetryableError = (error: Error): boolean => {
+    const message = error.message.toLowerCase();
+    return message.includes('not found') ||
+           message.includes('timeout') ||
+           message.includes('none of the selectors') ||
+           message.includes('not actionable');
+  };
+  
   return retryOperation(
     () => waitForActionableElementInternal<T>(selectors, elementName, modifiedTimeout, root),
+    `waitForActionableElementWithin(${elementName})`,
     retries,
-    `waitForActionableElementWithin(${elementName})`
+    300,
+    isRetryableError
   );
 }
 
-// Retry wrapper (reused from wait-for-element.ts pattern)
-async function retryOperation<T>(
-  operation: () => Promise<T>,
-  maxRetries: number,
-  operationName: string
-): Promise<T> {
-  let lastError: Error | null = null;
-  const RETRY_DELAY_MS = 300;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      
-      const isTimeoutError = lastError.message.includes('not found') || 
-                            lastError.message.includes('timeout') ||
-                            lastError.message.includes('None of the selectors') ||
-                            lastError.message.includes('not actionable');
-      
-      if (!isTimeoutError || attempt >= maxRetries) {
-        throw lastError;
-      }
-      
-      const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.log(`[waitForActionableElement] Retry ${attempt + 1}/${maxRetries} after ${delay}ms delay. Error: ${lastError.message.split('\n')[0]}`);
-      
-      // WHY: Exponential backoff delay for retry mechanism, not a UI wait
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError || new Error(`Operation ${operationName} failed after ${maxRetries} retries`);
-}
 

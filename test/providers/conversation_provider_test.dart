@@ -1,11 +1,12 @@
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/database/database_provider.dart';
-import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/javascript_bridge.dart';
@@ -50,7 +51,7 @@ void main() {
         name: 'Test Preset 1',
         providerId: const Value('ai_studio'),
         displayOrder: 1,
-        settingsJson: '{"model": "test-model-1"}',
+        settings: const PresetSettings(model: 'test-model-1'),
       ),
     );
     testPresetId2 = await testDatabase.createPreset(
@@ -58,7 +59,7 @@ void main() {
         name: 'Test Preset 2',
         providerId: const Value('kimi'),
         displayOrder: 2,
-        settingsJson: '{"model": "test-model-2"}',
+        settings: const PresetSettings(model: 'test-model-2'),
       ),
     );
 
@@ -100,7 +101,7 @@ void main() {
   test(
     'sendPrompt (single preset) dispatches one automation request and adds messages',
     () async {
-      final notifier = container.read(conversationActionsProvider.notifier);
+      final notifier = container.read(automationActionsProvider.notifier);
 
       await notifier.sendPromptToAutomation(
         'Hello',
@@ -121,7 +122,7 @@ void main() {
   test(
     'sendPrompt (multi preset) creates staged responses and dispatches requests',
     () async {
-      final notifier = container.read(conversationActionsProvider.notifier);
+      final notifier = container.read(automationActionsProvider.notifier);
 
       await notifier.sendPromptToAutomation(
         'Hello All',
@@ -143,7 +144,7 @@ void main() {
 
   test('finalizeTurnWithResponse adds message and clears staging', () async {
     final orchestrator = container.read(
-      automationOrchestratorProvider.notifier,
+      automationActionsProvider.notifier,
     );
     container
         .read(stagedResponsesProvider.notifier)
@@ -168,20 +169,25 @@ void main() {
   });
 
   test('editAndResendPrompt truncates conversation and resends', () async {
-    final notifier = container.read(conversationActionsProvider.notifier);
+    final conversationNotifier = container.read(
+      conversationActionsProvider.notifier,
+    );
+    final automationNotifier = container.read(
+      automationActionsProvider.notifier,
+    );
 
     // Add initial messages
-    await notifier.addMessage(
+    await conversationNotifier.addMessage(
       'First message',
       isFromUser: true,
       conversationId: container.read(activeConversationIdProvider)!,
     );
-    await notifier.addMessage(
+    await conversationNotifier.addMessage(
       'First response',
       isFromUser: false,
       conversationId: container.read(activeConversationIdProvider)!,
     );
-    await notifier.addMessage(
+    await conversationNotifier.addMessage(
       'Second message',
       isFromUser: true,
       conversationId: container.read(activeConversationIdProvider)!,
@@ -193,7 +199,10 @@ void main() {
     final firstMessageId = conversation[0].id;
 
     // Edit and resend the first message
-    await notifier.editAndResendPrompt(firstMessageId, 'Edited first message');
+    await automationNotifier.editAndResendPrompt(
+      firstMessageId,
+      'Edited first message',
+    );
     await container.pump();
     await Future<void>.delayed(const Duration(milliseconds: 50));
 

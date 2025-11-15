@@ -1,8 +1,8 @@
 // lib/features/hub/widgets/conversation_history_drawer.dart
 
-import 'package:ai_hybrid_hub/core/database/database_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_history_provider.dart';
+import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,7 +13,6 @@ class ConversationHistoryDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final historyAsync = ref.watch(conversationHistoryProvider);
     final activeId = ref.watch(activeConversationIdProvider);
-    final db = ref.read(appDatabaseProvider);
 
     return Drawer(
       child: Column(
@@ -105,7 +104,9 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                         ),
                       ),
                       onDismissed: (direction) async {
-                        await db.deleteConversation(conversation.id);
+                        await ref
+                            .read(conversationServiceProvider.notifier)
+                            .deleteConversation(conversation.id);
                         // If we deleted the active conversation, clear it
                         if (isActive) {
                           ref

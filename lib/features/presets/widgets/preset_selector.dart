@@ -23,7 +23,9 @@ class PresetSelector extends ConsumerWidget {
 
         // WHY: Filter out groups (presets without providerId) from selection
         // Groups are for UI organization only and cannot be used for automation
-        final selectablePresets = presets.where((p) => p.providerId != null).toList();
+        final selectablePresets = presets
+            .where((p) => p.providerId != null)
+            .toList();
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),

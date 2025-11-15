@@ -1,13 +1,11 @@
 // lib/features/presets/widgets/presets_management_screen.dart
 
-import 'dart:convert';
-
 import 'package:ai_hybrid_hub/core/database/database.dart';
-import 'package:ai_hybrid_hub/core/database/database_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:ai_hybrid_hub/features/presets/models/provider_type.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
+import 'package:ai_hybrid_hub/features/presets/services/preset_service.dart';
 import 'package:auto_route/auto_route.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -122,17 +120,9 @@ class _PresetsManagementScreenState
               final item = reorderedPresets.removeAt(oldIndex);
               reorderedPresets.insert(newIndex, item);
 
-              // Create companions with updated displayOrder
-              final companions = reorderedPresets.asMap().entries.map((entry) {
-                return PresetsCompanion(
-                  id: Value(entry.value.id),
-                  displayOrder: Value(entry.key),
-                );
-              }).toList();
-
               await ref
-                  .read(appDatabaseProvider)
-                  .updatePresetOrders(companions);
+                  .read(presetServiceProvider.notifier)
+                  .updatePresetOrders(reorderedPresets);
             },
           );
         },
@@ -182,9 +172,10 @@ class _PresetsManagementScreenState
     if (!context.mounted) return;
     if (result == null) return;
 
-    final db = ref.read(appDatabaseProvider);
     final name = result['name'] as String;
-    final settingsJson = jsonEncode(result['settings'] as Map<String, dynamic>);
+    final settings = PresetSettings.fromJson(
+      result['settings'] as Map<String, dynamic>,
+    );
 
     if (name.isEmpty) {
       if (context.mounted) {
@@ -196,25 +187,14 @@ class _PresetsManagementScreenState
     }
 
     // Create new preset or group
-    final allPresets = await db.watchAllPresets().first;
-    final maxOrder = allPresets.isNotEmpty
-        ? allPresets
-              .map((PresetData p) => p.displayOrder)
-              .reduce(
-                (int a, int b) => a > b ? a : b,
-              )
-        : 0;
-    final newOrder = maxOrder + 1;
+    final presetService = ref.read(presetServiceProvider.notifier);
+    final newOrder = await presetService.getNextDisplayOrder();
 
-    await db.createPreset(
-      PresetsCompanion.insert(
-        name: name,
-        providerId: isGroup
-            ? const Value.absent()
-            : Value(result['providerId'] as String),
-        displayOrder: newOrder,
-        settingsJson: settingsJson,
-      ),
+    await presetService.createPreset(
+      name: name,
+      providerId: isGroup ? null : result['providerId'] as String?,
+      settings: settings,
+      displayOrder: newOrder,
     );
 
     if (context.mounted) {
@@ -225,7 +205,7 @@ class _PresetsManagementScreenState
   }
 
   Future<void> _editPreset(BuildContext context, PresetData preset) async {
-    final settings = jsonDecode(preset.settingsJson) as Map<String, dynamic>;
+    final initialSettingsMap = preset.settings.toJson();
     final isGroup = preset.providerId == null;
 
     ProviderType? initialProviderType;
@@ -242,13 +222,14 @@ class _PresetsManagementScreenState
       isGroup: isGroup,
       initialName: preset.name,
       initialProviderType: initialProviderType,
-      initialSettings: settings,
+      initialSettings: initialSettingsMap,
     );
     if (result == null) return;
 
-    final db = ref.read(appDatabaseProvider);
     final name = result['name'] as String;
-    final settingsJson = jsonEncode(result['settings'] as Map<String, dynamic>);
+    final settings = PresetSettings.fromJson(
+      result['settings'] as Map<String, dynamic>,
+    );
 
     if (name.isEmpty) {
       if (context.mounted) {
@@ -259,16 +240,13 @@ class _PresetsManagementScreenState
       return;
     }
 
-    final companion = PresetsCompanion(
-      id: Value(preset.id),
-      name: Value(name),
-      settingsJson: Value(settingsJson),
-      providerId: isGroup
-          ? const Value<String>.absent()
-          : Value(result['providerId'] as String),
+    final presetService = ref.read(presetServiceProvider.notifier);
+    await presetService.updatePreset(
+      id: preset.id,
+      name: name,
+      providerId: isGroup ? null : result['providerId'] as String?,
+      settings: settings,
     );
-
-    await db.updatePreset(companion);
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -297,8 +275,7 @@ class _PresetsManagementScreenState
     );
 
     if (confirmed ?? false) {
-      final db = ref.read(appDatabaseProvider);
-      await db.deletePreset(presetId);
+      await ref.read(presetServiceProvider.notifier).deletePreset(presetId);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

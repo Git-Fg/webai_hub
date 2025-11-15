@@ -2,33 +2,26 @@
 
 import 'dart:async';
 
-import 'package:ai_hybrid_hub/features/automation/providers/automation_orchestrator.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/selected_staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-part 'curation_panel.g.dart';
-
-@Riverpod(keepAlive: true)
-class FinalizingPresetId extends _$FinalizingPresetId {
-  @override
-  int? build() => null;
-
-  void set(int? presetId) {
-    state = presetId;
-  }
-}
-
-class CurationPanel extends ConsumerWidget {
+class CurationPanel extends ConsumerStatefulWidget {
   const CurationPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CurationPanel> createState() => _CurationPanelState();
+}
+
+class _CurationPanelState extends ConsumerState<CurationPanel> {
+  int? _finalizingPresetId;
+
+  @override
+  Widget build(BuildContext context) {
     final stagedResponses = ref.watch(stagedResponsesProvider);
     final selectedIds = ref.watch(selectedStagedResponsesProvider);
-    final finalizingPresetId = ref.watch(finalizingPresetIdProvider);
 
     if (stagedResponses.isEmpty) {
       return const SizedBox.shrink();
@@ -49,8 +42,8 @@ class CurationPanel extends ConsumerWidget {
             const Divider(height: 16),
             ...stagedResponses.values.map((response) {
               final isSelected = selectedIds.contains(response.presetId);
-              final isFinalizing = finalizingPresetId == response.presetId;
-              final isAnyFinalizing = finalizingPresetId != null;
+              final isFinalizing = _finalizingPresetId == response.presetId;
+              final isAnyFinalizing = _finalizingPresetId != null;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: CheckboxListTile(
@@ -78,14 +71,20 @@ class CurationPanel extends ConsumerWidget {
                           onPressed: isAnyFinalizing
                               ? null
                               : () {
-                                  ref.read(finalizingPresetIdProvider.notifier).set(response.presetId);
+                                  setState(() {
+                                    _finalizingPresetId = response.presetId;
+                                  });
                                   unawaited(
                                     ref
-                                        .read(automationOrchestratorProvider.notifier)
+                                        .read(
+                                          automationActionsProvider.notifier,
+                                        )
                                         .finalizeTurnWithResponse(response.text)
                                         .whenComplete(() {
-                                          if (context.mounted) {
-                                            ref.read(finalizingPresetIdProvider.notifier).set(null);
+                                          if (mounted) {
+                                            setState(() {
+                                              _finalizingPresetId = null;
+                                            });
                                           }
                                         }),
                                   );
@@ -94,7 +93,10 @@ class CurationPanel extends ConsumerWidget {
                               ? const SizedBox(
                                   width: 24,
                                   height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
                                 )
                               : const Text('Use this'),
                         )
@@ -111,7 +113,7 @@ class CurationPanel extends ConsumerWidget {
                     onPressed: () {
                       unawaited(
                         ref
-                            .read(automationOrchestratorProvider.notifier)
+                            .read(automationActionsProvider.notifier)
                             .synthesizeResponses(),
                       );
                     },

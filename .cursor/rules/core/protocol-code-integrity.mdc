@@ -18,6 +18,7 @@ You MUST follow these steps for any and all code modifications.
 
 - Before writing new code, you MUST analyze the surrounding files to understand existing architectural patterns, type definitions, and state management conventions.
 - Adhere to the specific guidelines defined in the relevant `@tech/` rules when working with Dart, TypeScript, or the WebView.
+- **Respect Three-Layer Architecture:** Identify which layer your change belongs to (UI, Provider, or Service). Business logic MUST go in services, state orchestration in providers, and user interaction in widgets.
 
 #### 2. During Implementation: Uphold Quality Standards
 

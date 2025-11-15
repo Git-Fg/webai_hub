@@ -30,14 +30,14 @@ PresetData createTestPreset({
   required int id,
   required String name,
   String? providerId,
-  String settingsJson = '{"model": "test-model"}',
+  PresetSettings? settings,
   int displayOrder = 1,
 }) {
   return PresetData(
     id: id,
     name: name,
     providerId: providerId,
-    settingsJson: settingsJson,
+    settings: settings ?? const PresetSettings(model: 'test-model'),
     displayOrder: displayOrder,
     isPinned: false,
     isCollapsed: false,

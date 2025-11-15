@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/common/widgets/loading_indicator.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
@@ -122,7 +123,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                               ).pop(); // Close popover
                               unawaited(
                                 ref
-                                    .read(conversationActionsProvider.notifier)
+                                    .read(automationActionsProvider.notifier)
                                     .editAndResendPrompt(
                                       widget.message.id,
                                       _textController.text,

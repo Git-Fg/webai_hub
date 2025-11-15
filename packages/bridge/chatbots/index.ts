@@ -4,7 +4,7 @@ import { kimiChatbot } from './kimi';
 import { zAiChatbot } from './z-ai';
 import { Chatbot } from '../types/chatbot';
 
-export { AiStudioChatbot, aiStudioChatbot, ISettingsManagerDependencies } from './ai-studio';
+export { AiStudioChatbot, aiStudioChatbot } from './ai-studio';
 export { kimiChatbot } from './kimi';
 export { zAiChatbot } from './z-ai';
 

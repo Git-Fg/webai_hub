@@ -1,7 +1,6 @@
 // ts_src/utils/automation-workflow.ts
 
 import { Chatbot, AutomationOptions } from '../types/chatbot';
-import { AiStudioChatbot } from '../chatbots/ai-studio';
 import { notifyDart } from './notify-dart';
 import { EVENT_TYPE_AUTOMATION_FAILED, EVENT_TYPE_NEW_RESPONSE } from './bridge-constants';
 
@@ -41,28 +40,9 @@ export async function runChatbotWorkflow(
     await chatbot.waitForReady();
 
     // Phase 3: Apply all configurations (System Prompt, Model, Temperature, etc.).
-    // WHY: System prompt must be set FIRST as a separate operation because it opens/closes
-    // its own settings panel and dialog. Then applyAllSettings is called separately
-    // to set model, temperature, etc. This matches the old working logic.
     currentPhase = 'Phase 3: Applying configurations';
     console.log(`[Engine LOG] ${currentPhase}...`);
-    // Check if the chatbot is an instance of AiStudioChatbot
-    if (chatbot instanceof AiStudioChatbot) {
-      // Step 3a: Set system prompt FIRST (handles its own panel open/close)
-      if (options.systemPrompt) {
-        console.log(`[Engine LOG] Setting system prompt (length: ${options.systemPrompt.length})`);
-        await chatbot.settingsManager.setSystemPrompt(options.systemPrompt);
-      }
-      // Step 3b: Apply all other settings AFTER (handles its own panel open/close)
-      // WHY: Exclude systemPrompt from applyAllSettings since it's already handled above
-      const settingsWithoutSystemPrompt: AutomationOptions = {
-        ...options,
-        systemPrompt: undefined, // Exclude system prompt from applyAllSettings
-      };
-      await chatbot.settingsManager.applyAllSettings(settingsWithoutSystemPrompt);
-    } else if (chatbot.applyAllSettings) {
-      // WHY: For other chatbots (like Kimi), applyAllSettings is called directly
-      // if the method exists. Kimi doesn't have a separate system prompt step.
+    if (chatbot.applyAllSettings) {
       await chatbot.applyAllSettings(options);
     }
 
@@ -97,6 +77,15 @@ export async function runChatbotWorkflow(
       visibleElements: pageState.visibleElements,
       timestamp: new Date().toISOString(),
     };
+
+    // Check if it's our custom error and add its diagnostics
+    // WHY: This explicit check allows us to destructure the custom error and enrich
+    // the diagnostic payload sent to Dart for better debugging.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (error instanceof Error && (error as any).name === 'ActionabilityError') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      diagnostics.actionability = (error as any).diagnostics;
+    }
 
     // Extract selector context from error message if available
     if (errorMessage.includes('Selector') || errorMessage.includes('selector')) {

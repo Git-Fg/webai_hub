@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
-import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/models/provider_type.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
@@ -17,8 +17,6 @@ import 'package:ai_hybrid_hub/features/webview/providers/bridge_events_provider.
 import 'package:ai_hybrid_hub/features/webview/providers/webview_key_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/webview_constants.dart';
 import 'package:ai_hybrid_hub/providers/bridge_script_provider.dart';
-import 'package:auto_route/auto_route.dart';
-import 'package:elegant_notification/elegant_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -41,8 +39,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   InAppWebViewController? webViewController;
   double _progress = 0;
   String? _currentBridgeScript;
-  // WHY: Flag to prevent showing the notification multiple times for the same error.
-  bool _isUserAgentNoticeShown = false;
   // WHY: Flag to prevent infinite redirect loops when handling CookieMismatch
   bool _isHandlingCookieMismatch = false;
 
@@ -52,17 +48,22 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   // WHY: Helper method to resolve provider URL from providerId.
   // This encapsulates the conversion from providerId string to ProviderType enum
   // and then to the actual URL from providerDetails map.
-  // WHY: Fail fast on invalid providerId to catch configuration errors early
-  // instead of silently defaulting to AI Studio.
-  String _getProviderUrl() {
-    final providerId = widget.preset.providerId;
-    final providerType = ProviderType.values.firstWhere(
-      (pt) => providerDetails[pt]!.id == providerId,
-      orElse: () => throw StateError(
-        'Invalid or unsupported providerId: "$providerId" for preset "${widget.preset.name}". Check database seed or preset configuration.',
-      ),
-    );
-    return providerDetails[providerType]!.url;
+  // WHY: Return null on invalid providerId to gracefully handle configuration errors
+  // instead of crashing the app.
+  String? _getProviderUrl() {
+    try {
+      final providerId = widget.preset.providerId;
+      final providerType = ProviderType.values.firstWhere(
+        (pt) => providerDetails[pt]!.id == providerId,
+        orElse: () => throw StateError(
+          'Invalid or unsupported providerId: "$providerId" for preset "${widget.preset.name}". Check database seed or preset configuration.',
+        ),
+      );
+      return providerDetails[providerType]!.url;
+    } on Object catch (e, st) {
+      ref.read(talkerProvider).handle(e, st, 'Failed to get provider URL');
+      return null;
+    }
   }
 
   // WHY: Centralized domain verification logic to avoid duplication.
@@ -148,34 +149,11 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
     }
   }
 
-  // NEW HELPER METHOD: Encapsulates showing the detailed, actionable error notification.
-  void _showUserAgentErrorNotification() {
-    if (!mounted || _isUserAgentNoticeShown) return;
-
-    setState(() {
-      _isUserAgentNoticeShown = true;
-    });
-
-    ElegantNotification.error(
-      title: const Text('⚠️ Google Login Blocked (Error 403)'),
-      description: const Text(
-        'Google detected an incompatible browser. Go to Settings and select a standard browser User Agent (e.g., Chrome).',
-      ),
-      toastDuration: const Duration(seconds: 15),
-      showProgressIndicator: false,
-      action: InkWell(
-        onTap: () {
-          unawaited(context.router.push(const SettingsRoute()));
-        },
-        child: Text(
-          'Settings',
-          style: TextStyle(
-            decoration: TextDecoration.underline,
-            color: Colors.blue.shade800,
-          ),
-        ),
-      ),
-    ).show(context);
+  // WHY: Transition to persistent needsUserAgentChange state instead of ephemeral notification.
+  // This ensures the error cannot be missed and provides direct navigation to settings.
+  void _handleUserAgentError() {
+    if (!mounted) return;
+    ref.read(automationStateProvider.notifier).moveToNeedsUserAgentChange();
   }
 
   @override
@@ -312,6 +290,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   }
 
   Widget _buildWebView(String bridgeScript) {
+    final url = _getProviderUrl();
+    if (url == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Error: Invalid provider configuration for this preset.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      );
+    }
+
     // WHY: Store bridge script for use in recovery methods
     _currentBridgeScript = bridgeScript;
     final webViewKey = ref.watch(webViewKeyProvider);
@@ -419,7 +411,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
             .recordWebViewCreated();
 
         // Navigate to the provider URL when WebView is created
-        final url = _getProviderUrl();
         unawaited(controller.loadUrl(urlRequest: URLRequest(url: WebUri(url))));
 
         controller.addJavaScriptHandler(
@@ -485,12 +476,6 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         });
       },
       onLoadStart: (controller, url) async {
-        // Reset the notice flag on any new page load.
-        if (_isUserAgentNoticeShown) {
-          setState(() {
-            _isUserAgentNoticeShown = false;
-          });
-        }
         setState(() {
           _progress = 0;
         });
@@ -556,12 +541,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         final newUrl = url?.toString() ?? '';
         ref.read(currentWebViewUrlProvider.notifier).updateUrl(newUrl);
 
-        // Reset the notice flag if the user navigates away from the error page.
-        if (!newUrl.contains('disallowed_useragent') &&
-            _isUserAgentNoticeShown) {
-          setState(() {
-            _isUserAgentNoticeShown = false;
-          });
+        // WHY: Check for disallowed_useragent in URL and transition to persistent state.
+        if (newUrl.contains('disallowed_useragent')) {
+          _handleUserAgentError();
         }
 
         // WHY: Applying the same strict host check here ensures that client-side
@@ -631,9 +613,9 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
       // The heartbeat check on app resume will detect and recover from zombie contexts
       // iOS crashes often manifest as "zombie" contexts that hang on evaluateJavascript calls
       onConsoleMessage: (controller, consoleMessage) {
-        // NEW: Robust error detection from console logs.
+        // WHY: Robust error detection from console logs.
         if (consoleMessage.message.contains('disallowed_useragent')) {
-          _showUserAgentErrorNotification();
+          _handleUserAgentError();
         }
 
         // WHY: Wrap talker access in try-catch to handle any provider access issues
@@ -663,10 +645,10 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           }
         }
       },
-      // NEW: Robust error detection from web resource (network) errors.
+      // WHY: Robust error detection from web resource (network) errors.
       onReceivedError: (controller, request, error) {
         if (error.description.contains('disallowed_useragent')) {
-          _showUserAgentErrorNotification();
+          _handleUserAgentError();
         }
         setState(() {
           _progress = 1.0;

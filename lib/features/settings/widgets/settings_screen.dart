@@ -125,7 +125,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('Use Advanced (XML) Prompting'),
                 subtitle: const Text(
-                  'Provides better context to the AI. Recommended for models like Claude.',
+                  'Provides better context to the AI. Recommended for advanced models.',
                 ),
                 value: settings.useAdvancedPrompting,
                 onChanged: (bool value) {
