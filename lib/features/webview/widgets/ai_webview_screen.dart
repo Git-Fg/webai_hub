@@ -42,6 +42,8 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   String? _currentBridgeScript;
   // WHY: Flag to prevent infinite redirect loops when handling CookieMismatch
   bool _isHandlingCookieMismatch = false;
+  // WHY: Flag to prevent multiple hashchange triggers for zai OAuth
+  bool _isProcessingZaiOAuth = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -545,6 +547,77 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           }
         }
 
+        // WHY: Handle zai OAuth callback - trigger hashchange event to process token
+        // When zai redirects back with #token=..., the page needs to process it
+        if (url != null &&
+            url.host == 'chat.z.ai' &&
+            url.path == '/auth' &&
+            url.fragment.startsWith('token=') &&
+            !_isProcessingZaiOAuth) {
+          _isProcessingZaiOAuth = true;
+          if (talker != null) {
+            try {
+              talker.info(
+                '[WebView] Detected zai OAuth token callback, triggering hashchange...',
+              );
+            } on Object catch (_) {
+              // Ignore logging errors
+            }
+          }
+          // WHY: Trigger hashchange event to allow zai's JavaScript to process the token
+          // This is necessary because the page might have already loaded before the hash was set
+          try {
+            await controller.evaluateJavascript(source: '''
+              (function() {
+                console.log('[Z.ai OAuth] Processing token from hash:', window.location.hash);
+                // Trigger hashchange event multiple times to ensure it's caught
+                for (var i = 0; i < 3; i++) {
+                  setTimeout(function() {
+                    window.dispatchEvent(new HashChangeEvent('hashchange', {
+                      oldURL: window.location.href.split('#')[0],
+                      newURL: window.location.href
+                    }));
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }, i * 100);
+                }
+                // Also try directly accessing the token and triggering any auth handlers
+                setTimeout(function() {
+                  var token = window.location.hash.match(/token=([^&]+)/);
+                  if (token && token[1]) {
+                    console.log('[Z.ai OAuth] Token found, attempting to process...');
+                    // Try to find and trigger any auth processing functions
+                    if (window.processAuthToken) {
+                      window.processAuthToken(token[1]);
+                    }
+                    // Try localStorage or sessionStorage if zai uses that
+                    try {
+                      localStorage.setItem('auth_token', token[1]);
+                      sessionStorage.setItem('auth_token', token[1]);
+                    } catch(e) {
+                      console.log('[Z.ai OAuth] Could not set storage:', e);
+                    }
+                  }
+                }, 500);
+              })();
+            ''');
+            // Reset flag after a delay to allow retry if needed
+            Future.delayed(const Duration(seconds: 3), () {
+              _isProcessingZaiOAuth = false;
+            });
+          } on Object catch (e) {
+            _isProcessingZaiOAuth = false;
+            if (talker != null) {
+              try {
+                talker.warning(
+                  '[WebView] Error triggering hashchange for zai OAuth: $e',
+                );
+              } on Object catch (_) {
+                // Ignore logging errors
+              }
+            }
+          }
+        }
+
         // WHY: This check is now stricter. It verifies the exact host of the URL,
         // preventing the bridge script from being injected into cross-origin
         // redirect pages like the Google login page.
@@ -583,6 +656,91 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // WHY: Check for disallowed_useragent in URL and transition to persistent state.
         if (newUrl.contains('disallowed_useragent')) {
           _handleUserAgentError();
+        }
+
+        // WHY: Handle zai OAuth callback when hash changes
+        // This is called when the URL hash changes (e.g., when token is added to URL)
+        // Only process if not already processing to avoid duplicate triggers
+        if (url != null &&
+            url.host == 'chat.z.ai' &&
+            url.path == '/auth' &&
+            url.fragment.startsWith('token=') &&
+            !_isProcessingZaiOAuth) {
+          _isProcessingZaiOAuth = true;
+          // WHY: Wrap talker access in try-catch to handle any provider access issues
+          Talker? talker;
+          try {
+            if (!mounted) {
+              _isProcessingZaiOAuth = false;
+              return;
+            }
+            talker = ref.read(talkerProvider);
+          } on Object catch (e) {
+            _isProcessingZaiOAuth = false;
+            debugPrint(
+              '[WebView] Failed to access talker in onUpdateVisitedHistory: $e',
+            );
+          }
+          if (talker != null) {
+            try {
+              talker.info(
+                '[WebView] Detected zai OAuth token in hash, triggering processing...',
+              );
+            } on Object catch (_) {
+              // Ignore logging errors
+            }
+          }
+          // WHY: Trigger hashchange event to allow zai's JavaScript to process the token
+          try {
+            await controller.evaluateJavascript(source: '''
+              (function() {
+                console.log('[Z.ai OAuth] Processing token from hash:', window.location.hash);
+                // Trigger hashchange event multiple times to ensure it's caught
+                for (var i = 0; i < 3; i++) {
+                  setTimeout(function() {
+                    window.dispatchEvent(new HashChangeEvent('hashchange', {
+                      oldURL: window.location.href.split('#')[0],
+                      newURL: window.location.href
+                    }));
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }, i * 100);
+                }
+                // Also try directly accessing the token and triggering any auth handlers
+                setTimeout(function() {
+                  var token = window.location.hash.match(/token=([^&]+)/);
+                  if (token && token[1]) {
+                    console.log('[Z.ai OAuth] Token found, attempting to process...');
+                    // Try to find and trigger any auth processing functions
+                    if (window.processAuthToken) {
+                      window.processAuthToken(token[1]);
+                    }
+                    // Try localStorage or sessionStorage if zai uses that
+                    try {
+                      localStorage.setItem('auth_token', token[1]);
+                      sessionStorage.setItem('auth_token', token[1]);
+                    } catch(e) {
+                      console.log('[Z.ai OAuth] Could not set storage:', e);
+                    }
+                  }
+                }, 500);
+              })();
+            ''');
+            // Reset flag after a delay to allow retry if needed
+            Future.delayed(const Duration(seconds: 3), () {
+              _isProcessingZaiOAuth = false;
+            });
+          } on Object catch (e) {
+            _isProcessingZaiOAuth = false;
+            if (talker != null) {
+              try {
+                talker.warning(
+                  '[WebView] Error triggering hashchange for zai OAuth in onUpdateVisitedHistory: $e',
+                );
+              } on Object catch (_) {
+                // Ignore logging errors
+              }
+            }
+          }
         }
 
         // WHY: Applying the same strict host check here ensures that client-side
