@@ -56,6 +56,8 @@ AI Hybrid Hub is engineered to be reliable across a wide range of devices and ne
 
 - **Automatic History Pruning:** To manage storage space, the app automatically keeps only the most recent conversations (defaulting to 10, but configurable), preventing indefinite database growth and keeping the app feeling fast.
 
+- **Native Optimized Design System:** The UI is built on a centralized, semantic design system using Flutter's native `ThemeExtension` API. This ensures consistent visual styling, smooth animated theme transitions, and maintainability without external UI dependencies. All styles are defined semantically by function (e.g., `primaryActionButtonColor`) rather than appearance (e.g., `blueButton`), making the codebase easier to evolve and adapt to different design requirements.
+
 ### 🤖 AI Development Workflow
 
 This project is not only *about* AI; it is actively developed and validated *with* AI agents. Our methodology is formalized through a hierarchy of documents that create a robust, predictable, and autonomous development loop.

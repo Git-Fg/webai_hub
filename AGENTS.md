@@ -47,6 +47,44 @@ These are the fundamental principles of quality code in this project.
 * **Zero Debugging Artifacts:** Before any commit, you MUST remove all `print()`, `console.log()`, and commented-out code.
 * **Structured Logging:** All `console.log` and `console.error` calls within the TypeScript automation engine MUST follow the structured logging protocol (e.g., `[Scope] Message`, Intent-Action-Result pattern, data-rich payloads).
 
+### 2.1.1. UI Design System: Native Optimized Strategy
+
+**CRITICAL:** The project uses a centralized, semantic design system based on Flutter's native `ThemeExtension` API. This is a non-negotiable architectural constraint.
+
+* **Absolute Prohibition:** You MUST NEVER add hardcoded styles directly in widgets. All of the following are strictly forbidden in widget code:
+  * Hardcoded `BoxDecoration` (e.g., `BoxDecoration(color: Colors.blue, ...)`)
+  * Hardcoded `TextStyle` (e.g., `TextStyle(color: Colors.white, ...)`)
+  * Hardcoded `Color` values (e.g., `Colors.blue.shade500`, `Color(0xFF...)`)
+  * Hardcoded `BorderRadius`, `BoxShadow`, or any other style primitives
+
+* **Mandatory Pattern:** ALL UI styles MUST be accessed via the centralized theme system:
+  ```dart
+  // ✅ CORRECT: Use the theme facade
+  final theme = context.hubTheme;
+  final decoration = widget.isFromUser 
+      ? theme.outgoingBubbleDecoration 
+      : theme.incomingBubbleDecoration;
+  
+  // ❌ WRONG: Hardcoded styles in widgets
+  final decoration = BoxDecoration(
+    color: Colors.blue.shade500,  // FORBIDDEN
+    borderRadius: BorderRadius.circular(20), // FORBIDDEN
+  );
+  ```
+
+* **Adding New Styles:** When you need a new visual style:
+  1. **DO NOT** add it directly to the widget
+  2. Add a new semantic property to `HubThemeExtension` (in `lib/core/theme/hub_theme_extension.dart`)
+  3. Define the style in both `light` and `dark` theme instances
+  4. Update the `copyWith()` and `lerp()` methods to include the new property
+  5. Access it in your widget via `context.hubTheme.yourNewProperty`
+
+* **Semantic Naming:** Style properties must be named by their function, not their appearance:
+  * ✅ `primaryActionButtonColor`, `errorMessageTextStyle`, `incomingBubbleDecoration`
+  * ❌ `blueButton`, `redText`, `roundedContainer`
+
+* **Zero External UI Libraries:** You MUST NOT introduce third-party UI component libraries (e.g., `shadcn_flutter`, `GetWidget`, `mix`, `VelocityX`). The native Flutter components + custom theme system provides everything needed.
+
 ### 2.2. State Management (Riverpod 3.0+)
 
 * **Use Modern Notifiers:** ALWAYS use code-generated `@riverpod` notifiers. NEVER use legacy `StateNotifier` or `ChangeNotifier`.

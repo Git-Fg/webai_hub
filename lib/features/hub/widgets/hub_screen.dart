@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_details_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
@@ -49,6 +50,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.hubTheme;
     // The provider now returns an AsyncValue<List<Message>>
     final conversationAsync = ref.watch(conversationProvider);
 
@@ -58,7 +60,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
     });
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: theme.surfaceColor,
       drawer: const ConversationHistoryDrawer(),
       appBar: AppBar(
         title: const Text(
@@ -68,9 +70,10 @@ class _HubScreenState extends ConsumerState<HubScreen> {
             color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.blue.shade600,
+        backgroundColor: theme.sendButtonColor,
         elevation: 0,
         centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.notes),
