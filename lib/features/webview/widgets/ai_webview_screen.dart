@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:ai_hybrid_hub/core/database/database.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/models/provider_type.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
@@ -47,19 +48,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
 
   // WHY: Helper method to resolve provider URL from providerId.
   // This encapsulates the conversion from providerId string to ProviderType enum
-  // and then to the actual URL from providerDetails map.
+  // and then to the actual URL from providerMetadataProvider.
   // WHY: Return null on invalid providerId to gracefully handle configuration errors
   // instead of crashing the app.
   String? _getProviderUrl() {
     try {
       final providerId = widget.preset.providerId;
-      final providerType = ProviderType.values.firstWhere(
-        (pt) => providerDetails[pt]!.id == providerId,
+      final allMetadata = ref.read(providerMetadataProvider);
+      final metadata = allMetadata.values.firstWhere(
+        (p) => p.id == providerId,
         orElse: () => throw StateError(
-          'Invalid or unsupported providerId: "$providerId" for preset "${widget.preset.name}". Check database seed or preset configuration.',
+          'Invalid or unsupported providerId: "$providerId" for preset "${widget.preset.name}". Check provider_type.dart.',
         ),
       );
-      return providerDetails[providerType]!.url;
+      return metadata.url;
     } on Object catch (e, st) {
       ref.read(talkerProvider).handle(e, st, 'Failed to get provider URL');
       return null;
@@ -200,91 +202,99 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           await controller.goBack();
         }
       },
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          title: Text(
-            widget.preset.name,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: Colors.green.shade600,
-          elevation: 0,
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () async {
-                if (webViewController == null) return;
-                // WHY: Wrap talker access in try-catch to handle any provider access issues
-                Talker? talker;
-                try {
-                  if (!mounted) return;
-                  talker = ref.read(talkerProvider);
-                  talker?.info('[DOM INSPECT] Requesting DOM analysis...');
-                } on Object catch (e) {
-                  debugPrint('[DOM INSPECT] Failed to access talker: $e');
-                }
-                try {
-                  final result = await webViewController!.evaluateJavascript(
-                    source: 'inspectDOMForSelectors();',
-                  );
-                  if (result != null) {
-                    const encoder = JsonEncoder.withIndent('  ');
-                    final prettyJson = encoder.convert(result);
-                    if (talker != null) {
-                      try {
-                        talker.info('[DOM INSPECT] Result:\n$prettyJson');
-                      } on Object catch (_) {
-                        // Ignore logging errors
-                      }
-                    }
-                  } else {
-                    if (talker != null) {
-                      try {
-                        talker.info(
-                          '[DOM INSPECT] inspectDOMForSelectors returned null.',
-                        );
-                      } on Object catch (_) {
-                        // Ignore logging errors
-                      }
-                    }
-                  }
-                } on Object catch (e) {
-                  if (talker != null) {
+      child: Builder(
+        builder: (context) {
+          final theme = context.hubTheme;
+          return Scaffold(
+            backgroundColor: theme.surfaceColor,
+            appBar: AppBar(
+              title: Text(
+                widget.preset.name,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: theme.appBarTextColor,
+                ),
+              ),
+              backgroundColor: theme.webViewAppBarColor,
+              elevation: 0,
+              centerTitle: true,
+              iconTheme: IconThemeData(color: theme.appBarIconColor),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  color: theme.appBarIconColor,
+                  onPressed: () async {
+                    if (webViewController == null) return;
+                    // WHY: Wrap talker access in try-catch to handle any provider access issues
+                    Talker? talker;
                     try {
-                      talker.error('[DOM INSPECT] Error: $e');
-                    } on Object catch (_) {
-                      // Ignore logging errors
+                      if (!mounted) return;
+                      talker = ref.read(talkerProvider);
+                      talker?.info('[DOM INSPECT] Requesting DOM analysis...');
+                    } on Object catch (e) {
+                      debugPrint('[DOM INSPECT] Failed to access talker: $e');
                     }
-                  }
-                }
-              },
-              tooltip: 'Inspect DOM for Selectors',
+                    try {
+                      final result = await webViewController!
+                          .evaluateJavascript(
+                            source: 'inspectDOMForSelectors();',
+                          );
+                      if (result != null) {
+                        const encoder = JsonEncoder.withIndent('  ');
+                        final prettyJson = encoder.convert(result);
+                        if (talker != null) {
+                          try {
+                            talker.info('[DOM INSPECT] Result:\n$prettyJson');
+                          } on Object catch (_) {
+                            // Ignore logging errors
+                          }
+                        }
+                      } else {
+                        if (talker != null) {
+                          try {
+                            talker.info(
+                              '[DOM INSPECT] inspectDOMForSelectors returned null.',
+                            );
+                          } on Object catch (_) {
+                            // Ignore logging errors
+                          }
+                        }
+                      }
+                    } on Object catch (e) {
+                      if (talker != null) {
+                        try {
+                          talker.error('[DOM INSPECT] Error: $e');
+                        } on Object catch (_) {
+                          // Ignore logging errors
+                        }
+                      }
+                    }
+                  },
+                  tooltip: 'Inspect DOM for Selectors',
+                ),
+              ],
+              bottom: _progress < 1.0
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(4),
+                      child: LinearProgressIndicator(
+                        value: _progress,
+                        backgroundColor: theme.webViewProgressIndicatorColor,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.appBarTextColor!,
+                        ),
+                      ),
+                    )
+                  : null,
             ),
-          ],
-          bottom: _progress < 1.0
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(4),
-                  child: LinearProgressIndicator(
-                    value: _progress,
-                    backgroundColor: Colors.green.shade200,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.white,
-                    ),
-                  ),
-                )
-              : null,
-        ),
-        body: bridgeScriptAsync.when(
-          data: _buildWebView,
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(
-            child: Text('Error loading bridge script: $err'),
-          ),
-        ),
+            body: bridgeScriptAsync.when(
+              data: _buildWebView,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
+                child: Text('Error loading bridge script: $err'),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -292,15 +302,20 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
   Widget _buildWebView(String bridgeScript) {
     final url = _getProviderUrl();
     if (url == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'Error: Invalid provider configuration for this preset.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.red),
-          ),
-        ),
+      return Builder(
+        builder: (context) {
+          final theme = context.hubTheme;
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Error: Invalid provider configuration for this preset.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.messageErrorColor),
+              ),
+            ),
+          );
+        },
       );
     }
 
@@ -347,6 +362,10 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         // WHY: Explicitly set to true because Android disables this flag by default; retaining the value prevents CookieMismatch redirects.
         // ignore: avoid_redundant_argument_values
         thirdPartyCookiesEnabled: true,
+        // WHY: Enable JavaScript window opening to allow OAuth popups and authentication flows
+        // This is critical for Google login buttons that use window.open() or target="_blank"
+        javaScriptCanOpenWindowsAutomatically: true,
+        supportMultipleWindows: true,
       ),
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         // WHY: Wrap talker access in try-catch to handle any provider access issues
@@ -361,12 +380,32 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
           // Continue without logging if talker access fails
         }
         final uri = navigationAction.request.url;
+        final navigationType = navigationAction.navigationType;
         if (talker != null) {
           try {
-            talker.info('[WebView] Navigation request to: $uri');
+            talker.info(
+              '[WebView] Navigation request to: $uri (type: $navigationType)',
+            );
           } on Object catch (_) {
             // Ignore logging errors
           }
+        }
+
+        // WHY: Explicitly allow Google authentication URLs to ensure they load in the webview
+        // This is critical for OAuth flows where clicking "Log in with Google" must stay in the webview
+        if (uri != null && uri.host.contains('accounts.google.com')) {
+          if (talker != null) {
+            try {
+              talker.info(
+                '[WebView] Allowing Google authentication URL: $uri',
+              );
+            } on Object catch (_) {
+              // Ignore logging errors
+            }
+          }
+          // WHY: Always allow Google authentication URLs to load in the webview
+          // This ensures OAuth flows complete within the app instead of opening externally
+          return NavigationActionPolicy.ALLOW;
         }
 
         // WHY: Handle Google CookieMismatch redirect by navigating directly to login page
@@ -653,6 +692,40 @@ class _AiWebviewScreenState extends ConsumerState<AiWebviewScreen>
         setState(() {
           _progress = 1.0;
         });
+      },
+      // WHY: Handle JavaScript window.open() calls for OAuth popups
+      // When Google login uses window.open(), we need to load the URL in the current webview
+      // instead of trying to create a new window (which WebView doesn't support well)
+      onCreateWindow: (controller, createWindowAction) async {
+        // WHY: Wrap talker access in try-catch to handle any provider access issues
+        Talker? talker;
+        try {
+          if (!mounted) return false;
+          talker = ref.read(talkerProvider);
+        } on Object catch (e) {
+          debugPrint(
+            '[WebView] Failed to access talker in onCreateWindow: $e',
+          );
+        }
+        final url = createWindowAction.request.url;
+        if (talker != null) {
+          try {
+            talker.info(
+              '[WebView] JavaScript window.open() called for: $url',
+            );
+          } on Object catch (_) {
+            // Ignore logging errors
+          }
+        }
+        // WHY: Load the URL in the current webview instead of creating a new window
+        // This is the standard approach for OAuth flows in WebView
+        if (url != null) {
+          unawaited(
+            controller.loadUrl(urlRequest: URLRequest(url: url)),
+          );
+        }
+        // WHY: Return true to indicate we handled the window creation
+        return true;
       },
     );
   }
