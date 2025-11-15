@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/widgets/preset_accordion.dart';
@@ -51,6 +52,8 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.hubTheme;
+    
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         const SingleActivator(LogicalKeyboardKey.enter): () {
@@ -60,16 +63,7 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
         },
       },
       child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: kDefaultBlurRadius,
-              offset: kTopShadowOffset,
-            ),
-          ],
-        ),
+        decoration: theme.inputBarDecoration,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -86,10 +80,7 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.only(left: kDefaultPadding),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(kInputBorderRadius),
-                      ),
+                      decoration: theme.inputFieldDecoration,
                       child: TextField(
                         key: const Key('hub_message_input'),
                         focusNode: _focusNode,
@@ -113,12 +104,12 @@ class _HubInputBarState extends ConsumerState<HubInputBar> {
                     key: const Key('hub_send_button'),
                     tooltip: 'Send message',
                     onPressed: _sendMessage,
-                    backgroundColor: Colors.blue.shade600,
+                    backgroundColor: theme.sendButtonColor,
                     mini: true,
                     elevation: 2,
-                    child: const Icon(
+                    child: Icon(
                       Icons.send,
-                      color: Colors.white,
+                      color: theme.sendButtonIconColor,
                     ),
                   ),
                 ],

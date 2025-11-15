@@ -1,5 +1,6 @@
 // lib/features/hub/widgets/conversation_history_drawer.dart
 
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/active_conversation_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_history_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/services/conversation_service.dart';
@@ -11,17 +12,19 @@ class ConversationHistoryDrawer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = context.hubTheme;
     final historyAsync = ref.watch(conversationHistoryProvider);
     final activeId = ref.watch(activeConversationIdProvider);
 
     return Drawer(
+      backgroundColor: theme.surfaceColor,
       child: Column(
         children: [
-          const DrawerHeader(
+          DrawerHeader(
             decoration: BoxDecoration(
-              color: Colors.blue,
+              color: theme.sendButtonColor ?? Colors.blue,
             ),
-            child: Align(
+            child: const Align(
               alignment: Alignment.bottomLeft,
               child: Text(
                 'Conversation History',
@@ -40,13 +43,16 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.error_outline,
                       size: 48,
-                      color: Colors.red,
+                      color: theme.messageErrorColor,
                     ),
                     const SizedBox(height: 16),
-                    Text('Error: $err'),
+                    Text(
+                      'Error: $err',
+                      style: TextStyle(color: theme.onSurfaceColor),
+                    ),
                   ],
                 ),
               ),
@@ -59,14 +65,14 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                         Icon(
                           Icons.chat_bubble_outline,
                           size: 64,
-                          color: Colors.grey.shade400,
+                          color: theme.dividerColor,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           'No conversations yet',
                           style: TextStyle(
                             fontSize: 18,
-                            color: Colors.grey.shade600,
+                            color: theme.onSurfaceColor,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -74,7 +80,7 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                           'Start a new chat to see it here',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.grey.shade500,
+                            color: theme.dividerColor,
                           ),
                         ),
                       ],
@@ -97,7 +103,7 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
-                        color: Colors.red,
+                        color: theme.messageErrorColor,
                         child: const Icon(
                           Icons.delete,
                           color: Colors.white,
@@ -121,11 +127,15 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                             fontWeight: isActive
                                 ? FontWeight.bold
                                 : FontWeight.normal,
+                            color: theme.onSurfaceColor,
                           ),
                         ),
-                        subtitle: Text(dateStr),
+                        subtitle: Text(
+                          dateStr,
+                          style: TextStyle(color: theme.dividerColor),
+                        ),
                         selected: isActive,
-                        selectedTileColor: Colors.blue.shade50,
+                        selectedTileColor: theme.incomingBubbleDecoration?.color,
                         onTap: () {
                           // This single line changes the active conversation.
                           ref

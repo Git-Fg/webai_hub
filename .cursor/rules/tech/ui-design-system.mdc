@@ -1,0 +1,235 @@
+# UI Design System: Native Optimized Strategy
+
+## Context
+This project uses a centralized, semantic design system based on Flutter's native `ThemeExtension` API. This rule enforces the architectural constraint that ALL UI styles must be defined centrally and accessed through the theme system.
+
+## Absolute Constraints
+
+### 1. Hardcoded Styles are FORBIDDEN
+
+You MUST NEVER add any of the following directly in widget code:
+
+```dart
+// ❌ FORBIDDEN
+Container(
+  decoration: BoxDecoration(
+    color: Colors.blue.shade500,  // Hardcoded color
+    borderRadius: BorderRadius.circular(20),  // Hardcoded border
+    boxShadow: [BoxShadow(...)],  // Hardcoded shadow
+  ),
+)
+
+// ❌ FORBIDDEN
+Text(
+  'Hello',
+  style: TextStyle(
+    color: Colors.white,  // Hardcoded color
+    fontSize: 16,  // Hardcoded size (use ui_constants.dart for sizes)
+  ),
+)
+
+// ❌ FORBIDDEN
+Icon(Icons.check, color: Colors.green.shade200)  // Hardcoded color
+```
+
+### 2. Mandatory Pattern: Theme System Access
+
+ALL visual styles MUST be accessed via the centralized theme:
+
+```dart
+// ✅ CORRECT
+@override
+Widget build(BuildContext context) {
+  final theme = context.hubTheme;
+  
+  return Container(
+    decoration: theme.cardDecoration,
+    child: Column(
+      children: [
+        Text('Title', style: theme.incomingBubbleTextStyle),
+        Icon(Icons.check, color: theme.editSaveIconColor),
+      ],
+    ),
+  );
+}
+```
+
+### 3. Adding New Styles: Workflow
+
+When you need a new visual style:
+
+1. **DO NOT** add it in the widget
+2. Open `lib/core/theme/hub_theme_extension.dart`
+3. Add a new semantic property:
+   ```dart
+   final BoxDecoration? yourNewDecoration;
+   final Color? yourNewColor;
+   ```
+4. Add the property to both `light` and `dark` instances
+5. Update `copyWith()` method to include the new property
+6. Update `lerp()` method to interpolate the new property:
+   ```dart
+   yourNewDecoration: BoxDecoration.lerp(
+     yourNewDecoration,
+     other.yourNewDecoration,
+     t,
+   ),
+   yourNewColor: Color.lerp(yourNewColor, other.yourNewColor, t),
+   ```
+7. Access it in your widget: `theme.yourNewDecoration`
+
+### 4. Semantic Naming Rules
+
+Style property names MUST describe function, NOT appearance:
+
+✅ **CORRECT (Semantic):**
+- `primaryActionButtonColor`
+- `errorMessageTextStyle`
+- `incomingBubbleDecoration`
+- `successIndicatorColor`
+
+❌ **WRONG (Appearance-based):**
+- `blueButton`
+- `redText`
+- `roundedContainer`
+- `greenIcon`
+
+### 5. Zero External UI Libraries
+
+You MUST NOT introduce third-party UI component libraries:
+
+❌ **FORBIDDEN:**
+- `shadcn_flutter`
+- `GetWidget`
+- `mix`
+- `VelocityX`
+- Any other UI framework/library
+
+✅ **ALLOWED:**
+- Native Flutter widgets (`Container`, `Text`, `Icon`, etc.)
+- Custom widgets built with native Flutter components
+- The project's `HubThemeExtension` system
+
+## Implementation Details
+
+### Theme Files Location
+- `lib/core/theme/hub_theme_extension.dart` - Main theme definition
+- `lib/core/theme/theme_facade.dart` - Convenient access via `context.hubTheme`
+
+### Theme Registration
+The theme is registered in `lib/main.dart`:
+
+```dart
+MaterialApp.router(
+  theme: ThemeData(
+    extensions: const [HubThemeExtension.light],
+  ),
+  darkTheme: ThemeData(
+    extensions: const [HubThemeExtension.dark],
+  ),
+)
+```
+
+### Available Theme Properties
+
+Current semantic properties (see `hub_theme_extension.dart` for complete list):
+
+**Chat Bubbles:**
+- `incomingBubbleDecoration` / `outgoingBubbleDecoration`
+- `incomingBubbleEditingDecoration` / `outgoingBubbleEditingDecoration`
+- `incomingBubbleTextStyle` / `outgoingBubbleTextStyle`
+- `incomingBubbleAvatarColor` / `outgoingBubbleAvatarColor`
+- `incomingBubbleIconColor` / `outgoingBubbleIconColor`
+- `editCancelIconColor` / `editSaveIconColor`
+
+**Message Status:**
+- `messageSendingColor`
+- `messageErrorColor`
+
+**Input Bar:**
+- `inputBarDecoration`
+- `inputFieldDecoration`
+- `sendButtonColor`
+- `sendButtonIconColor`
+
+**Cards & Panels:**
+- `cardDecoration`
+- `panelDecoration`
+
+**General UI:**
+- `surfaceColor`
+- `onSurfaceColor`
+- `dividerColor`
+
+## Validation Checklist
+
+Before committing widget changes, verify:
+
+- [ ] No hardcoded `Colors.*` in widget files
+- [ ] No hardcoded `BoxDecoration` in widget files
+- [ ] No hardcoded `TextStyle` in widget files
+- [ ] All styles accessed via `context.hubTheme`
+- [ ] If you added new theme properties, both `light` and `dark` are defined
+- [ ] If you added new theme properties, `copyWith()` is updated
+- [ ] If you added new theme properties, `lerp()` is updated with proper interpolation
+- [ ] New theme properties use semantic naming
+
+## Common Mistakes to Avoid
+
+### Mistake 1: Mixing Hardcoded and Theme Styles
+```dart
+// ❌ WRONG: Partially using theme
+Container(
+  decoration: theme.cardDecoration,
+  child: Text(
+    'Hello',
+    style: TextStyle(color: Colors.red),  // Hardcoded!
+  ),
+)
+```
+
+### Mistake 2: Forgetting lerp() Implementation
+```dart
+// ❌ WRONG: Missing lerp causes instant theme switching
+@override
+HubThemeExtension lerp(ThemeExtension<HubThemeExtension>? other, double t) {
+  return HubThemeExtension(
+    newColor: other.newColor,  // Direct assignment, no interpolation!
+  );
+}
+
+// ✅ CORRECT: Proper interpolation
+@override
+HubThemeExtension lerp(ThemeExtension<HubThemeExtension>? other, double t) {
+  return HubThemeExtension(
+    newColor: Color.lerp(newColor, other.newColor, t),  // Animated!
+  );
+}
+```
+
+### Mistake 3: Using Appearance-Based Names
+```dart
+// ❌ WRONG
+final Color? blueBackground;
+final TextStyle? boldRedText;
+
+// ✅ CORRECT
+final Color? primarySurfaceColor;
+final TextStyle? errorMessageTextStyle;
+```
+
+## Benefits of This System
+
+1. **Consistency:** All styles defined in one place
+2. **Maintainability:** Changing colors/styles is trivial
+3. **Animated Transitions:** Smooth theme switching via lerp
+4. **Type Safety:** Compile-time checking for theme properties
+5. **No Dependencies:** Zero external UI libraries
+6. **Performance:** Native Flutter rendering, no overhead
+
+## References
+
+- Main theme file: `lib/core/theme/hub_theme_extension.dart`
+- Theme facade: `lib/core/theme/theme_facade.dart`
+- AGENTS.md section 2.1.1
+- BLUEPRINT.md section 2.2

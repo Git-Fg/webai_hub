@@ -112,6 +112,92 @@ The application enforces a **strict three-layer architecture** that separates co
 
 **Critical Rule:** When debugging, testing, or fixing issues, **always interact with the service/provider layer**, never patch business logic at the widget level. All fixes must be implemented in the appropriate service or provider.
 
+### 2.2. UI Design System: Native Optimized Strategy
+
+The application implements a **centralized, semantic design system** using Flutter's native `ThemeExtension` API. This is a core architectural principle that ensures visual consistency, maintainability, and smooth animated theme transitions.
+
+#### Design Principles
+
+1. **Centralization:** All visual styles (colors, decorations, text styles, shadows) are defined in a single source of truth: `HubThemeExtension` (`lib/core/theme/hub_theme_extension.dart`).
+
+2. **Semantic Naming:** Style properties are named by their function, not their appearance:
+   - ✅ `incomingBubbleDecoration`, `primaryActionButtonColor`, `errorMessageTextStyle`
+   - ❌ `greyBox`, `blueButton`, `redText`
+
+3. **Zero External UI Dependencies:** The project uses ONLY Flutter's native components and the custom theme system. Third-party UI libraries (e.g., `shadcn_flutter`, `GetWidget`) are explicitly prohibited to avoid dependency bloat and potential conflicts.
+
+4. **Animated Transitions:** The `HubThemeExtension` implements proper `lerp()` methods for all style properties, enabling smooth, performant animations when switching between light and dark themes.
+
+#### Implementation Structure
+
+**Theme Definition (`lib/core/theme/hub_theme_extension.dart`):**
+- Extends `ThemeExtension<HubThemeExtension>`
+- Contains semantic style properties (e.g., `incomingBubbleDecoration`, `sendButtonColor`)
+- Provides `light` and `dark` static instances with all style definitions
+- Implements `copyWith()` for customization
+- Implements `lerp()` for animated transitions (delegates to native `BoxDecoration.lerp()`, `TextStyle.lerp()`, etc.)
+
+**Theme Access (`lib/core/theme/theme_facade.dart`):**
+- Extension on `BuildContext` that provides `context.hubTheme`
+- Eliminates verbose syntax: `Theme.of(context).extension<HubThemeExtension>()!`
+- Centralizes null assertion for fail-fast development
+
+**Theme Registration (`lib/main.dart`):**
+```dart
+MaterialApp.router(
+  theme: ThemeData(
+    extensions: const [HubThemeExtension.light],
+  ),
+  darkTheme: ThemeData(
+    extensions: const [HubThemeExtension.dark],
+  ),
+)
+```
+
+#### Usage Pattern in Widgets
+
+Widgets MUST access styles through the theme system, never hardcode them:
+
+```dart
+// ✅ CORRECT
+@override
+Widget build(BuildContext context) {
+  final theme = context.hubTheme;
+  return Container(
+    decoration: theme.cardDecoration,
+    child: Text('Hello', style: theme.incomingBubbleTextStyle),
+  );
+}
+
+// ❌ FORBIDDEN
+@override
+Widget build(BuildContext context) {
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.grey.shade200,  // Hardcoded
+      borderRadius: BorderRadius.circular(20),  // Hardcoded
+    ),
+    child: Text(
+      'Hello',
+      style: TextStyle(color: Colors.black87),  // Hardcoded
+    ),
+  );
+}
+```
+
+#### Adding New Styles
+
+When a new visual style is needed:
+
+1. **DO NOT** add it directly to the widget
+2. Add a new semantic property to `HubThemeExtension`
+3. Define the style in both `light` and `dark` instances
+4. Update `copyWith()` to include the new property
+5. Update `lerp()` to interpolate the new property
+6. Access it in widgets via `context.hubTheme.newProperty`
+
+This pattern ensures all styles remain centralized, maintainable, and support animated theme transitions.
+
 ## 3. Key Features & Workflows
 
 ### 3.1. Multi-Provider Support

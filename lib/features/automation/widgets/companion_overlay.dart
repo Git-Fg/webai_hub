@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/overlay_state_provider.dart';
@@ -39,15 +40,21 @@ extension AutomationStateUI on AutomationStateData {
     needsUserAgentChange: () => Icons.warning,
   );
 
-  Color get displayColor => when(
-    idle: () => Colors.grey,
-    sending: (prompt) => Colors.blue,
-    observing: () => Colors.orange,
-    refining: (activePresetId, messageCount, isExtracting) => Colors.green,
-    failed: () => Colors.red,
-    needsLogin: (onResume) => Colors.amber,
-    needsUserAgentChange: () => Colors.orange,
-  );
+  // WHY: Colors are now retrieved from theme instead of hardcoded
+  Color displayColor(BuildContext context) {
+    final theme = context.hubTheme;
+    return when(
+      idle: () => theme.dividerColor ?? Colors.grey,
+      sending: (prompt) => theme.sendButtonColor ?? Colors.blue,
+      observing: () => theme.messageSendingColor ?? Colors.orange,
+      refining: (activePresetId, messageCount, isExtracting) => 
+          theme.editSaveIconColor ?? Colors.green,
+      failed: () => theme.messageErrorColor ?? Colors.red,
+      needsLogin: (onResume) => theme.messageSendingColor ?? Colors.amber,
+      needsUserAgentChange: () => theme.messageSendingColor ?? Colors.orange,
+    );
+  }
+}
 }
 
 class CompanionOverlay extends ConsumerWidget {
@@ -126,6 +133,7 @@ class CompanionOverlay extends ConsumerWidget {
   }
 
   Widget _buildExpandedView(BuildContext context, WidgetRef ref) {
+    final theme = context.hubTheme;
     final status = ref.watch(automationStateProvider);
     final screenSize = MediaQuery.of(context).size;
     // WHY: Visibility logic ensures this widget is only built for refining, needsLogin, and needsUserAgentChange states.
@@ -149,8 +157,8 @@ class CompanionOverlay extends ConsumerWidget {
                   unawaited(onResume());
                 },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.warningActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
           ),
         ),
       ),
@@ -164,8 +172,8 @@ class CompanionOverlay extends ConsumerWidget {
             unawaited(context.router.push(const SettingsRoute()));
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.secondaryActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
           ),
         ),
       ),
@@ -185,9 +193,9 @@ class CompanionOverlay extends ConsumerWidget {
         key: const Key('expanded_overlay'),
         elevation: kDefaultElevation,
         borderRadius: BorderRadius.circular(kMediumBorderRadius),
-        color: Colors.white.withValues(
+        color: theme.surfaceColor?.withValues(
           alpha: 0.95,
-        ), // Semi-transparent white to ensure pointer events work
+        ), // Semi-transparent to ensure pointer events work
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -199,7 +207,7 @@ class CompanionOverlay extends ConsumerWidget {
               orElse: () => false,
             ))
               Material(
-                color: Colors.grey[700],
+                color: theme.overlayHeaderColor,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(kMediumBorderRadius),
                   topRight: Radius.circular(kMediumBorderRadius),
@@ -212,7 +220,7 @@ class CompanionOverlay extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.drag_handle, color: Colors.white70),
+                      Icon(Icons.drag_handle, color: theme.overlayIconColor),
                       Row(
                         children: [
                           // WHY: Added a reset button for better UX and robustness.
@@ -221,9 +229,9 @@ class CompanionOverlay extends ConsumerWidget {
                             color: Colors.transparent,
                             child: IconButton(
                               tooltip: 'Reset Position',
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.center_focus_strong,
-                                color: Colors.white,
+                                color: theme.overlayIconColor,
                               ),
                               onPressed: () {
                                 ref
@@ -243,9 +251,9 @@ class CompanionOverlay extends ConsumerWidget {
                             color: Colors.transparent,
                             child: IconButton(
                               tooltip: 'Minimize Automation Panel',
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close_fullscreen,
-                                color: Colors.white,
+                                color: theme.overlayIconColor,
                               ),
                               onPressed: () {
                                 ref
@@ -272,7 +280,7 @@ class CompanionOverlay extends ConsumerWidget {
               // so we always apply padding (idle state cannot occur).
               padding: const EdgeInsets.all(kMediumSpacing),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.surfaceColor,
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(kMediumBorderRadius),
                   bottomRight: Radius.circular(kMediumBorderRadius),
@@ -281,7 +289,7 @@ class CompanionOverlay extends ConsumerWidget {
                 // WHY: Parent ensures this widget is only built for refining and needsLogin states,
                 // so we always apply border and shadow (idle state cannot occur).
                 border: Border.all(
-                  color: status.displayColor.withValues(alpha: 0.3),
+                  color: status.displayColor(context).withValues(alpha: 0.3),
                   width: 2,
                 ),
                 boxShadow: [
@@ -327,7 +335,7 @@ class CompanionOverlay extends ConsumerWidget {
                   height: kDefaultIconSize,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.white,
+                    color: theme.actionButtonTextColor,
                   ),
                 )
               : const Icon(Icons.check_circle),
@@ -361,8 +369,8 @@ class CompanionOverlay extends ConsumerWidget {
                   }
                 },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
+            backgroundColor: theme.successActionButtonColor,
+            foregroundColor: theme.actionButtonTextColor,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
@@ -394,6 +402,7 @@ class CompanionOverlay extends ConsumerWidget {
     bool isLoading = false,
   }) {
     // No Material or Container needed here anymore. It just returns the content.
+    final theme = context.hubTheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -404,14 +413,14 @@ class CompanionOverlay extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(kSmallPadding),
                 decoration: BoxDecoration(
-                  color: status.displayColor.withValues(alpha: 0.1),
+                  color: status.displayColor(context).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(kSmallBorderRadius),
                 ),
                 child: isLoading
                     ? const LoadingIndicator(size: kDefaultIconSize)
                     : Icon(
                         status.displayIcon,
-                        color: status.displayColor,
+                        color: status.displayColor(context),
                         size: kDefaultIconSize,
                       ),
               ),
@@ -424,7 +433,7 @@ class CompanionOverlay extends ConsumerWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: kSmallFontSize,
-                      color: Colors.grey[800],
+                      color: theme.onSurfaceColor,
                     ),
                   ),
                 ),
