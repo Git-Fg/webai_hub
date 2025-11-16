@@ -2,7 +2,7 @@
 
 import { Chatbot, AutomationOptions } from '../types/chatbot';
 import { waitForActionableElement } from '../utils/wait-for-actionable-element';
-import { waitForElementByText } from '../utils/wait-for-element';
+import { waitForElementByText, waitForElementWithin } from '../utils/wait-for-element';
 import { getModifiedTimeout } from '../utils/timeout';
 
 // --- Selectors validated from inspiration codebase ---
@@ -14,8 +14,16 @@ export const SELECTORS = {
   MODEL_OPTION_BY_VALUE: (value: string) => `button[data-value="${value}"]`,
   TOOLS_BUTTON_GLM45: 'button:has(svg path[d^="M2.6499 4.48322"])',
   WEB_SEARCH_BUTTON_POPOVER: 'button.px-3.py-2',
+  // WHY: Multiple selector strategies for response footer - the structure may vary
   RESPONSE_ACTIONS_FOOTER: '.chat-assistant + div',
+  RESPONSE_ACTIONS_FOOTER_ALT: '.chat-assistant ~ div',
+  RESPONSE_ACTIONS_FOOTER_ALT2: '[class*="chat"] + div',
+  // WHY: Multiple selector strategies for copy button - class names may vary
   COPY_BUTTON: 'button.copy-response-button',
+  COPY_BUTTON_ALT: 'button[aria-label*="Copy" i]',
+  COPY_BUTTON_ALT2: 'button[title*="Copy" i]',
+  COPY_BUTTON_ALT3: 'button:has(svg[class*="copy" i])',
+  COPY_BUTTON_ALT4: 'button:has(svg path[d*="M8" i])', // Common copy icon path
 };
 
 // --- Model mapping from inspiration code ---
@@ -153,27 +161,234 @@ class ZAiChatbot implements Chatbot {
     const uniqueToken = `ai-hybrid-hub-copy-check-${Date.now()}`;
     await window.flutter_inappwebview.callHandler('setClipboard', uniqueToken);
     console.log('[Z.ai] Primed clipboard with unique token.');
-    const responseFooters = document.querySelectorAll(SELECTORS.RESPONSE_ACTIONS_FOOTER);
-    const lastFooter = responseFooters[responseFooters.length - 1] as HTMLElement | undefined;
-    if (!lastFooter) throw new Error('[Z.ai] Could not find any response footer to extract from.');
-    const copyButton = await waitForActionableElement<HTMLElement>(
-      [SELECTORS.COPY_BUTTON],
-      'Copy Button',
-      5000,
-    );
+    
+    // WHY: Try multiple footer selector strategies
+    let responseFooters: NodeListOf<Element> | null = null;
+    let footerSelectorUsed = '';
+    const footerSelectors = [
+      SELECTORS.RESPONSE_ACTIONS_FOOTER,
+      SELECTORS.RESPONSE_ACTIONS_FOOTER_ALT,
+      SELECTORS.RESPONSE_ACTIONS_FOOTER_ALT2,
+    ];
+    
+    for (const selector of footerSelectors) {
+      try {
+        const footers = document.querySelectorAll(selector);
+        if (footers.length > 0) {
+          responseFooters = footers;
+          footerSelectorUsed = selector;
+          console.log(`[Z.ai] Found ${footers.length} response footer(s) using selector: ${selector}`);
+          break;
+        }
+      } catch (error) {
+        console.warn(`[Z.ai] Selector ${selector} failed:`, error);
+      }
+    }
+    
+    if (!responseFooters || responseFooters.length === 0) {
+      // WHY: Fallback - try to find any div after chat messages
+      console.warn('[Z.ai] No footers found with standard selectors, trying fallback...');
+      const allDivs = document.querySelectorAll('div');
+      const chatElements = document.querySelectorAll('[class*="chat" i], [class*="message" i], [class*="assistant" i]');
+      console.log(`[Z.ai] Found ${chatElements.length} potential chat elements, ${allDivs.length} total divs`);
+      
+      // Look for the last chat message and find the next div
+      if (chatElements.length > 0) {
+        const lastChatElement = chatElements[chatElements.length - 1];
+        if (lastChatElement) {
+          let nextSibling = lastChatElement.nextElementSibling;
+          while (nextSibling && nextSibling.tagName !== 'DIV') {
+            nextSibling = nextSibling.nextElementSibling;
+          }
+          if (nextSibling) {
+            responseFooters = document.createDocumentFragment().querySelectorAll('*') as unknown as NodeListOf<Element>;
+            // Create a temporary array with the found element
+            const tempArray = [nextSibling];
+            responseFooters = tempArray as unknown as NodeListOf<Element>;
+            footerSelectorUsed = 'fallback-next-sibling';
+            console.log('[Z.ai] Using fallback: found next sibling div after last chat element');
+          }
+        }
+      }
+    }
+    
+    const lastFooter = responseFooters && responseFooters.length > 0 
+      ? responseFooters[responseFooters.length - 1] as HTMLElement | undefined
+      : undefined;
+      
+    if (!lastFooter) {
+      console.error('[Z.ai] Could not find any response footer to extract from. DOM state:', {
+        url: window.location.href,
+        title: document.title,
+        chatElements: document.querySelectorAll('[class*="chat" i]').length,
+        assistantElements: document.querySelectorAll('[class*="assistant" i]').length,
+        allDivs: document.querySelectorAll('div').length,
+        footerSelectorUsed: footerSelectorUsed || 'none',
+      });
+      throw new Error('[Z.ai] Could not find any response footer to extract from.');
+    }
+    
+    console.log(`[Z.ai] Using footer found with selector: ${footerSelectorUsed || 'unknown'}`);
+    
+    console.log('[Z.ai] Looking for copy button within last footer...');
+    // WHY: Try multiple copy button selector strategies
+    const copyButtonSelectors = [
+      SELECTORS.COPY_BUTTON,
+      SELECTORS.COPY_BUTTON_ALT,
+      SELECTORS.COPY_BUTTON_ALT2,
+      SELECTORS.COPY_BUTTON_ALT3,
+      SELECTORS.COPY_BUTTON_ALT4,
+    ];
+    
+    let copyButton: HTMLElement | null = null;
+    let copyButtonSelectorUsed = '';
+    
+    // First try scoped search within footer
+    for (const selector of copyButtonSelectors) {
+      try {
+        const button = await waitForElementWithin<HTMLElement>(
+          lastFooter,
+          [selector],
+          getModifiedTimeout(2000),
+        );
+        if (button) {
+          copyButton = button;
+          copyButtonSelectorUsed = selector;
+          console.log(`[Z.ai] Copy button found in footer using selector: ${selector}`);
+          break;
+        }
+      } catch {
+        // Try next selector
+      }
+    }
+    
+    // Fallback to global search if scoped search fails
+    if (!copyButton) {
+      console.warn('[Z.ai] Copy button not found in footer, searching globally as fallback...');
+      for (const selector of copyButtonSelectors) {
+        try {
+          copyButton = await waitForActionableElement<HTMLElement>(
+            [selector],
+            'Copy Button',
+            2000,
+          );
+          if (copyButton) {
+            copyButtonSelectorUsed = selector;
+            console.log(`[Z.ai] Copy button found globally using selector: ${selector}`);
+            break;
+          }
+        } catch {
+          // Try next selector
+        }
+      }
+    }
+    
+    if (!copyButton) {
+      console.error('[Z.ai] Could not find copy button with any selector. Available buttons:', {
+        allButtons: Array.from(document.querySelectorAll('button')).map(b => ({
+          text: b.textContent?.substring(0, 50),
+          ariaLabel: b.getAttribute('aria-label'),
+          className: b.className,
+          id: b.id,
+        })),
+        footerButtons: Array.from(lastFooter.querySelectorAll('button')).map(b => ({
+          text: b.textContent?.substring(0, 50),
+          ariaLabel: b.getAttribute('aria-label'),
+          className: b.className,
+        })),
+      });
+      throw new Error('[Z.ai] Could not find copy button with any selector strategy.');
+    }
+    
     copyButton.click();
-    console.log('[Z.ai] "Copy" button clicked. Polling clipboard for changes...');
+    console.log(`[Z.ai] "Copy" button clicked (selector: ${copyButtonSelectorUsed}). Polling clipboard for changes...`);
     await delay(TIMING.UI_STABILIZE_MS);
+    
     for (let attempt = 0; attempt < TIMING.COPY_POLL_MAX_ATTEMPTS; attempt++) {
       await delay(TIMING.POLL_INTERVAL_MS);
 
-      const clipboardText = (await window.flutter_inappwebview.callHandler('readClipboard')) as string;
-      if (typeof clipboardText === 'string' && clipboardText.trim() && clipboardText !== uniqueToken) {
-        console.log(`[Z.ai] Clipboard updated. Successfully extracted ${clipboardText.length} chars.`);
-        return clipboardText.trim();
+      try {
+        const clipboardText = (await window.flutter_inappwebview.callHandler('readClipboard')) as string | null | undefined;
+        console.log(`[Z.ai] Clipboard check attempt ${attempt + 1}/${TIMING.COPY_POLL_MAX_ATTEMPTS}: type=${typeof clipboardText}, isNull=${clipboardText === null}, isUndefined=${clipboardText === undefined}, length=${clipboardText?.length ?? 0}, matchesToken=${clipboardText === uniqueToken}`);
+        
+        // WHY: Handle null/undefined returns from clipboard handler gracefully
+        if (clipboardText === null || clipboardText === undefined) {
+          console.warn(`[Z.ai] Clipboard read returned ${clipboardText === null ? 'null' : 'undefined'} on attempt ${attempt + 1}, continuing...`);
+          continue;
+        }
+        
+        if (typeof clipboardText === 'string' && clipboardText.trim() && clipboardText !== uniqueToken) {
+          console.log(`[Z.ai] Clipboard updated. Successfully extracted ${clipboardText.length} chars.`);
+          return clipboardText.trim();
+        }
+      } catch (error) {
+        console.error(`[Z.ai] Error reading clipboard on attempt ${attempt + 1}:`, error);
+        // Continue to next attempt rather than failing immediately
       }
     }
-    throw new Error('[Z.ai] Extraction failed: Clipboard content did not change after copy operation.');
+    
+    // Final check with error handling
+    let finalClipboard: string | null | undefined;
+    try {
+      finalClipboard = (await window.flutter_inappwebview.callHandler('readClipboard')) as string | null | undefined;
+    } catch (error) {
+      console.error('[Z.ai] Error reading final clipboard state:', error);
+      finalClipboard = null;
+    }
+    
+    // WHY: Fallback to direct DOM extraction if clipboard method fails
+    // This provides a more robust extraction strategy similar to Kimi
+    if (!finalClipboard || finalClipboard === uniqueToken || finalClipboard.trim().length === 0) {
+      console.warn('[Z.ai] Clipboard extraction failed, attempting direct DOM extraction as fallback...');
+      
+      // Try to extract text directly from the chat-assistant element
+      const chatAssistants = document.querySelectorAll('.chat-assistant');
+      if (chatAssistants.length > 0) {
+        const lastAssistant = chatAssistants[chatAssistants.length - 1] as HTMLElement;
+        if (lastAssistant) {
+          // WHY: Extract text from the assistant element, excluding thought process and action buttons
+          const thoughtProcess = lastAssistant.querySelector('[class*="thought" i], [class*="process" i]');
+          const actionButtons = lastAssistant.querySelectorAll('button, [class*="action" i]');
+          
+          // Clone to avoid modifying the original
+          const clone = lastAssistant.cloneNode(true) as HTMLElement;
+          
+          // Remove thought process and action buttons from clone
+          if (thoughtProcess) {
+            thoughtProcess.remove();
+          }
+          actionButtons.forEach(btn => btn.remove());
+          
+          const extractedText = clone.innerText?.trim() || clone.textContent?.trim() || '';
+          
+          if (extractedText && extractedText.length > 0) {
+            console.log(`[Z.ai] Direct DOM extraction successful: ${extractedText.length} chars extracted.`);
+            return extractedText;
+          }
+        }
+      }
+      
+      // Try extracting from response container if chat-assistant doesn't work
+      const responseContainers = document.querySelectorAll('[class*="response" i], [class*="message" i]');
+      if (responseContainers.length > 0) {
+        const lastContainer = responseContainers[responseContainers.length - 1] as HTMLElement;
+        if (lastContainer && !lastContainer.closest('.chat-user, [class*="user" i]')) {
+          // Only extract if it's not a user message
+          const extractedText = lastContainer.innerText?.trim() || lastContainer.textContent?.trim() || '';
+          if (extractedText && extractedText.length > 0) {
+            console.log(`[Z.ai] Direct DOM extraction from response container successful: ${extractedText.length} chars extracted.`);
+            return extractedText;
+          }
+        }
+      }
+    } else {
+      // Clipboard method succeeded
+      console.log(`[Z.ai] Clipboard extraction successful: ${finalClipboard.length} chars extracted.`);
+      return finalClipboard.trim();
+    }
+    
+    console.error(`[Z.ai] All extraction methods failed. Clipboard: type=${typeof finalClipboard}, isNull=${finalClipboard === null}, isUndefined=${finalClipboard === undefined}, value=${finalClipboard?.substring(0, 100) ?? 'null/undefined'}`);
+    throw new Error('[Z.ai] Extraction failed: Both clipboard and direct DOM extraction methods failed.');
   }
 }
 

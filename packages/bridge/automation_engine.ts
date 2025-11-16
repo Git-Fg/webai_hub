@@ -139,6 +139,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       const errorMsg = 'No chatbot available for extraction. Automation must be started first.';
       console.error('[Engine] No chatbot found for extraction');
       notifyDart({ type: EVENT_TYPE_AUTOMATION_FAILED, errorCode: 'NO_CHATBOT_INSTANCE', payload: errorMsg });
+      // WHY: Explicitly throw to ensure callAsyncJavaScript receives an error, not null
       throw new Error(errorMsg);
     }
 
@@ -154,7 +155,40 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         timestamp: new Date().toISOString()
       });
       
-      const result = await chatbot.extractResponse();
+      // WHY: Wrap extraction in try-catch to ensure we always return a string or throw
+      let result: string | undefined;
+      try {
+        result = await chatbot.extractResponse();
+      } catch (extractionError) {
+        const extractionErrorMessage = extractionError instanceof Error ? extractionError.message : String(extractionError);
+        console.error('[Engine] [ENHANCED] chatbot.extractResponse() threw error:', {
+          error: extractionErrorMessage,
+          errorType: extractionError instanceof Error ? extractionError.constructor.name : typeof extractionError,
+          stack: extractionError instanceof Error ? extractionError.stack : undefined,
+        });
+        // Re-throw to be caught by outer catch
+        throw extractionError;
+      }
+      
+      // WHY: Validate result is a non-empty string - this is critical to prevent returning undefined
+      if (result === undefined || result === null) {
+        const errorMsg = `Extraction returned ${result === undefined ? 'undefined' : 'null'}`;
+        console.error('[Engine] [ENHANCED]', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      if (typeof result !== 'string') {
+        const errorMsg = `Extraction returned invalid type: ${typeof result}, value: ${String(result)}`;
+        console.error('[Engine] [ENHANCED]', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      if (!result || result.trim().length === 0) {
+        const errorMsg = 'Extraction returned empty string';
+        console.error('[Engine] [ENHANCED]', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
       const elapsedTime = Date.now() - startTime;
       console.log(`[Engine] Extraction completed successfully in ${elapsedTime}ms, extracted ${result.length} chars`);
       
@@ -166,7 +200,8 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         elapsedTime: elapsedTime
       });
       
-      return result;
+      // WHY: Explicitly return string to ensure type safety
+      return String(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const elapsedTime = Date.now() - startTime;
@@ -178,6 +213,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         errorType: error instanceof Error ? error.constructor.name : typeof error,
         elapsedTime: elapsedTime,
         timestamp: new Date().toISOString(),
+        stack: error instanceof Error ? error.stack : undefined,
         // Log DOM state at time of error
         domState: {
           url: window.location.href,
@@ -201,6 +237,7 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         payload: enhancedErrorMessage
       });
       
+      // WHY: Explicitly throw to ensure callAsyncJavaScript receives an error, not null
       throw error;
     }
   };
@@ -230,7 +267,8 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
       inputs: [],
       buttons: [],
       allSelectorsTested: {},
-      shadowDOMDetected: false
+      shadowDOMDetected: false,
+      zAiSpecific: {}
     };
     
     // Check for Shadow DOM
@@ -241,6 +279,60 @@ if (!window.__AI_HYBRID_HUB_INITIALIZED__) {
         break;
       }
     }
+    
+    // WHY: Z-AI specific selectors for debugging extraction issues
+    const zAiSelectors: Record<string, unknown> = {};
+    try {
+      // Test response footer selectors
+      zAiSelectors.responseFooters = {
+        '.chat-assistant + div': document.querySelectorAll('.chat-assistant + div').length,
+        '.chat-assistant ~ div': document.querySelectorAll('.chat-assistant ~ div').length,
+        '[class*="chat"] + div': document.querySelectorAll('[class*="chat"] + div').length,
+        '.chat-assistant': document.querySelectorAll('.chat-assistant').length,
+      };
+      
+      // Test copy button selectors
+      zAiSelectors.copyButtons = {
+        'button.copy-response-button': document.querySelectorAll('button.copy-response-button').length,
+        'button[aria-label*="Copy" i]': document.querySelectorAll('button[aria-label*="Copy" i]').length,
+        'button[title*="Copy" i]': document.querySelectorAll('button[title*="Copy" i]').length,
+      };
+      
+      // Find all chat-assistant elements and their next siblings
+      const chatAssistants = document.querySelectorAll('.chat-assistant');
+      zAiSelectors.chatAssistantDetails = Array.from(chatAssistants).map((el, idx) => {
+        const nextSibling = el.nextElementSibling;
+        return {
+          index: idx,
+          hasNextSibling: nextSibling !== null,
+          nextSiblingTag: nextSibling?.tagName || null,
+          nextSiblingClass: nextSibling?.className || null,
+          nextSiblingButtons: nextSibling ? Array.from(nextSibling.querySelectorAll('button')).map(b => ({
+            text: b.textContent?.substring(0, 50),
+            ariaLabel: b.getAttribute('aria-label'),
+            className: b.className,
+            id: b.id,
+          })) : []
+        };
+      });
+      
+      // Find all buttons near chat-assistant elements
+      const allButtonsNearChat = Array.from(document.querySelectorAll('button')).filter(btn => {
+        const chatParent = btn.closest('.chat-assistant');
+        const chatSibling = btn.closest('.chat-assistant + div, .chat-assistant ~ div');
+        return chatParent !== null || chatSibling !== null;
+      });
+      zAiSelectors.buttonsNearChat = allButtonsNearChat.map(btn => ({
+        text: btn.textContent?.substring(0, 50),
+        ariaLabel: btn.getAttribute('aria-label'),
+        className: btn.className,
+        id: btn.id,
+        parentClass: btn.parentElement?.className || null,
+      }));
+    } catch (error) {
+      zAiSelectors.error = String(error);
+    }
+    (result.zAiSpecific as Record<string, unknown>) = zAiSelectors;
     
     // Test common selectors (generic version since specific selectors are now in chatbots)
     const commonInputSelectors = [
