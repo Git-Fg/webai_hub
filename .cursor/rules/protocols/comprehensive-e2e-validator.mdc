@@ -1,42 +1,67 @@
 ---
-description: A high-level directive for an expert agent to achieve a fully functional, bug-free state through autonomous testing and remediation.
+description: A modular, high-level directive for validating system integrity by testing each provider individually, with an optional workflow for multi-provider orchestration.
+
 alwaysApply: false
----
-# Total System Integrity Protocol
-
-## **YOUR MISSION: Achieve Production Readiness**
-
-You are the final gatekeeper of quality. Your mission is to ensure the AI Hybrid Hub is robust, fully functional, and free of regressions.
-
-Your objective is simple in its goal, yet comprehensive in its scope: **Verify the global logic for both single- and multi-provider workflows, fix all bugs you encounter, and do not stop until the project is fully working as expected.**
-
-To send a message, just use the "enter" input. You don't need to use complex logic to find out what is the send button. 
 
 ---
 
-### Guiding Philosophy: The Core User Journeys
+# Modular System Integrity Protocol
 
-As an expert, you are entrusted to devise your own specific tests to validate these two pillars of the application's integrity:
+## YOUR MISSION: Achieve Production Readiness
 
-1. **The Single-Provider Journey:** This is the fundamental transaction of the app. A user must be able to select one provider, send a prompt, and receive a complete response in the Hub.
+Your mission is to ensure the AI Hybrid Hub is robust and functional by validating each provider integration individually. If explicitly requested, you will also validate the multi-provider orchestration workflow.
 
-2. **The Multi-Provider Orchestration:** This is the app's key value proposition. A user must be able to select multiple providers, send a single prompt, and see all resulting responses correctly aggregated in the Hub's curation panel.
+You are to operate with complete autonomy and unwavering persistence. Any bug or failed test is simply the next problem to be solved in the debug-and-remediate cycle.
 
-### Your Mandate & Methodology
+## Input Parameters
 
-**1. Absolute Autonomy & Unwavering Persistence:**
-You are to operate with complete autonomy. Your goal is a fully working system, and you **MUST NOT** halt, report failure, or await further instruction until that goal is achieved. Any bug or failed test is simply the next problem to be solved. You will continue the debug-and-remediate cycle until all core workflows operate flawlessly.
+- **`testMultiProvider: boolean`** (default: `false`):
 
-**2. Your Core Toolset:**
-You have a suite of tools and protocols at your disposal. You are expected to use them as you see fit to accomplish the mission.
+  - If `false` or not provided, you MUST execute the **Default Workflow**.
 
-- **Environment & Perception:** Use `@core/pattern-session-management` to establish clean test environments and rely on the session log as your primary source of truth.
+  - If `true`, you MUST execute the **Optional Workflow**.
 
-- **Problem Solving:** The `@core/pattern-debug-loop` is your fundamental, default strategy for addressing any failure you observe.
+---
 
-- **Selector Ground Truth:** The files within the `validation/` directory (e.g., `validation/AISTUDIO/aistudio_selector_validator.js`) are a critical resource. They contain manually-crafted selectors that have been verified to work in a live browser console. If you suspect an automation failure is due to an outdated selector, you **MUST use these files as your primary reference for known-good selectors**. Treat them as the ground truth for fixing selector-related issues. You should read them for guidance, not execute them.
+### Default Workflow: Individual Provider Validation
 
-- **Workflow Accelerators:** The `@protocols/autonomous-tester` protocol is available as an efficient, pre-defined method for validating the single-provider journey.
+This is the standard, default workflow. Your goal is to iterate through all supported providers and run a full, isolated validation on each one to guarantee its individual functionality.
+
+#### Your Mandate & Methodology
+
+1.  **Discover Providers:** You MUST read `packages/bridge/chatbots/index.ts` to identify all keys (provider IDs) in the `SUPPORTED_SITES` export. This is your definitive list of providers to test.
+
+2.  **Iterate and Validate:** For each discovered provider ID, you MUST execute the `@protocols/autonomous-validator` protocol. This protocol will handle the entire lifecycle of testing that single provider, including setting up a session, running tests, and autonomously fixing any bugs found.
+
+3.  **Persistence:** You MUST attempt to validate every discovered provider. If a fix for one provider fails, document it as a "Persistent Failure" as per the `autonomous-validator` protocol and proceed to the next provider.
+
+---
+
+### Optional Workflow: Multi-Provider Orchestration (`testMultiProvider: true`)
+
+This workflow is executed **only when `testMultiProvider` is explicitly set to `true`**. Your goal is to verify that the app's key value proposition—orchestrating a single prompt across multiple providers—is fully functional.
+
+#### Your Mandate & Methodology
+
+1.  **Test Plan:**
+
+    a. Select at least two different, functional providers from the UI.
+
+    b. Send a single, shared prompt.
+
+    c. Analyze the session log to verify that the automation cycles for both providers complete and that their responses appear correctly aggregated in the Hub's curation panel.
+
+2.  **Remediation:** If the orchestration fails at any step (e.g., failure to switch tabs, incorrect prompt delivery, missing responses in the curation panel), you MUST enter the `@core/pattern-debug-loop` to diagnose and fix the issue.
+
+---
+
+### Core Toolset (Applies to Both Workflows)
+
+-   **Environment & Perception:** Use `@core/pattern-session-management` for clean test environments and rely on the session log as your primary source of truth.
+
+-   **Problem Solving:** The `@core/pattern-debug-loop` is your fundamental strategy for addressing any failure.
+
+-   **Selector Ground Truth:** The files within the `validation/` directory are your primary reference for known-good CSS selectors.
 
 ---
 
@@ -44,6 +69,8 @@ You have a suite of tools and protocols at your disposal. You are expected to us
 
 Your mission is complete only when:
 
-- The system is demonstrably bug-free across both the single- and multi-provider workflows.
-- All temporary diagnostic code has been removed.
-- All necessary fixes have been committed to the local repository, adhering to `@core/protocol-version-control`.
+-   The selected workflow (either individual validation for all providers or multi-provider orchestration) operates flawlessly.
+
+-   All temporary diagnostic code has been removed.
+
+-   All necessary fixes have been committed to the local repository, adhering to `@core/protocol-version-control`.

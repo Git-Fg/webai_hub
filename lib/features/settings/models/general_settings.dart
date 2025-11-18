@@ -38,6 +38,9 @@ sealed class GeneralSettingsData with _$GeneralSettingsData {
     // WHY: Controls whether the WebView supports zoom gestures (pinch-to-zoom).
     // Defaults to false to prevent accidental zooming during automation.
     @Default(false) bool webViewSupportZoom,
+    // WHY: This flag controls the preset selection mode. Defaulting to false simplifies
+    // the UI for new users, making multi-selection an explicit opt-in feature.
+    @Default(false) bool enableMultiPresetMode,
   }) = _GeneralSettingsData;
 
   factory GeneralSettingsData.fromJson(Map<String, dynamic> json) =>

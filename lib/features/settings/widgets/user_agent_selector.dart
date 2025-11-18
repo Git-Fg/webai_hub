@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:flutter/material.dart';
@@ -42,10 +43,11 @@ class _UserAgentSelectorState extends ConsumerState<UserAgentSelector> {
           .updateCustomUserAgent(_customUserAgentController.text)
           .catchError((Object e, StackTrace s) {
             if (mounted) {
+              final theme = context.hubTheme;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Error: ${e is ArgumentError ? e.message : e}'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: theme.messageErrorColor,
                 ),
               );
             }

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/test_helpers.dart';
+
 // Test implementation of SelectedPresetIds to avoid Hive dependency
 class _TestSelectedPresetIds extends SelectedPresetIds {
   _TestSelectedPresetIds(this._value);
@@ -43,8 +45,8 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
-            home: Scaffold(
+          child: createTestMaterialApp(
+            home: const Scaffold(
               body: HubInputBar(),
             ),
           ),
@@ -78,8 +80,8 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(
-            home: Scaffold(
+          child: createTestMaterialApp(
+            home: const Scaffold(
               body: HubInputBar(),
             ),
           ),

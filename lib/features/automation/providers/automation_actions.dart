@@ -216,12 +216,10 @@ $responsesText
     final responseText = await _extractResponse(presetId);
 
     if (ref.mounted) {
-      await ref
-          .read(conversationActionsProvider.notifier)
-          .updateLastAssistantMessage(
-            responseText,
-            MessageStatus.success,
-          );
+      await _updateLastAssistantMessage(
+        responseText,
+        MessageStatus.success,
+      );
       ref.read(scrollToBottomRequestProvider.notifier).requestScroll();
       ref.read(currentTabIndexProvider.notifier).changeTo(0);
     }
@@ -251,12 +249,10 @@ $responsesText
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    await ref
-        .read(conversationActionsProvider.notifier)
-        .updateLastAssistantMessage(
-          'Automation cancelled by user.',
-          MessageStatus.error,
-        );
+    await _updateLastAssistantMessage(
+      'Automation cancelled by user.',
+      MessageStatus.error,
+    );
     ref.read(automationStateProvider.notifier).returnToIdle();
 
     ref.read(currentTabIndexProvider.notifier).changeTo(0);
@@ -266,12 +262,10 @@ $responsesText
     final activeId = ref.read(activeConversationIdProvider);
     if (activeId == null) return;
 
-    await ref
-        .read(conversationActionsProvider.notifier)
-        .updateLastAssistantMessage(
-          'Automation failed: $error',
-          MessageStatus.error,
-        );
+    await _updateLastAssistantMessage(
+      'Automation failed: $error',
+      MessageStatus.error,
+    );
     ref.read(automationStateProvider.notifier).moveToFailed();
   }
 
@@ -302,6 +296,32 @@ $responsesText
       if (ref.mounted) {
         automationNotifier.setExtracting(extracting: false);
       }
+    }
+  }
+
+  // WHY: This method is specific to the automation lifecycle (updating a "sending..." message).
+  // It belongs in AutomationActions as a private helper since it's only used internally.
+  Future<void> _updateLastAssistantMessage(
+    String text,
+    MessageStatus status,
+  ) async {
+    final activeId = ref.read(activeConversationIdProvider);
+    if (activeId == null || !ref.mounted) return;
+
+    final messageService = ref.read(messageServiceProvider.notifier);
+    final lastMessage = await messageService.getLastAssistantMessage(activeId);
+
+    if (lastMessage != null) {
+      final updatedMessage = Message(
+        id: lastMessage.id,
+        text: text,
+        isFromUser: false,
+        status: status,
+      );
+      await messageService.updateMessage(updatedMessage);
+      await ref
+          .read(conversationServiceProvider.notifier)
+          .updateTimestamp(activeId);
     }
   }
 }

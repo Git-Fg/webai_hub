@@ -5,6 +5,7 @@ import 'package:ai_hybrid_hub/core/database/seed_presets.dart';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
 import 'package:ai_hybrid_hub/core/theme/hub_theme_extension.dart';
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/companion_overlay_visibility_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/automation_state_observer.dart';
 import 'package:ai_hybrid_hub/features/automation/widgets/companion_overlay.dart';
@@ -242,7 +243,7 @@ class _MainScreenState extends ConsumerState<MainScreen>
               return const SizedBox.shrink();
             }
 
-            final theme = Theme.of(context).extension<HubThemeExtension>();
+            final theme = context.hubTheme;
             final tabs = [
               const Tab(icon: Icon(Icons.chat), text: 'Hub'),
               ...presetsWithProviders.map((p) => Tab(text: p.name)),
@@ -254,9 +255,9 @@ class _MainScreenState extends ConsumerState<MainScreen>
               onTap: (index) {
                 ref.read(currentTabIndexProvider.notifier).changeTo(index);
               },
-              labelColor: theme?.tabBarSelectedColor ?? Colors.blue,
-              unselectedLabelColor: theme?.tabBarUnselectedColor ?? Colors.grey,
-              indicatorColor: theme?.tabBarIndicatorColor ?? Colors.blue,
+              labelColor: theme.tabBarSelectedColor,
+              unselectedLabelColor: theme.tabBarUnselectedColor,
+              indicatorColor: theme.tabBarIndicatorColor,
             );
           },
           loading: () => const SizedBox.shrink(),

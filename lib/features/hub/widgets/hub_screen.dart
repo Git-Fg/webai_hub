@@ -63,21 +63,21 @@ class _HubScreenState extends ConsumerState<HubScreen> {
       backgroundColor: theme.surfaceColor,
       drawer: const ConversationHistoryDrawer(),
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'AI Hybrid Hub',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: theme.appBarTextColor,
           ),
         ),
         backgroundColor: theme.sendButtonColor,
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: theme.appBarIconColor),
         actions: [
           IconButton(
             icon: const Icon(Icons.notes),
-            color: Colors.white,
+            color: theme.appBarIconColor,
             tooltip: 'Set System Prompt',
             onPressed: () {
               final activeId = ref.read(activeConversationIdProvider);
@@ -88,7 +88,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.monitor_heart),
-            color: Colors.white,
+            color: theme.appBarIconColor,
             tooltip: 'Open Logs',
             onPressed: () {
               unawaited(
@@ -104,7 +104,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.settings),
-            color: Colors.white,
+            color: theme.appBarIconColor,
             tooltip: 'Open application settings',
             onPressed: () {
               unawaited(context.router.push(const SettingsRoute()));
@@ -112,7 +112,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            color: Colors.white,
+            color: theme.appBarIconColor,
             tooltip: 'Start a new chat',
             onPressed: () {
               unawaited(
@@ -176,7 +176,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                         Icon(
                           Icons.chat_bubble_outline,
                           size: kLargeIconSize,
-                          color: Colors.grey.shade400,
+                          color: theme.helperTextColor,
                         ),
                         const Gap(kLargeSpacing),
                         Text(
@@ -184,7 +184,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                           style: TextStyle(
                             fontSize: kMediumFontSize,
                             fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
+                            color: theme.onSurfaceColor,
                           ),
                         ),
                         const Gap(kDefaultSpacing),
@@ -192,7 +192,7 @@ class _HubScreenState extends ConsumerState<HubScreen> {
                           'Send your first message to start',
                           style: TextStyle(
                             fontSize: kSmallFontSize,
-                            color: Colors.grey.shade500,
+                            color: theme.helperTextColor,
                           ),
                         ),
                       ],

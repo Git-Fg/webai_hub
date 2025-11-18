@@ -145,33 +145,12 @@ export class AiStudioChatbot implements Chatbot {
         getModifiedTimeout(TIMING.PANEL_ANIMATION_MS),
       );
 
-      // WHY: Try to find element, and if occluded, wait a bit more and try clicking anyway
-      let allFilterEl: HTMLButtonElement | null = null;
-      try {
-        allFilterEl = await waitForActionableElement<HTMLButtonElement>(
-          [SELECTORS.MODEL_CATEGORIES_ALL_BUTTON],
-          'Model categories all button',
-          getModifiedTimeout(DEFAULT_TIMEOUT_MS),
-          2,
-        );
-      } catch (error) {
-        // If actionability check fails due to occlusion, try finding element anyway and clicking it
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes('occluded')) {
-          console.log('[AI Studio LOG] Element found but occluded. Waiting longer and attempting click anyway...');
-          // WHY: Wait for UI to stabilize after occlusion detection, not a UI wait for element
-          await delay(TIMING.PANEL_ANIMATION_MS);
-          const foundElement = document.querySelector(SELECTORS.MODEL_CATEGORIES_ALL_BUTTON) as HTMLButtonElement;
-          if (foundElement && foundElement.offsetParent !== null) {
-            allFilterEl = foundElement;
-            console.log('[AI Studio LOG] Found element despite occlusion, will attempt click.');
-          } else {
-            throw error;
-          }
-        } else {
-          throw error;
-        }
-      }
+      const allFilterEl = await waitForActionableElement<HTMLButtonElement>(
+        [SELECTORS.MODEL_CATEGORIES_ALL_BUTTON],
+        'Model categories all button',
+        getModifiedTimeout(DEFAULT_TIMEOUT_MS),
+        2,
+      );
       const allFilter = assertIsElement(allFilterEl, HTMLButtonElement, 'Model categories all button');
       // WHY: Scroll element into view before clicking to help with occlusion issues
       allFilter.scrollIntoView({ behavior: 'smooth', block: 'center' });

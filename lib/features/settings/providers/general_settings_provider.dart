@@ -1,3 +1,4 @@
+import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/models/browser_user_agent.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/services/settings_service.dart';
@@ -182,5 +183,25 @@ class GeneralSettings extends _$GeneralSettings {
     await _updateSettings((currentSettings) {
       return currentSettings.copyWith(webViewSupportZoom: value);
     });
+  }
+
+  // WHY: This new method manages the multi-preset mode toggle and ensures
+  // the selected presets state remains consistent. If multi-preset is disabled
+  // while multiple presets are selected, it intelligently reduces the selection to one.
+  Future<void> toggleMultiPresetMode({required bool value}) async {
+    await _updateSettings((currentSettings) {
+      return currentSettings.copyWith(enableMultiPresetMode: value);
+    });
+
+    // If we are disabling multi-preset mode, ensure only one preset is selected.
+    if (!value) {
+      final selectedIds = ref.read(selectedPresetIdsProvider);
+      if (selectedIds.length > 1) {
+        // Keep only the first selected preset to maintain a valid state.
+        ref
+            .read(selectedPresetIdsProvider.notifier)
+            .setSingle(selectedIds.first);
+      }
+    }
   }
 }

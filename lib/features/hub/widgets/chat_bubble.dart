@@ -170,12 +170,12 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
 
   List<Widget> _buildAvatar({required bool isUser}) {
     final theme = context.hubTheme;
-    final avatarColor = isUser 
-        ? theme.outgoingBubbleAvatarColor 
+    final avatarColor = isUser
+        ? theme.outgoingBubbleAvatarColor
         : theme.incomingBubbleAvatarColor;
     final icon = isUser ? Icons.person : Icons.smart_toy;
-    final iconColor = isUser 
-        ? theme.outgoingBubbleIconColor 
+    final iconColor = isUser
+        ? theme.outgoingBubbleIconColor
         : theme.incomingBubbleIconColor;
 
     return [
@@ -191,16 +191,16 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
 
   Widget _buildMessageContent() {
     final theme = context.hubTheme;
-    
+
     // WHY: Select decoration based on editing state and message direction
-    final BoxDecoration? decoration = _isEditing
+    final decoration = _isEditing
         ? (widget.message.isFromUser
               ? theme.outgoingBubbleEditingDecoration
               : theme.incomingBubbleEditingDecoration)
         : (widget.message.isFromUser
               ? theme.outgoingBubbleDecoration
               : theme.incomingBubbleDecoration);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: kDefaultPadding,
@@ -219,7 +219,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
     final textStyle = widget.message.isFromUser
         ? theme.outgoingBubbleTextStyle
         : theme.incomingBubbleTextStyle;
-    
+
     // WHY: Use GptMarkdown to render AI responses, which supports code blocks,
     // tables, and LaTeX. The content is selectable by default.
     return Column(
@@ -241,7 +241,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
     final textStyle = widget.message.isFromUser
         ? theme.outgoingBubbleTextStyle
         : theme.incomingBubbleTextStyle;
-    
+
     return Column(
       key: const ValueKey('edit_view'),
       mainAxisSize: MainAxisSize.min,
@@ -284,10 +284,10 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
     final isSending = widget.message.status == MessageStatus.sending;
     final icon = isSending ? null : Icons.error_outline;
     final text = isSending ? 'Sending...' : 'Error';
-    
+
     // WHY: Use theme colors for status indicators, but adjust based on message type
-    final Color? color = isSending 
-        ? theme.messageSendingColor 
+    final color = isSending
+        ? theme.messageSendingColor
         : theme.messageErrorColor;
 
     return Padding(

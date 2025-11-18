@@ -1,8 +1,10 @@
 import 'package:ai_hybrid_hub/core/database/database.dart';
+import 'package:ai_hybrid_hub/core/theme/hub_theme_extension.dart';
 import 'package:ai_hybrid_hub/features/hub/models/message.dart';
 import 'package:ai_hybrid_hub/features/hub/models/staged_response.dart';
 import 'package:ai_hybrid_hub/features/presets/models/preset_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // Helper to allow providers to settle
@@ -98,5 +100,16 @@ GeneralSettingsData createTestGeneralSettings({
     selectedUserAgent: selectedUserAgent,
     customUserAgent: customUserAgent,
     webViewSupportZoom: webViewSupportZoom,
+  );
+}
+
+/// Helper to create a MaterialApp with the HubThemeExtension registered
+/// for use in widget tests
+MaterialApp createTestMaterialApp({required Widget home}) {
+  return MaterialApp(
+    theme: ThemeData(
+      extensions: const [HubThemeExtension.light],
+    ),
+    home: home,
   );
 }

@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:ai_hybrid_hub/core/providers/talker_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/automation_state_provider.dart';
 import 'package:ai_hybrid_hub/features/automation/providers/automation_actions.dart';
+import 'package:ai_hybrid_hub/features/automation/providers/sequential_orchestrator_provider.dart';
 import 'package:ai_hybrid_hub/features/hub/providers/conversation_provider.dart';
-import 'package:ai_hybrid_hub/features/hub/providers/staged_responses_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_constants.dart';
 import 'package:ai_hybrid_hub/features/webview/bridge/bridge_event.dart';
@@ -68,8 +68,14 @@ void _handleNewResponse(
   // WHY: With sequential orchestration, orchestrator handles all extraction.
   // This event is now just a notification that sendPrompt completed.
   // For single-provider workflows, we still need to handle state transitions.
-  final stagedResponses = ref.read(stagedResponsesProvider);
-  final isMultiProvider = stagedResponses.isNotEmpty;
+  // WHY: Check orchestrator state to determine single vs multi-provider workflow.
+  // The orchestrator pre-populates staged responses even for single presets,
+  // so we can't rely on stagedResponses.isEmpty. Instead, check the queue length.
+  final orchestratorState = ref.read(sequentialOrchestratorProvider);
+  final isMultiProvider = orchestratorState.maybeWhen(
+    running: (queue, currentIndex) => queue.length > 1,
+    orElse: () => false,
+  );
 
   if (!isMultiProvider) {
     // Single-provider workflow: transition to refining state

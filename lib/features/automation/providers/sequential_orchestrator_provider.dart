@@ -44,7 +44,9 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     ref.read(stagedResponsesProvider.notifier).clear();
 
     // Validate all presets exist before starting
-    final orchestrationService = ref.read(orchestrationServiceProvider.notifier);
+    final orchestrationService = ref.read(
+      orchestrationServiceProvider.notifier,
+    );
     await orchestrationService.validatePresetsExist(presetIds);
 
     final allPresets = await ref.read(presetsProvider.future);
@@ -97,7 +99,9 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
     if (!ref.mounted) return;
 
     // WHY: Read orchestration service fresh to avoid using disposed Ref
-    final orchestrationService = ref.read(orchestrationServiceProvider.notifier);
+    final orchestrationService = ref.read(
+      orchestrationServiceProvider.notifier,
+    );
 
     // WHY: Handle case where preset was deleted during orchestration
     final presetIndexInUI = orchestrationService.findPresetInList(
@@ -181,9 +185,9 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
       ) = await orchestrationServiceForParams.prepareAutomationParameters(
         preset,
       );
+      if (!ref.mounted) return;
 
       // 5. Trigger and await entire automation cycle
-      if (!ref.mounted) return;
       final bridge = ref.read(javaScriptBridgeProvider(presetId));
       await bridge.waitForBridgeReady();
       if (!ref.mounted) return;
@@ -212,6 +216,7 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
             ),
           );
     } on Object catch (e, st) {
+      if (!ref.mounted) return;
       ref
           .read(talkerProvider)
           .handle(
@@ -219,6 +224,7 @@ class SequentialOrchestrator extends _$SequentialOrchestrator {
             st,
             'Orchestration for preset ${preset.name} failed.',
           );
+      if (!ref.mounted) return;
       ref
           .read(stagedResponsesProvider.notifier)
           .addOrUpdate(

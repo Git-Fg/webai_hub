@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_hybrid_hub/core/router/app_router.dart';
+import 'package:ai_hybrid_hub/core/theme/theme_facade.dart';
 import 'package:ai_hybrid_hub/features/settings/models/general_settings.dart';
 import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:ai_hybrid_hub/features/settings/widgets/user_agent_selector.dart';
@@ -65,6 +66,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.hubTheme;
     final settingsAsync = ref.watch(generalSettingsProvider);
     final settingsNotifier = ref.read(generalSettingsProvider.notifier);
 
@@ -132,16 +134,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   unawaited(settingsNotifier.toggleAdvancedPrompting());
                 },
               ),
-              SwitchListTile(
-                title: const Text('Enable "YOLO" Mode'),
-                subtitle: const Text(
-                  'Automatically extracts the AI response as soon as it is ready.',
-                ),
-                value: settings.yoloModeEnabled,
-                onChanged: (bool value) {
-                  unawaited(settingsNotifier.toggleYoloMode());
-                },
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -207,9 +199,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Maximum number of conversations to keep. Older conversations will be automatically deleted.',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: theme.helperTextColor),
                     ),
                     Slider(
                       value: settings.maxConversationHistory.toDouble(),
@@ -267,9 +259,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Increase this on slower devices or networks if automation fails.',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: theme.helperTextColor),
                     ),
                     Slider(
                       value: settings.timeoutModifier,
@@ -287,6 +279,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const UserAgentSelector(),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Experimental Features',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.warning_amber_rounded,
+                  color: theme.warningActionButtonColor,
+                ),
+                title: const Text('Warning'),
+                subtitle: Text(
+                  'These features are unstable and may cause unexpected behavior. Use at your own risk.',
+                  style: TextStyle(color: theme.helperTextColor),
+                ),
+              ),
+              SwitchListTile(
+                title: const Text('Enable Multi-Preset Selection'),
+                subtitle: const Text(
+                  'Allows selecting multiple presets to run in sequence.',
+                ),
+                value: settings.enableMultiPresetMode,
+                onChanged: (bool value) {
+                  unawaited(
+                    settingsNotifier.toggleMultiPresetMode(value: value),
+                  );
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Enable "YOLO" Mode'),
+                subtitle: const Text(
+                  'Automatically extracts the AI response as soon as it is ready.',
+                ),
+                value: settings.yoloModeEnabled,
+                onChanged: (bool value) {
+                  unawaited(settingsNotifier.toggleYoloMode());
+                },
+              ),
             ],
           );
         },

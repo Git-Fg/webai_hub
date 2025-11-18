@@ -2,11 +2,12 @@
 
 import 'package:ai_hybrid_hub/features/presets/providers/presets_provider.dart';
 import 'package:ai_hybrid_hub/features/presets/providers/selected_presets_provider.dart';
+import 'package:ai_hybrid_hub/features/settings/providers/general_settings_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// WHY: Widget for selecting presets in multi-select mode.
-// Designed for use inside an ExpansionTile accordion, always showing FilterChip widgets.
+// WHY: Widget for selecting presets. Dynamically switches between single-select
+// (ChoiceChip) and multi-select (FilterChip) modes based on the experimental setting.
 class PresetSelector extends ConsumerWidget {
   const PresetSelector({super.key});
 
@@ -14,6 +15,8 @@ class PresetSelector extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final presetsAsync = ref.watch(presetsProvider);
     final selectedIds = ref.watch(selectedPresetIdsProvider);
+    final settings = ref.watch(generalSettingsProvider).value;
+    final isMultiSelect = settings?.enableMultiPresetMode ?? false;
 
     return presetsAsync.when(
       data: (presets) {
@@ -34,15 +37,32 @@ class PresetSelector extends ConsumerWidget {
             runSpacing: 8,
             children: selectablePresets.map((preset) {
               final isSelected = selectedIds.contains(preset.id);
-              return FilterChip(
-                label: Text(preset.name),
-                selected: isSelected,
-                onSelected: (selected) {
-                  ref
-                      .read(selectedPresetIdsProvider.notifier)
-                      .toggle(preset.id);
-                },
-              );
+
+              // WHY: Dynamically switch between ChoiceChip (single select) and
+              // FilterChip (multi select) based on the experimental setting.
+              if (isMultiSelect) {
+                return FilterChip(
+                  label: Text(preset.name),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    ref
+                        .read(selectedPresetIdsProvider.notifier)
+                        .toggle(preset.id);
+                  },
+                );
+              } else {
+                return ChoiceChip(
+                  label: Text(preset.name),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) {
+                      ref
+                          .read(selectedPresetIdsProvider.notifier)
+                          .setSingle(preset.id);
+                    }
+                  },
+                );
+              }
             }).toList(),
           ),
         );

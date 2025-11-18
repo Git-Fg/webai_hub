@@ -107,32 +107,4 @@ class ConversationActions extends _$ConversationActions {
           newPrompt.isEmpty ? null : newPrompt,
         );
   }
-
-  // WHY: Centralizes all conversation-related message updates in ConversationActions
-  // to maintain a single source of truth for mutations, replacing the previous
-  // _updateLastMessage in AutomationOrchestrator.
-  Future<void> updateLastAssistantMessage(
-    String text,
-    MessageStatus status,
-  ) async {
-    final activeId = ref.read(activeConversationIdProvider);
-    if (activeId == null || !ref.mounted) return;
-
-    final messageService = ref.read(messageServiceProvider.notifier);
-    final lastMessage = await messageService.getLastAssistantMessage(activeId);
-
-    if (lastMessage != null) {
-      final updatedMessage = Message(
-        id: lastMessage.id,
-        text: text,
-        isFromUser: false,
-        status: status,
-      );
-      // Delegate to the service layer
-      await messageService.updateMessage(updatedMessage);
-      await ref
-          .read(conversationServiceProvider.notifier)
-          .updateTimestamp(activeId);
-    }
-  }
 }

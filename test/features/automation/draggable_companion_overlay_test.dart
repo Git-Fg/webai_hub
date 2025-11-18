@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/test_helpers.dart';
+
 void main() {
   testWidgets('Dragging overlay drag handle updates provider position (clamped)', (
     tester,
@@ -28,7 +30,7 @@ void main() {
           ),
           currentTabIndexProvider.overrideWithValue(1),
         ],
-        child: MaterialApp(
+        child: createTestMaterialApp(
           home: SizedBox(
             width: 800,
             height: 600,

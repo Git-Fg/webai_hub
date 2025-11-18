@@ -22,14 +22,14 @@ class ConversationHistoryDrawer extends ConsumerWidget {
         children: [
           DrawerHeader(
             decoration: BoxDecoration(
-              color: theme.sendButtonColor ?? Colors.blue,
+              color: theme.sendButtonColor,
             ),
-            child: const Align(
+            child: Align(
               alignment: Alignment.bottomLeft,
               child: Text(
                 'Conversation History',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: theme.drawerHeaderTextColor,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -104,9 +104,9 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
                         color: theme.messageErrorColor,
-                        child: const Icon(
+                        child: Icon(
                           Icons.delete,
-                          color: Colors.white,
+                          color: theme.drawerHeaderIconColor,
                         ),
                       ),
                       onDismissed: (direction) async {
@@ -135,7 +135,8 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                           style: TextStyle(color: theme.dividerColor),
                         ),
                         selected: isActive,
-                        selectedTileColor: theme.incomingBubbleDecoration?.color,
+                        selectedTileColor:
+                            theme.incomingBubbleDecoration?.color,
                         onTap: () {
                           // This single line changes the active conversation.
                           ref
